@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 1,
+  "id": "player-context",
+  "userMessage": "结合我现在的位置和背包回答。",
+  "requiredContext": ["player"],
+  "steps": [
+    {
+      "type": "tool_call",
+      "tool": "tomewisp:player_context",
+      "arguments": {},
+      "expect": {
+        "status": "success",
+        "match": "schema",
+        "outputType": "dev.tomewisp.tool.builtin.PlayerContextTool$Output"
+      }
+    },
+    {
+      "type": "assistant_message",
+      "content": "回答将只使用本次调用捕获的玩家位置、双手物品和完整背包快照。"
+    }
+  ]
+}

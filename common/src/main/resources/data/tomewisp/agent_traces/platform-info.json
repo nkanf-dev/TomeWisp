@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 1,
+  "id": "platform-info",
+  "userMessage": "TomeWisp 当前运行在哪个模组加载器上？",
+  "requiredContext": [],
+  "steps": [
+    {
+      "type": "tool_call",
+      "tool": "tomewisp:platform_info",
+      "arguments": {},
+      "expect": {
+        "status": "success",
+        "match": "schema",
+        "outputType": "dev.tomewisp.tool.builtin.PlatformInfoTool$Output"
+      }
+    },
+    {
+      "type": "assistant_message",
+      "content": "平台信息来自当前运行中的 TomeWisp 工具注册表。"
+    }
+  ]
+}

@@ -22,6 +22,9 @@ NeoForge treated as equal first-class loaders.
 ./gradlew :neoforge:runServer
 ```
 
+See [the development guide](docs/development.md) for testing, loader boundaries,
+and development commands.
+
 ## Status
 
 The project is in its foundation phase. Agent runtime, guide integrations,

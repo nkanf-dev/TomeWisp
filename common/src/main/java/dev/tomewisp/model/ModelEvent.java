@@ -8,6 +8,7 @@ public sealed interface ModelEvent
                 ModelEvent.ReasoningDelta,
                 ModelEvent.ToolUseComplete,
                 ModelEvent.UsageUpdate,
+                ModelEvent.RateLimited,
                 ModelEvent.MessageComplete,
                 ModelFailure {
     record TextDelta(String text) implements ModelEvent {
@@ -34,6 +35,14 @@ public sealed interface ModelEvent
     }
 
     record UsageUpdate(ModelUsage usage) implements ModelEvent {}
+
+    record RateLimited(long retryAfterMillis, int attempt) implements ModelEvent {
+        public RateLimited {
+            if (retryAfterMillis < 0 || attempt <= 0) {
+                throw new IllegalArgumentException("Rate-limit delay and attempt are invalid");
+            }
+        }
+    }
 
     record MessageComplete(String stopReason) implements ModelEvent {}
 }

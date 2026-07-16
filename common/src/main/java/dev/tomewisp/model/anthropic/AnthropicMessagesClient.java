@@ -40,9 +40,12 @@ public final class AnthropicMessagesClient implements ModelClient {
                 .header("content-type", "application/json")
                 .POST(HttpRequest.BodyPublishers.ofString(codec.requestBody(config, request)))
                 .build();
-        return transport.execute(httpRequest, cancellation, (status, contentType, body) -> {
-            ModelHttpErrors.requireSuccess(status, body);
-            return request.stream() || contentType.contains("text/event-stream")
+        return transport.execute(httpRequest, cancellation, (status, headers, body) -> {
+            ModelHttpErrors.requireSuccess(status, headers, body);
+            return request.stream()
+                            || headers.firstValue("content-type")
+                                    .orElse("")
+                                    .contains("text/event-stream")
                     ? decodeStream(body, events, cancellation)
                     : codec.parseTurn(new String(body.readAllBytes(), StandardCharsets.UTF_8), events);
         });

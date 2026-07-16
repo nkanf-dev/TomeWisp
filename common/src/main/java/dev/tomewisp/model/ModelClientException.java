@@ -1,6 +1,6 @@
 package dev.tomewisp.model;
 
-public final class ModelClientException extends RuntimeException {
+public class ModelClientException extends RuntimeException {
     private final ModelFailure failure;
 
     public ModelClientException(ModelFailure failure) {

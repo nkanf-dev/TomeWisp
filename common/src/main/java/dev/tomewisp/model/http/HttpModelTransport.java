@@ -11,6 +11,7 @@ import java.net.http.HttpClient;
 import java.net.http.HttpConnectTimeoutException;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.net.http.HttpHeaders;
 import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicReference;
@@ -19,7 +20,7 @@ import javax.net.ssl.SSLHandshakeException;
 public final class HttpModelTransport {
     @FunctionalInterface
     public interface ResponseDecoder<T> {
-        T decode(int status, String contentType, InputStream body) throws IOException;
+        T decode(int status, HttpHeaders headers, InputStream body) throws IOException;
     }
 
     private final HttpClient client;
@@ -96,7 +97,7 @@ public final class HttpModelTransport {
             try (body) {
                 return decoder.decode(
                         response.statusCode(),
-                        response.headers().firstValue("content-type").orElse(""),
+                        response.headers(),
                         body);
             } finally {
                 activeBody.compareAndSet(body, null);

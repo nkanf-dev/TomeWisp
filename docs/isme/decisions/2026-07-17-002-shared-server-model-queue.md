@@ -4,7 +4,7 @@
 - decided_by: designer
 - approval_source: user explicitly required “如果是走服务端模型的话…后续有请求可以排队…不要那种明确的直接给他拒绝掉”，with TRAE as the interaction reference
 - date: 2026-07-17
-- commit: pending
+- commit: fc55c60
 - patterns:
   - A_async_wait
   - B_state_persistence
@@ -21,11 +21,9 @@ errors and differs from the queueing interaction the designer expects.
 
 ## Decision
 
-Server-hosted requests enter a fair per-player queue whenever all configured
-execution slots are occupied. Each player's requests remain FIFO, while the
-scheduler rotates players so one player cannot starve others. Server model
-concurrency is positive administrator configuration and defaults to one. The
-queue has no TomeWisp-defined count limit in Phase 2.
+Server-hosted requests are accepted into a queue rather than rejected while the
+shared endpoint cannot dispatch them. The exact concurrency/rate semantics were
+subsequently refined by SKMB-2026-07-17-003.
 
 Queue position and start events are returned to the client. A player may cancel
 queued and running work. Disconnect removes that player's queued requests and
@@ -64,4 +62,5 @@ F1. Client-local behavior remains unchanged.
 
 ## Superseded By
 
-None.
+SKMB-2026-07-17-003 replaces the per-player/default-single-concurrency details
+with per-session isolation and provider-429-driven endpoint scheduling.

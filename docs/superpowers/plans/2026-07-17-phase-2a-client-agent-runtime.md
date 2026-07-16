@@ -243,6 +243,8 @@ git commit -m "feat: expose typed tools to models"
 - Create: `common/src/main/java/dev/tomewisp/agent/AgentEvent.java`
 - Create: `common/src/main/java/dev/tomewisp/agent/GameGuideAgent.java`
 - Create: `common/src/main/java/dev/tomewisp/agent/session/AgentSessionStore.java`
+- Create: `common/src/main/java/dev/tomewisp/agent/session/AgentSessionKey.java`
+- Create: `common/src/main/java/dev/tomewisp/model/scheduling/ModelRequestScheduler.java`
 - Create: `common/src/main/java/dev/tomewisp/agent/trace/LiveAgentTrace.java`
 - Create: `common/src/main/java/dev/tomewisp/agent/trace/LiveAgentTraceRecorder.java`
 - Test: `common/src/test/java/dev/tomewisp/agent/GameGuideAgentTest.java`
@@ -271,8 +273,12 @@ Expected: compilation failure.
 
 - [ ] **Step 3: Implement the sequential loop exactly as the SKMB transitions**
 
-Use one audited tool executor, canonical tool-call keys, cooperative cancellation,
-and request identity checks before every event publication. `LiveAgentTrace`
+Use `(actorId, sessionId)` as the conversation key, one audited tool executor,
+canonical tool-call keys, cooperative cancellation, and request identity checks
+before every event publication. Different sessions may execute concurrently.
+`ModelRequestScheduler` imposes no default concurrency cap; it queues/requeues
+HTTP 429 by endpoint using Retry-After or cancellable exponential backoff.
+`LiveAgentTrace`
 contains no secret-bearing type and is immutable on completion.
 
 - [ ] **Step 4: Run Agent tests**
@@ -368,6 +374,9 @@ Fabric adds a `client` entrypoint. NeoForge registers client-only listeners with
 cancel, clear, status, model, skills, and sources branches. Capture player,
 inventory, registries, and synchronized recipes on the client thread before
 dispatching a virtual-thread Agent request.
+
+Add session branches for new, switch, list, and close. `/guide <question>` uses
+the selected default session; requests in different sessions may overlap.
 
 - [ ] **Step 4: Compile both clients and dedicated servers**
 

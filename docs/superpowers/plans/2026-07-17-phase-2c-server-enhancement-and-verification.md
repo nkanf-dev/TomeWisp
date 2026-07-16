@@ -170,17 +170,19 @@ git commit -m "feat: connect NeoForge server enhancements"
 - [ ] **Step 1: Write capability, identity, fair queue, and credential-isolation tests**
 
 Assert the server advertises model capability only with a valid server config;
-client packets contain no key; requests use sender identity; per-player FIFO is
-preserved; players rotate fairly; configured concurrency is honored; queued and
-running work cancels on disconnect; and failure releases a slot.
+client packets contain no key; requests use sender identity plus session ID;
+same-session overlap is rejected; different sessions run concurrently; 429
+requeues by endpoint and honors Retry-After; sessions rotate fairly after
+cooldown; queued/running work cancels on disconnect; and failure releases work.
 
 - [ ] **Step 2: Implement server Agent using the same GameGuideAgent**
 
 The service captures server context on the server thread, runs the model on a
 virtual thread, emits versioned events to the sender, and cancels on disconnect.
-`ServerAgentQueue` captures context/history only when a fair execution slot is
-granted. It does not share client conversation history or credentials and does
-not impose a queue-count limit.
+The common endpoint scheduler captures context/history only when a queued
+request resumes. It does not share client conversation history or credentials,
+does not impose a queue-count/default-concurrency limit, and isolates rate state
+between endpoint configurations.
 
 - [ ] **Step 3: Test and commit**
 

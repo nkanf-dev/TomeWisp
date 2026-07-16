@@ -35,7 +35,7 @@ The phase includes the complete vertical slice rather than a model demo:
 | Secondary protocol | OpenAI Chat Completions for compatible providers |
 | Skills | Progressive metadata then `load_skill`; no scripts or arbitrary URLs |
 | Tool authority | ToolRegistry and server permission checks, never prompts |
-| State | In-memory sessions; client-local requests reject while busy; shared server-model requests use a fair queue |
+| State | In-memory multi-session conversations; one active request per session; endpoint-scoped 429 queueing |
 | Writes | Diagnostic traces only; no world, inventory, quest, or command writes |
 | Limits | No fixed TomeWisp document/result/round cap; provider-required output and operational timeout values are explicit configuration and are not silently clamped |
 | Visual tutorials | Deferred to Phase 3; Phase 2 may discover structures but does not publish Ponder |
@@ -101,13 +101,14 @@ question and receives progress/final events. The server owns the Agent loop and
 server tools. The client's model credential is never sent. A server without
 model configuration does not advertise this capability.
 
-Shared server inference is queue-based. A positive administrator setting
-controls concurrent model executions and defaults to one. When all slots are
-occupied, requests enter per-player FIFO queues; scheduling rotates players for
-fairness. Queue position/start events are visible. Cancellation or disconnect
-removes queued work, and every terminal outcome releases its slot. Context and
-session history are captured at execution time. Phase 2 imposes no queue-count
-cap.
+Shared server inference and client-local inference use the same endpoint rate
+scheduler. TomeWisp imposes no default global concurrency count. Different
+sessions may run concurrently; a provider HTTP 429 requeues the request and
+closes only that endpoint's dispatch gate for `Retry-After`, or a cancellable
+exponential backoff if absent. Scheduling rotates sessions fairly when dispatch
+resumes. Queue position/start events are visible. Cancellation or disconnect
+removes queued work. Context and session history are captured at execution time.
+Phase 2 imposes no queue-count cap.
 
 Model location and remote-tool availability are orthogonal. The UI exposes
 `client` and `server` model modes; server mode is selectable only after a
@@ -400,15 +401,17 @@ not reveal credentials.
 ## 17. Sessions, Cancellation, and Traces
 
 Sessions keep chronological model messages, tool summaries, loaded Skills, and
-the latest answer in memory. They are keyed by the local client profile or
-server player UUID and are cleared on disconnect, explicit clear, and shutdown.
+the latest answer in memory. They are keyed by actor identity plus `sessionId`;
+one actor can own and concurrently use multiple isolated sessions. They are
+cleared on disconnect, explicit close/clear, and shutdown.
 They are not permanent memory and never override live game facts.
 
-One active client-local request is allowed per key. New local work while active
-returns `agent_busy`. Server-hosted requests instead use the fair shared queue
-described in section 5.3. Cancellation is cooperative across HTTP, SSE, local
-tools, remote correlations, queued requests, and server execution slots. Late
-callbacks check request identity before publishing.
+One active request is allowed per session. New work in that same session returns
+`agent_busy`; other sessions remain independent in client or server mode. Model
+requests pass through the endpoint-scoped 429 scheduler described in section
+5.3. Cancellation is cooperative across HTTP, SSE, local tools, remote
+correlations, and queued requests. Late callbacks check request identity before
+publishing.
 
 Every request produces a `LiveAgentTrace` containing request ID, mode, model
 metadata, state transitions, normalized messages, tool arguments/results,

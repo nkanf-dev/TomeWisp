@@ -34,8 +34,14 @@ and development commands.
 
 ## Status
 
-The project is in its foundation phase. Agent runtime, guide integrations,
-search, and Ponder generation are deliberately not part of the initial build.
+Phase 1 provides a deterministic replay of realistic Agent traces. It executes
+the real read-only tool registry against detached Minecraft context snapshots,
+loads strict versioned traces from server data resources, and emits complete
+verification reports on both loaders. The bundled traces cover platform,
+recipe, and player-context calls.
+
+No model SDK, endpoint, API key, or network model call is present yet. Guide
+integrations, search, and Ponder generation remain later phases.
 
 ## License
 

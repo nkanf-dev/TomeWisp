@@ -8,6 +8,7 @@ import dev.tomewisp.agent.AgentResult;
 import dev.tomewisp.agent.GameGuideAgent;
 import dev.tomewisp.agent.session.AgentSessionKey;
 import dev.tomewisp.agent.session.AgentSessionStore;
+import dev.tomewisp.agent.trace.LiveTraceStore;
 import dev.tomewisp.agent.tool.LocalAgentToolExecutor;
 import dev.tomewisp.agent.tool.AgentToolExecutor;
 import dev.tomewisp.agent.tool.CompositeAgentToolExecutor;
@@ -34,6 +35,7 @@ public final class ClientGuideRuntime {
     private final GameGuideAgent agent;
     private final AgentToolExecutor toolExecutor;
     private final ClientEventDispatcher dispatcher;
+    private final LiveTraceStore traces;
     private final Map<UUID, String> selectedSessions = new ConcurrentHashMap<>();
 
     public ClientGuideRuntime(
@@ -42,7 +44,7 @@ public final class ClientGuideRuntime {
             AgentSessionStore sessions,
             Gson gson,
             ClientEventDispatcher dispatcher) {
-        this(runtime, model, sessions, gson, dispatcher, null);
+        this(runtime, model, sessions, gson, dispatcher, null, new LiveTraceStore(null, Set.of()));
     }
 
     public ClientGuideRuntime(
@@ -52,9 +54,21 @@ public final class ClientGuideRuntime {
             Gson gson,
             ClientEventDispatcher dispatcher,
             AgentToolExecutor extension) {
+        this(runtime, model, sessions, gson, dispatcher, extension, new LiveTraceStore(null, Set.of()));
+    }
+
+    private ClientGuideRuntime(
+            TomeWispRuntime runtime,
+            ModelClient model,
+            AgentSessionStore sessions,
+            Gson gson,
+            ClientEventDispatcher dispatcher,
+            AgentToolExecutor extension,
+            LiveTraceStore traces) {
         this.runtime = runtime;
         this.sessions = sessions;
         this.dispatcher = dispatcher;
+        this.traces = traces;
         LocalAgentToolExecutor local = new LocalAgentToolExecutor(runtime.tools(), gson);
         toolExecutor = extension == null
                 ? local
@@ -90,7 +104,13 @@ public final class ClientGuideRuntime {
             case OPENAI_CHAT -> new OpenAiChatClient(config, gson);
         };
         return new ToolResult.Success<>(new ClientGuideRuntime(
-                runtime, model, new AgentSessionStore(), gson, dispatcher, extension));
+                runtime,
+                model,
+                new AgentSessionStore(),
+                gson,
+                dispatcher,
+                extension,
+                new LiveTraceStore(null, Set.of(config.apiKey().reveal()))));
     }
 
     public Set<dev.tomewisp.context.ContextCapability> requiredContext() {
@@ -111,7 +131,13 @@ public final class ClientGuideRuntime {
                 systemPrompt(),
                 context,
                 true);
-        return agent.ask(request, event -> dispatcher.execute(() -> events.accept(event)));
+        return agent.ask(request, event -> dispatcher.execute(() -> events.accept(event)))
+                .thenApply(result -> {
+                    if (result.trace() != null) {
+                        traces.record(result.trace());
+                    }
+                    return result;
+                });
     }
 
     public String selectedSession(UUID actor) {
@@ -147,6 +173,10 @@ public final class ClientGuideRuntime {
     public void clearActor(UUID actor) {
         sessions.clearActor(actor);
         selectedSessions.remove(actor);
+    }
+
+    public LiveTraceStore traces() {
+        return traces;
     }
 
     private String systemPrompt() {

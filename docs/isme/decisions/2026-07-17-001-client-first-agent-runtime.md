@@ -4,7 +4,7 @@
 - decided_by: designer
 - approval_source: user explicitly corrected the architecture to “主线还是做客户端，而不是服务端” and delegated subsequent decisions with “接下来不需要跟我对齐了…一直推进这个 goal”
 - date: 2026-07-17
-- commit: pending
+- commit: 77b4970
 - patterns:
   - A_async_wait
   - B_state_persistence

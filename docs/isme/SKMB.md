@@ -8,7 +8,7 @@ accepted and contains explicit approval evidence.
 
 | id | status | scope | patterns | file | commit |
 | --- | --- | --- | --- | --- | --- |
-| SKMB-2026-07-17-001 | accepted | Phase 2 client-first Agent runtime | A, B, C, D, E, F, G | decisions/2026-07-17-001-client-first-agent-runtime.md | pending |
+| SKMB-2026-07-17-001 | accepted | Phase 2 client-first Agent runtime | A, B, C, D, E, F, G | decisions/2026-07-17-001-client-first-agent-runtime.md | 77b4970 |
 
 ## Named States
 

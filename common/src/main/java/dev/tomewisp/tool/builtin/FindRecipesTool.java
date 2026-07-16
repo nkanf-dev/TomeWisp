@@ -7,6 +7,8 @@ import dev.tomewisp.tool.ToolAccess;
 import dev.tomewisp.tool.ToolDescriptor;
 import dev.tomewisp.tool.ToolResult;
 import java.util.List;
+import java.util.Set;
+import dev.tomewisp.context.ContextCapability;
 
 public final class FindRecipesTool
         implements Tool<FindRecipesTool.Input, FindRecipesTool.Output> {
@@ -23,7 +25,8 @@ public final class FindRecipesTool
             "Find every captured recipe that produces the requested item",
             Input.class,
             Output.class,
-            ToolAccess.READ_ONLY);
+            ToolAccess.READ_ONLY,
+            Set.of(ContextCapability.RECIPES));
 
     @Override
     public ToolDescriptor<Input, Output> descriptor() {

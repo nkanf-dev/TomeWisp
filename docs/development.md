@@ -10,6 +10,15 @@ Use the checked-in Gradle wrapper; no system Gradle installation is required.
 ./gradlew :fabric:build :neoforge:build
 ```
 
+For unreliable Maven connections, replace `./gradlew` with `./gradlew-curl`.
+The helper extracts failed dependency URLs from Gradle output, downloads them
+with curl retries into the ignored `.gradle/curl-mirror` directory, and resumes
+the same command. On FLClash, its proxy can be selected explicitly:
+
+```bash
+TOMEWISP_CURL_PROXY=socks5h://127.0.0.1:7890 ./gradlew-curl build
+```
+
 ## Run environments
 
 ```bash

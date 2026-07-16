@@ -13,6 +13,13 @@ NeoForge treated as equal first-class loaders.
 ./gradlew build
 ```
 
+On an unstable connection, use the curl-backed wrapper, which mirrors failed
+Maven downloads locally and retries the Gradle command:
+
+```bash
+./gradlew-curl build
+```
+
 ## Development runs
 
 ```bash

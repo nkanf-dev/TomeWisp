@@ -6,6 +6,8 @@ import dev.tomewisp.tool.Tool;
 import dev.tomewisp.tool.ToolAccess;
 import dev.tomewisp.tool.ToolDescriptor;
 import dev.tomewisp.tool.ToolResult;
+import dev.tomewisp.context.ContextCapability;
+import java.util.Set;
 
 public final class PlayerContextTool
         implements Tool<PlayerContextTool.Input, PlayerContextTool.Output> {
@@ -18,7 +20,8 @@ public final class PlayerContextTool
             "Return the captured player identity, location, hands, and complete inventory",
             Input.class,
             Output.class,
-            ToolAccess.READ_ONLY);
+            ToolAccess.READ_ONLY,
+            Set.of(ContextCapability.PLAYER));
 
     @Override
     public ToolDescriptor<Input, Output> descriptor() {

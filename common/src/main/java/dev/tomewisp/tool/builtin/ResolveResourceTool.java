@@ -1,16 +1,19 @@
 package dev.tomewisp.tool.builtin;
 
 import dev.tomewisp.context.RegistryEntrySnapshot;
+import dev.tomewisp.agent.tool.ToolOptional;
 import dev.tomewisp.context.ToolInvocationContext;
 import dev.tomewisp.tool.Tool;
 import dev.tomewisp.tool.ToolAccess;
 import dev.tomewisp.tool.ToolDescriptor;
 import dev.tomewisp.tool.ToolResult;
 import java.util.List;
+import java.util.Set;
+import dev.tomewisp.context.ContextCapability;
 
 public final class ResolveResourceTool
         implements Tool<ResolveResourceTool.Input, ResolveResourceTool.Output> {
-    public record Input(String id, String kind) {}
+    public record Input(String id, @ToolOptional String kind) {}
 
     public record Match(
             String id, String kind, String displayName, String namespace, String provenance) {}
@@ -26,7 +29,8 @@ public final class ResolveResourceTool
             "Resolve an item or block identifier from the captured Minecraft registries",
             Input.class,
             Output.class,
-            ToolAccess.READ_ONLY);
+            ToolAccess.READ_ONLY,
+            Set.of(ContextCapability.REGISTRIES));
 
     @Override
     public ToolDescriptor<Input, Output> descriptor() {

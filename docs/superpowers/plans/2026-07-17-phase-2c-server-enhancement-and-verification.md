@@ -161,22 +161,26 @@ git commit -m "feat: connect NeoForge server enhancements"
 **Files:**
 - Create: `common/src/main/java/dev/tomewisp/server/ServerGuideRuntime.java`
 - Create: `common/src/main/java/dev/tomewisp/server/ServerAgentService.java`
+- Create: `common/src/main/java/dev/tomewisp/server/ServerAgentQueue.java`
 - Create: `common/src/main/java/dev/tomewisp/server/ServerGuideEvents.java`
 - Modify: `common/src/main/java/dev/tomewisp/TomeWispRuntime.java`
 - Modify: `common/src/main/java/dev/tomewisp/TomeWispBootstrap.java`
 - Test: `common/src/test/java/dev/tomewisp/server/ServerAgentServiceTest.java`
 
-- [ ] **Step 1: Write capability, identity, busy, and credential-isolation tests**
+- [ ] **Step 1: Write capability, identity, fair queue, and credential-isolation tests**
 
 Assert the server advertises model capability only with a valid server config;
-client packets contain no key; requests use sender identity; and two players
-have independent active sessions.
+client packets contain no key; requests use sender identity; per-player FIFO is
+preserved; players rotate fairly; configured concurrency is honored; queued and
+running work cancels on disconnect; and failure releases a slot.
 
 - [ ] **Step 2: Implement server Agent using the same GameGuideAgent**
 
 The service captures server context on the server thread, runs the model on a
 virtual thread, emits versioned events to the sender, and cancels on disconnect.
-It does not share client conversation history or credentials.
+`ServerAgentQueue` captures context/history only when a fair execution slot is
+granted. It does not share client conversation history or credentials and does
+not impose a queue-count limit.
 
 - [ ] **Step 3: Test and commit**
 

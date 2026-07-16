@@ -1,24 +1,21 @@
-package com.example.examplemod.platform;
+package dev.tomewisp.fabric;
 
-import com.example.examplemod.platform.services.IPlatformHelper;
+import dev.tomewisp.platform.PlatformService;
 import net.fabricmc.loader.api.FabricLoader;
 
-public class FabricPlatformHelper implements IPlatformHelper {
-
+public final class FabricPlatformService implements PlatformService {
     @Override
-    public String getPlatformName() {
+    public String platformName() {
         return "Fabric";
     }
 
     @Override
     public boolean isModLoaded(String modId) {
-
         return FabricLoader.getInstance().isModLoaded(modId);
     }
 
     @Override
     public boolean isDevelopmentEnvironment() {
-
         return FabricLoader.getInstance().isDevelopmentEnvironment();
     }
 }

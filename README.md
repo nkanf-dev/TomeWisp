@@ -34,14 +34,22 @@ and development commands.
 
 ## Status
 
-Phase 1 provides a deterministic replay of realistic Agent traces. It executes
-the real read-only tool registry against detached Minecraft context snapshots,
-loads strict versioned traces from server data resources, and emits complete
-verification reports on both loaders. The bundled traces cover platform,
-recipe, and player-context calls.
+Phase 2 provides a working client-first guide Agent on Fabric and NeoForge:
 
-No model SDK, endpoint, API key, or network model call is present yet. Guide
-integrations, search, and Ponder generation remain later phases.
+- Anthropic Messages and OpenAI-compatible HTTP adapters with streaming and
+  tool-result continuation;
+- independent multi-session conversations, one active request per session;
+- no artificial global concurrency cap, with endpoint-scoped fair retry after
+  provider HTTP 429;
+- progressive, non-executable Agent Skills;
+- deterministic search over Patchouli assets and optional visible FTB Quests;
+- optional authenticated server read tools and optional server-hosted models;
+- redacted live traces and deterministic Phase 1 trace replay.
+
+A server mod is not required for the main client model mode. Dynamic Ponder
+generation remains Phase 3 because Ponder/Ponderer do not yet provide a 26.2
+runtime target; the knowledge layer already retains Patchouli multiblock
+coordinates and structure references for that workflow.
 
 ## License
 

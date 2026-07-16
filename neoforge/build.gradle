@@ -39,6 +39,10 @@ neoForge {
     }
 }
 
+tasks.named('runServer') {
+    standardInput = System.in
+}
+
 sourceSets.main.resources { srcDir 'src/generated/resources' }
 
 // Implement mcgradleconventions loader attribute

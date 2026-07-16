@@ -16,6 +16,9 @@
     "entrypoints": {
         "main": [
             "dev.tomewisp.fabric.TomeWispFabric"
+        ],
+        "client": [
+            "dev.tomewisp.fabric.TomeWispFabricClient"
         ]
     },
     "depends": {

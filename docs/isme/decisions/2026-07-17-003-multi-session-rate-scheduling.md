@@ -4,7 +4,7 @@
 - decided_by: designer
 - approval_source: user explicitly clarified “本地也可以一个玩家多个请求…单个会话当然是只能同时有单请求，我说的是那种多会话的情况” and stated that dispatch should depend on model rate limits and 429
 - date: 2026-07-17
-- commit: pending
+- commit: 17b2f20
 - patterns:
   - A_async_wait
   - B_state_persistence

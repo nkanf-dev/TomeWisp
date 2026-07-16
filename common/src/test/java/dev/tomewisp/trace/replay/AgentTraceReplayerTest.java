@@ -53,6 +53,8 @@ final class AgentTraceReplayerTest {
         assertEquals("完整的预录回答。", report.steps().get(1).assistantMessage());
         assertTrue(report.metrics().toolResultSerializedBytes() > 0);
         assertTrue(report.metrics().totalDurationNanos() > 0);
+        assertTrue(report.chatLines().stream().anyMatch(line -> line.contains("完整的预录回答。")));
+        assertTrue(report.chatLines().stream().anyMatch(line -> line.startsWith("ACTUAL ")));
     }
 
     @Test

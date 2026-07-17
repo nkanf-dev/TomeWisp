@@ -4,7 +4,7 @@
 - decided_by: statistical_default
 - approval_source: designer accepted ALL_KNOWN, optional viewer integration, explicit configuration, and autonomous best-path execution in SKMB-2026-07-18-005
 - date: 2026-07-18
-- commit: pending
+- commit: 7e89bed
 - patterns:
   - A_async_wait
   - B_state_persistence

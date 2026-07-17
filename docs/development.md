@@ -306,6 +306,24 @@ fixture answered a direct contract request successfully. No graphical client
 was launched during this unattended run, so no real-client report or visual
 gameplay acceptance is claimed by this baseline.
 
+## Phase 3 final verification baseline
+
+The final clean build on 2026-07-17 reported 125 common tests, 0 failures, 0
+errors, and 1 opt-in live-provider test skipped, followed by successful Fabric
+and NeoForge production builds. Required GUI/service classes and language assets
+are present in both artifacts. Tracked files, all Git objects (including the
+unreachable-object set reported by `git fsck`), and every built JAR returned no
+credential-pattern matches. Script syntax and the deterministic fixture parser
+also passed.
+
+```text
+Fabric  SHA-256 157dcf0fd50bc4b85fa41ee24d363f42b8c7e8d8f24bb8b79a7fddb13cf55f56
+NeoForge SHA-256 2d6d31bef6a8f023ee4f95399ba8e6ab6bd89333c7cb4276c77b99c2d2b7f347
+```
+
+This baseline does not include a graphical client launch, screenshot, or
+manual interaction claim.
+
 ## Loader boundary
 
 Production source under `common/` must not import Fabric or NeoForge APIs. Loader

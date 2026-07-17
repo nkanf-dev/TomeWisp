@@ -59,7 +59,8 @@ and reconstructs from immutable snapshots; closing only detaches its listener.
 - Task 4: 125 common tests, 0 failures, 0 errors, and 1 opt-in live-provider
   test skipped. Both production builds passed. Both JARs contain TomeWispScreen,
   key mappings, GuideUiView, GuideToolPresenter and GuideService. Tracked/JAR
-  credential scans returned zero matches.
+  credential scans returned zero matches; a subsequent all-Git-object scan,
+  including dangling objects, also returned zero matches.
 - Artifact SHA-256 at this verification point:
   `157dcf0fd50bc4b85fa41ee24d363f42b8c7e8d8f24bb8b79a7fddb13cf55f56`
   (Fabric) and

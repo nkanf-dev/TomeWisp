@@ -20,10 +20,14 @@ dependencies {
     compileOnly('net.fabricmc:sponge-mixin:0.17.3+mixin.0.8.7')
     // Fabric and NeoForge both bundle MixinExtras, so it is safe to use it in common
     compileOnly(annotationProcessor('io.github.llamalad7:mixinextras-common:0.5.3'))
+    compileOnly("mezz.jei:jei-${minecraft_version}-common-api:${jei_version}")
+    compileOnly("me.shedaniel:RoughlyEnoughItems-api-fabric:${rei_version}")
     testImplementation('com.google.code.gson:gson:2.14.0')
     testImplementation('org.junit.jupiter:junit-jupiter:5.11.4')
     testRuntimeOnly('org.junit.platform:junit-platform-launcher:1.11.4')
     testRuntimeOnly("org.xerial:sqlite-jdbc:${sqlite_jdbc_version}")
+    testRuntimeOnly("mezz.jei:jei-${minecraft_version}-common-api:${jei_version}")
+    testRuntimeOnly("me.shedaniel:RoughlyEnoughItems-api-fabric:${rei_version}")
 }
 
 tasks.withType(Test).configureEach { useJUnitPlatform() }

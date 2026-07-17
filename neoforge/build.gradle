@@ -6,6 +6,8 @@ plugins {
 dependencies {
     implementation("org.xerial:sqlite-jdbc:${sqlite_jdbc_version}")
     jarJar("org.xerial:sqlite-jdbc:${sqlite_jdbc_version}")
+    compileOnly("mezz.jei:jei-${minecraft_version}-neoforge-api:${jei_version}")
+    compileOnly("me.shedaniel:RoughlyEnoughItems-api-neoforge:${rei_version}")
 }
 
 neoForge {

@@ -24,11 +24,21 @@ viewer availability; they do not implement recipe semantics.
 
 ## Task 1: Prove Optional API Dependencies
 
-- [ ] Add exact JEI common API and REI API compile-only repositories/versions.
-- [ ] Add API surface contract tests or compile probes for enumeration,
+- [x] Add exact JEI common API and REI API compile-only repositories/versions.
+- [x] Add API surface contract tests or compile probes for enumeration,
   grouped ingredients, stable IDs, runtime availability, and navigation.
-- [ ] Prove TomeWisp starts/builds without either viewer on both loaders.
-- [ ] Record exact Maven artifacts and commit `build: verify recipe viewer APIs`.
+- [x] Prove TomeWisp starts/builds without either viewer on both loaders.
+- [x] Record exact Maven artifacts and commit `build: verify recipe viewer APIs`.
+
+Verification on 2026-07-18 resolved JEI
+`mezz.jei:jei-26.2-{common,fabric,neoforge}-api:30.12.0.69` from BlameJared
+Maven and REI
+`me.shedaniel:RoughlyEnoughItems-api-{fabric,neoforge}:26.2.820` from
+Shedaniel Maven. Classfile contract tests proved the exact public enumeration,
+grouped-slot/display, runtime lifecycle, and navigation symbols. Common tests,
+Fabric compile, NeoForge compile, and both production builds passed. Inspection
+of both production JARs found no packaged `mezz.jei`, `me.shedaniel.rei`, or
+viewer nested JAR, proving these dependencies remain optional.
 
 ## Task 2: Define Provider, Generation, and Visibility Domain
 

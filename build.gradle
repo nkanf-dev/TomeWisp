@@ -30,5 +30,16 @@ allprojects {
         mavenCentral()
         maven { url = uri('https://maven.neoforged.net/releases') }
         maven { url = uri('https://libraries.minecraft.net') }
+        maven {
+            url = uri('https://maven.blamejared.com')
+            content { includeGroup('mezz.jei') }
+        }
+        maven {
+            url = uri('https://maven.shedaniel.me')
+            content {
+                includeGroupByRegex('me\\.shedaniel(\\..*)?')
+                includeGroup('dev.architectury')
+            }
+        }
     }
 }

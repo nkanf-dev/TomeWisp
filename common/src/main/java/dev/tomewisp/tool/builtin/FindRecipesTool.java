@@ -47,7 +47,7 @@ public final class FindRecipesTool
 
         List<RecipeEntrySnapshot> recipes = context.recipes().orElseThrow().recipes().stream()
                 .filter(recipe -> recipe.outputs().stream()
-                        .anyMatch(output -> output.itemId().equals(input.outputItem())))
+                        .anyMatch(output -> output.stack().itemId().equals(input.outputItem())))
                 .toList();
         return new ToolResult.Success<>(new Output(input.outputItem(), recipes));
     }

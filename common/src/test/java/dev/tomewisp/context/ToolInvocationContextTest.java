@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import java.time.Instant;
+import dev.tomewisp.testing.GroundedTestFixtures;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -22,9 +23,15 @@ final class ToolInvocationContextTest {
                 "minecraft:overworld",
                 new BlockPositionSnapshot(1, 64, 2),
                 "survival",
-                new ItemStackSnapshot("minecraft:stone", 64, "Stone"),
-                ItemStackSnapshot.empty(),
-                slots);
+                new InventorySnapshot(
+                        slots,
+                        1,
+                        0,
+                        0,
+                        ItemStackSnapshot.empty(),
+                        true,
+                        GroundedTestFixtures.playerEvidence()),
+                GroundedTestFixtures.playerEvidence());
         var context = new ToolInvocationContext(
                 "trace:test",
                 Instant.EPOCH,
@@ -36,9 +43,9 @@ final class ToolInvocationContextTest {
 
         slots.clear();
 
-        assertEquals(1, context.player().orElseThrow().inventory().size());
+        assertEquals(1, context.player().orElseThrow().inventory().slots().size());
         assertThrows(
                 UnsupportedOperationException.class,
-                () -> context.player().orElseThrow().inventory().clear());
+                () -> context.player().orElseThrow().inventory().slots().clear());
     }
 }

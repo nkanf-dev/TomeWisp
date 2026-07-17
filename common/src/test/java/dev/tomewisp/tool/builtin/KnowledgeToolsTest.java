@@ -5,33 +5,16 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import dev.tomewisp.context.BlockPositionSnapshot;
-import dev.tomewisp.context.CallerKind;
-import dev.tomewisp.context.CallerSnapshot;
-import dev.tomewisp.context.ContextMetrics;
-import dev.tomewisp.context.IngredientSlotSnapshot;
-import dev.tomewisp.context.InventorySlotSnapshot;
-import dev.tomewisp.context.ItemStackSnapshot;
-import dev.tomewisp.context.PlayerSnapshot;
 import dev.tomewisp.context.RecipeEntrySnapshot;
-import dev.tomewisp.context.RecipeSnapshot;
-import dev.tomewisp.context.RegistryEntrySnapshot;
-import dev.tomewisp.context.RegistrySnapshot;
 import dev.tomewisp.context.ToolInvocationContext;
+import dev.tomewisp.testing.GroundedTestFixtures;
 import dev.tomewisp.tool.ToolResult;
-import java.time.Instant;
 import java.util.List;
-import java.util.Optional;
-import java.util.UUID;
 import org.junit.jupiter.api.Test;
 
 final class KnowledgeToolsTest {
-    private static final RecipeEntrySnapshot IRON_BLOCK = new RecipeEntrySnapshot(
-            "minecraft:iron_block",
-            "minecraft:crafting",
-            List.of(new IngredientSlotSnapshot(List.of("minecraft:iron_ingot"))),
-            List.of(new ItemStackSnapshot("minecraft:iron_block", 1, "Block of Iron")),
-            "minecraft:iron_block");
+    private static final RecipeEntrySnapshot IRON_BLOCK =
+            GroundedTestFixtures.ironBlockRecipe();
 
     @Test
     void resolvesAllMatchingRegistryKindsWithoutTruncation() {
@@ -93,7 +76,7 @@ final class KnowledgeToolsTest {
         ToolResult.Success<PlayerContextTool.Output> result = assertInstanceOf(
                 ToolResult.Success.class,
                 new PlayerContextTool().invoke(fullContext(), new PlayerContextTool.Input()));
-        assertEquals(2, result.value().player().inventory().size());
+        assertEquals(2, result.value().player().inventory().slots().size());
 
         ToolResult.Failure<PlayerContextTool.Output> missing = assertInstanceOf(
                 ToolResult.Failure.class,
@@ -104,31 +87,6 @@ final class KnowledgeToolsTest {
     }
 
     private static ToolInvocationContext fullContext() {
-        UUID playerId = UUID.fromString("54a6fbd8-c548-4c4d-b9a7-7b9e310d2b71");
-        PlayerSnapshot player = new PlayerSnapshot(
-                playerId,
-                "Builder",
-                "minecraft:overworld",
-                new BlockPositionSnapshot(1, 64, 2),
-                "survival",
-                new ItemStackSnapshot("minecraft:iron_ingot", 4, "Iron Ingot"),
-                ItemStackSnapshot.empty(),
-                List.of(
-                        new InventorySlotSnapshot(
-                                0, new ItemStackSnapshot("minecraft:iron_ingot", 4, "Iron Ingot")),
-                        new InventorySlotSnapshot(1, ItemStackSnapshot.empty())));
-        RegistrySnapshot registries = new RegistrySnapshot(List.of(
-                new RegistryEntrySnapshot(
-                        "minecraft:stone", "block", "Stone", "minecraft", "minecraft:stone"),
-                new RegistryEntrySnapshot(
-                        "minecraft:stone", "item", "Stone", "minecraft", "minecraft:stone")));
-        return new ToolInvocationContext(
-                "test",
-                Instant.EPOCH,
-                new CallerSnapshot(CallerKind.PLAYER, playerId, "Builder", true),
-                Optional.of(player),
-                Optional.of(registries),
-                Optional.of(new RecipeSnapshot(List.of(IRON_BLOCK))),
-                new ContextMetrics(2, 1, 2, 0, 0));
+        return GroundedTestFixtures.fullContext();
     }
 }

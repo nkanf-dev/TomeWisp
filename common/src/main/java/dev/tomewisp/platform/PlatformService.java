@@ -6,4 +6,8 @@ public interface PlatformService {
     boolean isModLoaded(String modId);
 
     boolean isDevelopmentEnvironment();
+
+    default String gameVersion() {
+        return net.minecraft.SharedConstants.getCurrentVersion().name();
+    }
 }

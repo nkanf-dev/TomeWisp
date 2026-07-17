@@ -415,7 +415,7 @@ git commit -m "feat: version chronological tool events"
 - Modify: `common/src/main/java/dev/tomewisp/guide/GuideStateReducer.java`
 - Modify: `common/src/test/java/dev/tomewisp/guide/GuideStateReducerTest.java`
 
-- [ ] **Step 1: Replace the existing reducer test with an interleaved sequence**
+- [x] **Step 1: Replace the existing reducer test with an interleaved sequence**
 
 Exercise this exact order:
 
@@ -455,7 +455,7 @@ assertEquals(List.of(0, 1, 2, 3, 4),
 Add a repeated-tool test with two different invocation IDs and a missing-ID
 completion test that expects terminal `timeline_protocol_error`.
 
-- [ ] **Step 2: Run the reducer tests and confirm flattened behavior fails**
+- [x] **Step 2: Run the reducer tests and confirm flattened behavior fails**
 
 ```bash
 ./gradlew :common:test --tests 'dev.tomewisp.guide.GuideStateReducerTest'
@@ -463,7 +463,7 @@ completion test that expects terminal `timeline_protocol_error`.
 
 Expected: FAIL because the reducer still accumulates one string and tool list.
 
-- [ ] **Step 3: Add reducer helpers for timeline append/update**
+- [x] **Step 3: Add reducer helpers for timeline append/update**
 
 Implement helpers with immutable copies:
 
@@ -496,7 +496,7 @@ private static List<GuideTimelineEntry> startTool(
 `closeAssistant(...)` replaces a streaming last assistant with the same entry
 and `streaming=false` before appending the tool.
 
-- [ ] **Step 4: Complete tools by exact invocation ID**
+- [x] **Step 4: Complete tools by exact invocation ID**
 
 Search timeline tool entries for `activity.invocationId()`. Exactly one running
 entry must match. Replace that entry at the same ordinal with succeeded/failed
@@ -511,7 +511,7 @@ new GuideFailure(
 
 Do not append a synthetic completion and do not match by tool name.
 
-- [ ] **Step 5: Reconcile only the final assistant segment**
+- [x] **Step 5: Reconcile only the final assistant segment**
 
 For `FinalText`:
 
@@ -529,13 +529,13 @@ timeline = List.copyOf(next);
 
 Earlier assistant entries remain byte-for-byte unchanged.
 
-- [ ] **Step 6: Preserve request-level source aggregation and usage**
+- [x] **Step 6: Preserve request-level source aggregation and usage**
 
 Continue extracting and sorting sources exactly as Phase 3 did. The producing
 tool entry receives its sources, while request-level `sources()` remains the
 deduplicated compatibility/index projection.
 
-- [ ] **Step 7: Run reducer tests**
+- [x] **Step 7: Run reducer tests**
 
 ```bash
 ./gradlew :common:test --tests 'dev.tomewisp.guide.GuideStateReducerTest'
@@ -544,7 +544,7 @@ deduplicated compatibility/index projection.
 Expected: PASS for interleaving, repeated tool IDs, source extraction, final
 reconciliation, rate limits, and late-event suppression.
 
-- [ ] **Step 8: Commit chronological reduction**
+- [x] **Step 8: Commit chronological reduction**
 
 ```bash
 git add common/src/main/java/dev/tomewisp/guide/GuideStateReducer.java \

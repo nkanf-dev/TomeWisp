@@ -56,7 +56,7 @@ final class GuideStateReducerTest {
     }
 
     @Test
-    void reducesStreamingToolsSourcesUsageAndCompletion() {
+    void reducesAssistantToolsAndContinuationsInChronologicalOrder() {
         GuideRequestSnapshot request = GuideRequestSnapshot.start(
                 UUID.randomUUID(),
                 "main",
@@ -65,21 +65,80 @@ final class GuideStateReducerTest {
                 Instant.EPOCH);
 
         request = reducer.apply(request, new AgentEvent.StateChanged(AgentState.MODEL_WAIT), at(1));
-        request = reducer.apply(request, new AgentEvent.ModelProgress(new ModelEvent.TextDelta("Hel")), at(2));
-        request = reducer.apply(request, new AgentEvent.ModelProgress(new ModelEvent.ReasoningDelta("secret")), at(3));
+        request = reducer.apply(request, text("I will inspect the recipe."), at(2));
+        request = reducer.apply(request, new AgentEvent.ModelProgress(
+                new ModelEvent.ReasoningDelta("secret")), at(3));
         request = reducer.apply(request, new AgentEvent.ToolStarted(
                 "call-1", "tomewisp:get_recipe"), at(4));
         request = reducer.apply(request, new AgentEvent.ToolCompleted(
                 "call-1", "tomewisp:get_recipe", false, groundedResult()), at(5));
+        request = reducer.apply(request, text("Now I will inspect inventory."), at(6));
+        request = reducer.apply(request, new AgentEvent.ToolStarted(
+                "call-2", "tomewisp:inspect_inventory"), at(7));
+        request = reducer.apply(request, new AgentEvent.ToolCompleted(
+                "call-2", "tomewisp:inspect_inventory", false, groundedResult()), at(8));
+        request = reducer.apply(request, text("You are missing five ingots."), at(9));
         request = reducer.apply(request, new AgentEvent.ModelProgress(
-                new ModelEvent.UsageUpdate(new ModelUsage(10, 3, 2))), at(6));
-        request = reducer.apply(request, new AgentEvent.FinalText("Hello"), at(7));
+                new ModelEvent.UsageUpdate(new ModelUsage(10, 3, 2))), at(10));
+        request = reducer.apply(request, new AgentEvent.FinalText(
+                "You are missing five ingots."), at(11));
 
-        assertEquals("Hello", request.assistantText());
+        assertEquals(
+                List.of(
+                        GuideTimelineEntry.Assistant.class,
+                        GuideTimelineEntry.Tool.class,
+                        GuideTimelineEntry.Assistant.class,
+                        GuideTimelineEntry.Tool.class,
+                        GuideTimelineEntry.Assistant.class),
+                request.timeline().stream().map(Object::getClass).toList());
+        assertEquals(List.of(0, 1, 2, 3, 4), request.timeline().stream()
+                .map(GuideTimelineEntry::ordinal)
+                .toList());
+        assertEquals("I will inspect the recipe.",
+                ((GuideTimelineEntry.Assistant) request.timeline().get(0)).text());
+        assertEquals("Now I will inspect inventory.",
+                ((GuideTimelineEntry.Assistant) request.timeline().get(2)).text());
+        assertEquals("You are missing five ingots.", request.assistantText());
         assertEquals(GuideRequestStatus.COMPLETED, request.status());
         assertEquals(GuideToolStatus.SUCCEEDED, request.tools().getFirst().status());
+        assertEquals(List.of("call-1", "call-2"), request.tools().stream()
+                .map(GuideToolActivity::invocationId)
+                .toList());
         assertEquals("minecraft:recipe_manager", request.sources().getFirst().evidence().sourceId());
         assertEquals(new ModelUsage(10, 3, 2), request.usage());
+    }
+
+    @Test
+    void repeatedToolNamesRemainDistinctByInvocationId() {
+        GuideRequestSnapshot request = GuideRequestSnapshot.start(
+                UUID.randomUUID(), "main", GuideTopology.CLIENT_LOCAL, "How?", Instant.EPOCH);
+
+        request = reducer.apply(request, new AgentEvent.ToolStarted(
+                "call-1", "tomewisp:get_recipe"), at(1));
+        request = reducer.apply(request, new AgentEvent.ToolCompleted(
+                "call-1", "tomewisp:get_recipe", false, groundedResult()), at(2));
+        request = reducer.apply(request, new AgentEvent.ToolStarted(
+                "call-2", "tomewisp:get_recipe"), at(3));
+        request = reducer.apply(request, new AgentEvent.ToolCompleted(
+                "call-2", "tomewisp:get_recipe", false, groundedResult()), at(4));
+
+        assertEquals(List.of("call-1", "call-2"), request.tools().stream()
+                .map(GuideToolActivity::invocationId)
+                .toList());
+    }
+
+    @Test
+    void missingToolInvocationFailsRequestClosed() {
+        GuideRequestSnapshot request = GuideRequestSnapshot.start(
+                UUID.randomUUID(), "main", GuideTopology.CLIENT_LOCAL, "How?", Instant.EPOCH);
+
+        request = reducer.apply(request, new AgentEvent.ToolCompleted(
+                "missing", "tomewisp:get_recipe", false, groundedResult()), at(1));
+
+        assertEquals(GuideRequestStatus.FAILED, request.status());
+        assertEquals("timeline_protocol_error", request.failure().code());
+        assertEquals(at(1), request.terminalAt());
+        assertEquals(List.of(), request.timeline());
     }
 
     @Test
@@ -109,6 +168,10 @@ final class GuideStateReducerTest {
         value.add("evidence", evidence);
         result.add("value", value);
         return result;
+    }
+
+    private static AgentEvent text(String value) {
+        return new AgentEvent.ModelProgress(new ModelEvent.TextDelta(value));
     }
 
     private static Instant at(long seconds) {

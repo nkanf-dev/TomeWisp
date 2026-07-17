@@ -5,6 +5,7 @@ import dev.tomewisp.guide.GuideRequestSnapshot;
 import dev.tomewisp.guide.GuideRequestStatus;
 import dev.tomewisp.guide.GuideSessionSnapshot;
 import dev.tomewisp.guide.GuideSnapshot;
+import dev.tomewisp.guide.GuideTimelineEntry;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -48,14 +49,22 @@ public record GuideUiView(
         List<GuideUiRow> rows = new ArrayList<>();
         for (GuideRequestSnapshot request : selected.requests()) {
             rows.add(new GuideUiRow.User(request.requestId(), request.userMessage()));
-            if (!request.assistantText().isBlank() || !request.terminal()) {
-                rows.add(new GuideUiRow.Assistant(
-                        request.requestId(),
-                        request.assistantText(),
-                        !request.terminal(),
-                        request.sources()));
+            for (GuideTimelineEntry entry : request.timeline()) {
+                switch (entry) {
+                    case GuideTimelineEntry.Assistant assistant -> rows.add(
+                            new GuideUiRow.Assistant(
+                                    request.requestId(),
+                                    assistant.ordinal(),
+                                    assistant.text(),
+                                    assistant.streaming(),
+                                    assistant.sources()));
+                    case GuideTimelineEntry.Tool tool -> rows.add(
+                            new GuideUiRow.Tool(
+                                    request.requestId(),
+                                    tool.ordinal(),
+                                    tool.activity()));
+                }
             }
-            request.tools().forEach(tool -> rows.add(new GuideUiRow.Tool(request.requestId(), tool)));
             if (request.status() == GuideRequestStatus.RATE_LIMITED) {
                 rows.add(new GuideUiRow.Status(
                         request.requestId(),

@@ -381,8 +381,7 @@ public final class TomeWispScreen extends Screen {
                     .filter(GuideUiRow.Tool.class::isInstance)
                     .map(GuideUiRow.Tool.class::cast)
                     .map(GuideUiRow.Tool::activity)
-                    .filter(value -> value.index() == selectedTool.index()
-                            && value.toolId().equals(selectedTool.toolId()))
+                    .filter(value -> value.invocationId().equals(selectedTool.invocationId()))
                     .findFirst().orElse(null);
             selectedTool = replacement;
         }

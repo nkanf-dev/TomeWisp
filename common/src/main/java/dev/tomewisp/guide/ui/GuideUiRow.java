@@ -16,13 +16,17 @@ public sealed interface GuideUiRow
 
     record Assistant(
             UUID requestId,
+            int ordinal,
             String text,
             boolean streaming,
             List<GuideSource> sources) implements GuideUiRow {
         public Assistant { sources = List.copyOf(sources); }
     }
 
-    record Tool(UUID requestId, GuideToolActivity activity) implements GuideUiRow {}
+    record Tool(
+            UUID requestId,
+            int ordinal,
+            GuideToolActivity activity) implements GuideUiRow {}
 
     record Status(
             UUID requestId,

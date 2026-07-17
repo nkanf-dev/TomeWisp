@@ -13,6 +13,8 @@ import dev.tomewisp.guide.GuideSessionSnapshot;
 import dev.tomewisp.guide.GuideSnapshot;
 import dev.tomewisp.guide.GuideTopology;
 import dev.tomewisp.guide.GuideTimelineEntry;
+import dev.tomewisp.guide.GuideToolActivity;
+import dev.tomewisp.guide.GuideToolStatus;
 import dev.tomewisp.model.ModelUsage;
 import java.time.Instant;
 import java.util.List;
@@ -56,6 +58,56 @@ final class GuideUiViewTest {
         assertTrue(view.capabilityMessage().contains("未配置"));
         assertEquals(0, view.rows().stream().filter(GuideUiRow.Assistant.class::isInstance).count());
         assertEquals(1, view.rows().stream().filter(GuideUiRow.Status.class::isInstance).count());
+    }
+
+    @Test
+    void projectsInterleavedTimelineInStoredOrder() {
+        GuideToolActivity recipe = new GuideToolActivity(
+                "call-1", 0, "tomewisp:get_recipe",
+                GuideToolStatus.SUCCEEDED, null, List.of());
+        GuideToolActivity inventory = new GuideToolActivity(
+                "call-2", 1, "tomewisp:inspect_inventory",
+                GuideToolStatus.SUCCEEDED, null, List.of());
+        GuideRequestSnapshot request = new GuideRequestSnapshot(
+                REQUEST,
+                "main",
+                GuideTopology.CLIENT_LOCAL,
+                "question",
+                List.of(
+                        new GuideTimelineEntry.Assistant(0, "Checking recipe.", false, List.of()),
+                        new GuideTimelineEntry.Tool(1, recipe),
+                        new GuideTimelineEntry.Assistant(2, "Checking inventory.", false, List.of()),
+                        new GuideTimelineEntry.Tool(3, inventory),
+                        new GuideTimelineEntry.Assistant(4, "Final answer.", false, List.of())),
+                GuideRequestStatus.COMPLETED,
+                List.of(),
+                ModelUsage.empty(),
+                null,
+                null,
+                Instant.EPOCH,
+                Instant.EPOCH.plusSeconds(5),
+                Instant.EPOCH.plusSeconds(5));
+
+        GuideUiView view = GuideUiView.from(snapshot(request));
+
+        assertEquals(
+                List.of(
+                        GuideUiRow.User.class,
+                        GuideUiRow.Assistant.class,
+                        GuideUiRow.Tool.class,
+                        GuideUiRow.Assistant.class,
+                        GuideUiRow.Tool.class,
+                        GuideUiRow.Assistant.class),
+                view.rows().stream().map(Object::getClass).toList());
+        assertEquals(List.of(0, 1, 2, 3, 4), view.rows().stream()
+                .filter(row -> !(row instanceof GuideUiRow.User))
+                .map(row -> switch (row) {
+                    case GuideUiRow.Assistant assistant -> assistant.ordinal();
+                    case GuideUiRow.Tool tool -> tool.ordinal();
+                    case GuideUiRow.Status ignored -> -1;
+                    case GuideUiRow.User ignored -> -1;
+                })
+                .toList());
     }
 
     private static GuideSnapshot snapshot(GuideRequestSnapshot request) {

@@ -560,7 +560,7 @@ git commit -m "feat: preserve chronological guide events"
 - Modify: `common/src/main/java/dev/tomewisp/client/gui/TomeWispScreen.java`
 - Modify: `common/src/test/java/dev/tomewisp/guide/ui/GuideUiViewTest.java`
 
-- [ ] **Step 1: Write a failing UI ordering test**
+- [x] **Step 1: Write a failing UI ordering test**
 
 Create a completed request with assistant/tool/assistant/tool/assistant timeline
 and assert the UI rows are:
@@ -579,7 +579,7 @@ assertEquals(
 
 Assert each projected non-user row retains its timeline ordinal.
 
-- [ ] **Step 2: Run the UI view test and confirm current grouping fails**
+- [x] **Step 2: Run the UI view test and confirm current grouping fails**
 
 ```bash
 ./gradlew :common:test --tests 'dev.tomewisp.guide.ui.GuideUiViewTest'
@@ -588,7 +588,7 @@ Assert each projected non-user row retains its timeline ordinal.
 Expected: FAIL because `GuideUiView` currently emits one assistant row followed
 by all tools.
 
-- [ ] **Step 3: Add ordinals to UI rows**
+- [x] **Step 3: Add ordinals to UI rows**
 
 Use:
 
@@ -608,7 +608,7 @@ record Tool(
 
 The user row has no timeline ordinal because it precedes request output.
 
-- [ ] **Step 4: Project timeline entries directly**
+- [x] **Step 4: Project timeline entries directly**
 
 Replace the assistant/tools grouping with:
 
@@ -630,7 +630,7 @@ for (GuideTimelineEntry entry : request.timeline()) {
 Keep rate-limit and terminal status rows after current timeline content until
 the later persistence plan promotes them to durable timeline entries.
 
-- [ ] **Step 5: Keep tool detail selection stable by invocation ID**
+- [x] **Step 5: Keep tool detail selection stable by invocation ID**
 
 In `refreshDetail(...)`, find the replacement tool using
 `activity.invocationId()` instead of record equality or tool name:
@@ -641,7 +641,7 @@ In `refreshDetail(...)`, find the replacement tool using
 
 This lets a running card update in place without closing the detail drawer.
 
-- [ ] **Step 6: Run UI tests**
+- [x] **Step 6: Run UI tests**
 
 ```bash
 ./gradlew :common:test --tests 'dev.tomewisp.guide.ui.*'
@@ -649,7 +649,7 @@ This lets a running card update in place without closing the detail drawer.
 
 Expected: PASS with chronological order and stable tool selection.
 
-- [ ] **Step 7: Commit the chronological UI projection**
+- [x] **Step 7: Commit the chronological UI projection**
 
 ```bash
 git add common/src/main/java/dev/tomewisp/guide/ui \

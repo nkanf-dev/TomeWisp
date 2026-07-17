@@ -4,7 +4,7 @@
 - decided_by: designer
 - approval_source: designer approved the consolidated Phase 4 design with “是的”, approved `ALL_KNOWN` with “当然是默认全部可查询了”, approved controlled dynamic components and partitioned persistence with “可以”, explicitly required a compatible recipe viewer, Patchouli, and a recipe-rich sample mod in the final client smoke, and chose the mainstream interleaved assistant/tool timeline over a flattened answer followed by all tool calls
 - date: 2026-07-18
-- commit: pending
+- commit: ad8ad52
 - patterns:
   - A_async_wait
   - B_state_persistence

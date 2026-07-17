@@ -14,6 +14,7 @@ accepted and contains explicit approval evidence.
 | SKMB-2026-07-17-004 | accepted | Phase 3 product state | A, B, C, D, E, F | decisions/2026-07-17-004-phase-3-product-state.md | e4a77ad |
 | SKMB-2026-07-18-005 | accepted | Phase 4 product state | A, B, C, D, E, F, G | decisions/2026-07-18-005-phase-4-product-state.md | ad8ad52 |
 | SKMB-2026-07-18-006 | reviewable_default | Phase 4 durable history execution | A, B, C, E, F, G | decisions/2026-07-18-006-durable-history-execution.md | cb77181 |
+| SKMB-2026-07-18-007 | reviewable_default | Phase 4 recipe provider execution | A, B, D, E, F | decisions/2026-07-18-007-recipe-provider-execution.md | pending |
 
 SKMB-2026-07-18-006 is implemented by `a0eaeff`, `19ab90f`, and `c6ca6bc`.
 Its deterministic clean-build and packaged-driver evidence is recorded in the
@@ -68,6 +69,7 @@ Phase 4B durable-history plan. Final graphical restart review remains open.
 | T24 | history_loading | durable load succeeds | idle | Hydrate only the matching partition and mark orphaned active requests interrupted | SKMB-2026-07-18-006 |
 | T25 | history_loading | durable load fails | persistence_unavailable | Keep a fresh in-memory service and expose an unsaved diagnostic | SKMB-2026-07-18-006 |
 | T26 | any connection state | graceful disconnect | cancelled then idle | Persist terminal cancellation, detach durable writer completion, and clear only connection state | SKMB-2026-07-18-006 |
+| T27 | recipe provider available | capture succeeds with omitted unsupported records | integration_degraded | Retain representable records, mark provider partial, and publish stable diagnostics | SKMB-2026-07-18-007 |
 
 ## Invariants
 
@@ -105,6 +107,8 @@ Phase 4B durable-history plan. Final graphical restart review remains open.
 | I30 | SQLite access and durable decoding never run on a Minecraft-owned thread | SKMB-2026-07-18-006 |
 | I31 | Durable scope IDs do not retain raw server addresses or local world paths | SKMB-2026-07-18-006 |
 | I32 | Disconnect cleanup never persists an empty replacement for retained partition history | SKMB-2026-07-18-006 |
+| I33 | Exact recipe references include their provider generation and never bind stale IDs to changed contents | SKMB-2026-07-18-007 |
+| I34 | Viewer and Minecraft recipe objects are detached on the client thread and never enter model workers | SKMB-2026-07-18-007 |
 
 ## Fail Semantics
 
@@ -128,12 +132,14 @@ Phase 4B durable-history plan. Final graphical restart review remains open.
 | F16 | A semantic reference or dynamic component is invalid or unsupported | Render safe fallback text with no action and no fabricated evidence | SKMB-2026-07-18-005 |
 | F17 | Timeline sequence or tool invocation correlation is missing, duplicated, or inconsistent | Fail the affected request closed; do not guess order or mutate another activity | SKMB-2026-07-18-005 |
 | F18 | A request is submitted before durable hydration finishes | Reject it as `history_loading`; do not queue or invoke a model with incomplete context | SKMB-2026-07-18-006 |
+| F19 | A viewer recipe contains unsupported or malformed ingredients | Omit that record, mark only that provider partial, and retain other provider records | SKMB-2026-07-18-007 |
 
 ## Statistical Defaults Allowed Temporarily
 
 | id | pattern | context | default | reason_allowed | review_by | file |
 | --- | --- | --- | --- | --- | --- | --- |
 | SKMB-2026-07-18-006 | A, B, C, E, F | durable history execution details | hashed connection discriminator, async single writer, explicit loading rejection, ordered full-partition saves | designer delegated best implementation path; product invariants already accepted | final Phase 4 real-client acceptance | decisions/2026-07-18-006-durable-history-execution.md |
+| SKMB-2026-07-18-007 | A, B, D, E, F | recipe provider execution details | client-thread capture, generation-bearing references, public optional viewer APIs, partial omission diagnostics | designer delegated best implementation path; recipe authority and visibility already accepted | final Phase 4 real-client acceptance | decisions/2026-07-18-007-recipe-provider-execution.md |
 
 ## Open Decisions
 

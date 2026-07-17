@@ -12,7 +12,7 @@ public record GuideUiLayout(
     public static GuideUiLayout calculate(int width, int height, boolean detailOpen) {
         if (width < 240 || height < 180) throw new IllegalArgumentException("screen is too small");
         int margin = 8;
-        int top = 32;
+        int top = 44;
         int composerHeight = Math.min(72, Math.max(54, height / 4));
         boolean narrow = width < 560;
         int railWidth = narrow ? 0 : 128;

@@ -322,7 +322,7 @@ Expected: tests pass before the commit.
 - Create: `common/src/main/java/dev/tomewisp/guide/history/GuideHistoryRepository.java`
 - Test: `common/src/test/java/dev/tomewisp/guide/history/GuideHistoryRepositoryTest.java`
 
-- [ ] **Step 1: Write failing ordering and failure tests**
+- [x] **Step 1: Write failing ordering and failure tests**
 
 Use a blocking fake store to prove operations run on the named history worker,
 saves preserve submission order, `flush` waits through the latest generation,
@@ -337,7 +337,7 @@ assertEquals(List.of(1L, 2L), store.savedGenerations());
 assertNotEquals(Thread.currentThread().threadId(), store.threadIds().getFirst());
 ```
 
-- [ ] **Step 2: Run and confirm the repository is absent**
+- [x] **Step 2: Run and confirm the repository is absent**
 
 ```bash
 ./gradlew :common:test --tests 'dev.tomewisp.guide.history.GuideHistoryRepositoryTest'
@@ -345,7 +345,7 @@ assertNotEquals(Thread.currentThread().threadId(), store.threadIds().getFirst())
 
 Expected: compilation fails on the repository types.
 
-- [ ] **Step 3: Implement the single-writer facade**
+- [x] **Step 3: Implement the single-writer facade**
 
 Use:
 
@@ -360,7 +360,7 @@ failures to `history_open_failed`, `history_load_failed`,
 `history_write_failed`, or `history_schema_unsupported` without raw paths or SQL
 parameters in player-facing messages.
 
-- [ ] **Step 4: Run tests and commit**
+- [x] **Step 4: Run tests and commit**
 
 ```bash
 ./gradlew :common:test --tests 'dev.tomewisp.guide.history.GuideHistoryRepositoryTest'

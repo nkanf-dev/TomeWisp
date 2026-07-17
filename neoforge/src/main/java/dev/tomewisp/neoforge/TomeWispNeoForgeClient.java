@@ -10,6 +10,8 @@ import dev.tomewisp.guide.GuideServiceManager;
 import dev.tomewisp.guide.PayloadGuideRemoteEndpoint;
 import dev.tomewisp.guide.e2e.GuideClientE2EConfig;
 import dev.tomewisp.guide.e2e.GuideClientE2EController;
+import dev.tomewisp.client.gui.TomeWispKeyMappings;
+import dev.tomewisp.client.gui.TomeWispScreen;
 import dev.tomewisp.tool.ToolResult;
 import net.minecraft.client.Minecraft;
 import net.neoforged.fml.ModList;
@@ -17,6 +19,7 @@ import net.neoforged.fml.loading.FMLPaths;
 import net.neoforged.bus.api.IEventBus;
 import dev.tomewisp.neoforge.network.NeoForgeClientBridge;
 import net.neoforged.neoforge.client.event.ClientTickEvent;
+import net.neoforged.neoforge.client.event.RegisterKeyMappingsEvent;
 import net.neoforged.neoforge.common.NeoForge;
 
 public final class TomeWispNeoForgeClient {
@@ -62,12 +65,25 @@ public final class TomeWispNeoForgeClient {
             var current = services.current();
             if (current != null) current.refreshCapabilities();
         });
+        dev.tomewisp.guide.GuideScreenOpener screens = service -> {
+            Minecraft.getInstance().gui.setScreen(new TomeWispScreen(service));
+            return new ToolResult.Success<>(true);
+        };
         NeoForgeGuideCommands.register(new GuideCommandFacade(
                 runtime,
                 services,
                 contexts,
-                service -> new ToolResult.Failure<>(
-                        "gui_unavailable", "玩家界面将在 Phase 3C 启用")));
+                screens));
+        modBus.addListener((RegisterKeyMappingsEvent event) -> {
+            event.registerCategory(TomeWispKeyMappings.CATEGORY);
+            event.register(TomeWispKeyMappings.OPEN_GUIDE);
+        });
+        NeoForge.EVENT_BUS.addListener((ClientTickEvent.Post event) -> {
+            Minecraft client = Minecraft.getInstance();
+            while (TomeWispKeyMappings.OPEN_GUIDE.consumeClick()) {
+                if (client.player != null) screens.open(services.forActor(client.player.getUUID()));
+            }
+        });
         GuideClientE2EConfig.from(System.getProperties()).ifPresent(config -> {
             String modVersion = ModList.get().getModContainerById("tomewisp")
                     .map(container -> container.getModInfo().getVersion().toString())

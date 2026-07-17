@@ -11,9 +11,12 @@ import dev.tomewisp.guide.GuideServiceManager;
 import dev.tomewisp.guide.PayloadGuideRemoteEndpoint;
 import dev.tomewisp.guide.e2e.GuideClientE2EConfig;
 import dev.tomewisp.guide.e2e.GuideClientE2EController;
+import dev.tomewisp.client.gui.TomeWispKeyMappings;
+import dev.tomewisp.client.gui.TomeWispScreen;
 import dev.tomewisp.tool.ToolResult;
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
+import net.fabricmc.fabric.api.client.keymapping.v1.KeyMappingHelper;
 import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.client.Minecraft;
 import dev.tomewisp.fabric.network.FabricBridgePayloads;
@@ -63,12 +66,21 @@ public final class TomeWispFabricClient implements ClientModInitializer {
             var current = services.current();
             if (current != null) current.refreshCapabilities();
         });
+        dev.tomewisp.guide.GuideScreenOpener screens = service -> {
+            Minecraft.getInstance().gui.setScreen(new TomeWispScreen(service));
+            return new ToolResult.Success<>(true);
+        };
         FabricGuideCommands.register(new GuideCommandFacade(
                 runtime,
                 services,
                 contexts,
-                service -> new ToolResult.Failure<>(
-                        "gui_unavailable", "玩家界面将在 Phase 3C 启用")));
+                screens));
+        var openGuide = KeyMappingHelper.registerKeyMapping(TomeWispKeyMappings.OPEN_GUIDE);
+        ClientTickEvents.END_CLIENT_TICK.register(client -> {
+            while (openGuide.consumeClick()) {
+                if (client.player != null) screens.open(services.forActor(client.player.getUUID()));
+            }
+        });
         GuideClientE2EConfig.from(System.getProperties()).ifPresent(config -> {
             String modVersion = FabricLoader.getInstance().getModContainer("tomewisp")
                     .map(container -> container.getMetadata().getVersion().getFriendlyString())

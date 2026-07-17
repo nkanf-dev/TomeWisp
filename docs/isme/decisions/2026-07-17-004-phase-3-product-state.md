@@ -96,6 +96,12 @@ first-class concise presenters; unknown tools retain a deterministic JSON
 fallback. Switching sessions or receiving disconnect-cleared state also clears
 stale detail selections. No source action launches an external browser.
 
+Fabric-owned coordinates resolve from the repository-local curl mirror first
+and Fabric's official Maven second. Generic public mirrors explicitly exclude
+`net.fabricmc` and `net.fabricmc.*`: a transient 5xx from a convenience mirror
+must not make an authoritative Fabric dependency unavailable in CI. Other
+dependency groups retain the existing mirror order and offline bootstrap path.
+
 ## Applies To
 
 - grounded recipe, inventory, and craftability DTOs/tools
@@ -129,6 +135,7 @@ stale detail selections. No source action launches an external browser.
     cancellation remains an explicit GuideService intent.
 15. A detail drawer cannot retain evidence after its session/source disappears
     from the current GuideSnapshot.
+16. Generic Maven mirrors never claim Fabric-owned dependency coordinates.
 
 ## Failure Semantics
 

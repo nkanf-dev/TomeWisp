@@ -67,9 +67,10 @@ final class GuideStateReducerTest {
         request = reducer.apply(request, new AgentEvent.StateChanged(AgentState.MODEL_WAIT), at(1));
         request = reducer.apply(request, new AgentEvent.ModelProgress(new ModelEvent.TextDelta("Hel")), at(2));
         request = reducer.apply(request, new AgentEvent.ModelProgress(new ModelEvent.ReasoningDelta("secret")), at(3));
-        request = reducer.apply(request, new AgentEvent.ToolStarted("tomewisp:get_recipe"), at(4));
+        request = reducer.apply(request, new AgentEvent.ToolStarted(
+                "call-1", "tomewisp:get_recipe"), at(4));
         request = reducer.apply(request, new AgentEvent.ToolCompleted(
-                "tomewisp:get_recipe", false, groundedResult()), at(5));
+                "call-1", "tomewisp:get_recipe", false, groundedResult()), at(5));
         request = reducer.apply(request, new AgentEvent.ModelProgress(
                 new ModelEvent.UsageUpdate(new ModelUsage(10, 3, 2))), at(6));
         request = reducer.apply(request, new AgentEvent.FinalText("Hello"), at(7));

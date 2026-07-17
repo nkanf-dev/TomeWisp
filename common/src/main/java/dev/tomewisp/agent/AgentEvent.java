@@ -15,14 +15,20 @@ public sealed interface AgentEvent
 
     record ModelProgress(ModelEvent event) implements AgentEvent {}
 
-    record ToolStarted(String toolId) implements AgentEvent {}
+    record ToolStarted(String invocationId, String toolId) implements AgentEvent {
+        public ToolStarted {
+            requireIdentity(invocationId, toolId);
+        }
+    }
 
-    record ToolCompleted(String toolId, boolean failure, JsonObject normalized)
+    record ToolCompleted(
+            String invocationId,
+            String toolId,
+            boolean failure,
+            JsonObject normalized)
             implements AgentEvent {
         public ToolCompleted {
-            if (toolId == null || toolId.isBlank()) {
-                throw new IllegalArgumentException("toolId must not be blank");
-            }
+            requireIdentity(invocationId, toolId);
             normalized = Objects.requireNonNull(normalized, "normalized").deepCopy();
         }
 
@@ -35,4 +41,11 @@ public sealed interface AgentEvent
     record FinalText(String text) implements AgentEvent {}
 
     record Failed(String code, String message) implements AgentEvent {}
+
+    private static void requireIdentity(String invocationId, String toolId) {
+        if (invocationId == null || invocationId.isBlank()
+                || toolId == null || toolId.isBlank()) {
+            throw new IllegalArgumentException("tool invocation identity is required");
+        }
+    }
 }

@@ -147,13 +147,16 @@ public final class GameGuideAgent {
                             null));
                 }
                 String exposedId = call.name();
-                events.accept(new AgentEvent.ToolStarted(exposedId));
+                events.accept(new AgentEvent.ToolStarted(call.id(), exposedId));
                 trace.toolCall(exposedId, call.input());
                 return tools.execute(call.name(), call.input(), request.context(), lease.cancellation())
                         .thenApply(result -> {
                             trace.toolResult(result);
                             events.accept(new AgentEvent.ToolCompleted(
-                                    result.toolId(), result.failure(), result.normalized()));
+                                    call.id(),
+                                    result.toolId(),
+                                    result.failure(),
+                                    result.normalized()));
                             List<ModelContent> results = new ArrayList<>(outcome.results());
                             results.add(new ModelContent.ToolResult(
                                     call.id(), result.normalized(), result.failure()));

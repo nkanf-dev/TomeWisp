@@ -233,7 +233,7 @@ git commit -m "refactor: add chronological guide timeline"
 - Modify: `common/src/test/java/dev/tomewisp/agent/AgentEventTest.java`
 - Modify: `common/src/test/java/dev/tomewisp/agent/GameGuideAgentTest.java`
 
-- [ ] **Step 1: Write failing event identity tests**
+- [x] **Step 1: Write failing event identity tests**
 
 Add:
 
@@ -256,7 +256,7 @@ void toolEventsDefensivelyRetainInvocationIdentity() {
 Extend the Agent loop test fixture so a `ModelContent.ToolUse` with ID
 `call-recipe` produces matching started and completed events.
 
-- [ ] **Step 2: Run the Agent tests and confirm constructor failures**
+- [x] **Step 2: Run the Agent tests and confirm constructor failures**
 
 ```bash
 ./gradlew :common:test --tests 'dev.tomewisp.agent.AgentEventTest' \
@@ -265,7 +265,7 @@ Extend the Agent loop test fixture so a `ModelContent.ToolUse` with ID
 
 Expected: compilation fails on the new event constructors.
 
-- [ ] **Step 3: Change the Agent event records**
+- [x] **Step 3: Change the Agent event records**
 
 Use:
 
@@ -295,7 +295,7 @@ private static void requireIdentity(String invocationId, String toolId) {
 }
 ```
 
-- [ ] **Step 4: Emit the model tool-call ID from the Agent loop**
+- [x] **Step 4: Emit the model tool-call ID from the Agent loop**
 
 In `executeTools(...)`, replace the events with:
 
@@ -308,12 +308,12 @@ events.accept(new AgentEvent.ToolCompleted(
 
 Keep the model tool-result continuation bound to the same `call.id()`.
 
-- [ ] **Step 5: Update all test fixtures to pass explicit IDs**
+- [x] **Step 5: Update all test fixtures to pass explicit IDs**
 
 Use deterministic IDs such as `call-1`, `call-2`, and `call-recipe`. Never
 generate an ID inside a reducer or infer it from the tool name.
 
-- [ ] **Step 6: Run Agent tests**
+- [x] **Step 6: Run Agent tests**
 
 ```bash
 ./gradlew :common:test --tests 'dev.tomewisp.agent.AgentEventTest' \
@@ -322,7 +322,7 @@ generate an ID inside a reducer or infer it from the tool name.
 
 Expected: PASS.
 
-- [ ] **Step 7: Commit Agent invocation identity**
+- [x] **Step 7: Commit Agent invocation identity**
 
 ```bash
 git add common/src/main/java/dev/tomewisp/agent/AgentEvent.java \

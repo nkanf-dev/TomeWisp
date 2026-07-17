@@ -44,7 +44,7 @@ public final class GuideStateReducer {
             case AgentEvent.ToolStarted started -> {
                 ArrayList<GuideToolActivity> next = new ArrayList<>(tools);
                 next.add(new GuideToolActivity(
-                        "migration-" + next.size(),
+                        started.invocationId(),
                         next.size(), started.toolId(), GuideToolStatus.RUNNING, null, List.of()));
                 tools = List.copyOf(next);
                 status = GuideRequestStatus.TOOL_WAIT;
@@ -54,9 +54,7 @@ public final class GuideStateReducer {
                 ArrayList<GuideToolActivity> next = new ArrayList<>(tools);
                 int index = lastRunning(next, completed.toolId());
                 GuideToolActivity replacement = new GuideToolActivity(
-                        index < 0
-                                ? "migration-" + next.size()
-                                : next.get(index).invocationId(),
+                        completed.invocationId(),
                         index < 0 ? next.size() : next.get(index).index(),
                         completed.toolId(),
                         completed.failure() ? GuideToolStatus.FAILED : GuideToolStatus.SUCCEEDED,

@@ -58,6 +58,18 @@ final class GameGuideAgentTest {
         assertTrue(result.trace().events().stream().anyMatch(event -> event.type().equals("tool_result")));
         assertEquals(AgentState.COMPLETED, result.trace().finalState());
         assertTrue(events.stream().anyMatch(AgentEvent.FinalText.class::isInstance));
+        AgentEvent.ToolStarted started = events.stream()
+                .filter(AgentEvent.ToolStarted.class::isInstance)
+                .map(AgentEvent.ToolStarted.class::cast)
+                .findFirst()
+                .orElseThrow();
+        AgentEvent.ToolCompleted completed = events.stream()
+                .filter(AgentEvent.ToolCompleted.class::isInstance)
+                .map(AgentEvent.ToolCompleted.class::cast)
+                .findFirst()
+                .orElseThrow();
+        assertEquals("call_1", started.invocationId());
+        assertEquals("call_1", completed.invocationId());
     }
 
     @Test

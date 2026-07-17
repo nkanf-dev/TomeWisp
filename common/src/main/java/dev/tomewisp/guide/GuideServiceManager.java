@@ -72,13 +72,18 @@ public final class GuideServiceManager {
         return current;
     }
 
-    public synchronized void disconnect() {
+    public synchronized CompletableFuture<Void> disconnect() {
         if (current != null) {
-            current.disconnect();
+            CompletableFuture<Void> disconnected = current.disconnect();
             current = null;
-        } else {
-            remote.disconnect();
+            return disconnected;
         }
+        remote.disconnect();
+        return CompletableFuture.completedFuture(null);
+    }
+
+    public CompletableFuture<Void> shutdown() {
+        return disconnect();
     }
 
     public synchronized GuideService current() {

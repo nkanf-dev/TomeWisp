@@ -4,10 +4,14 @@ import dev.tomewisp.TomeWispRuntime;
 import dev.tomewisp.client.ClientGuideRuntime;
 import com.google.gson.Gson;
 import dev.tomewisp.client.MinecraftGuideContextProvider;
+import dev.tomewisp.client.MinecraftGuideHistoryScope;
 import dev.tomewisp.guide.GuideCommandFacade;
 import dev.tomewisp.guide.GuideLocalEndpoint;
 import dev.tomewisp.guide.GuideServiceManager;
 import dev.tomewisp.guide.PayloadGuideRemoteEndpoint;
+import dev.tomewisp.guide.history.GuideHistoryCodec;
+import dev.tomewisp.guide.history.GuideHistoryRepository;
+import dev.tomewisp.guide.history.SqliteGuideHistoryStore;
 import dev.tomewisp.guide.e2e.GuideClientE2EConfig;
 import dev.tomewisp.guide.e2e.GuideClientE2EController;
 import dev.tomewisp.client.gui.TomeWispKeyMappings;
@@ -19,6 +23,7 @@ import net.neoforged.fml.loading.FMLPaths;
 import net.neoforged.bus.api.IEventBus;
 import dev.tomewisp.neoforge.network.NeoForgeClientBridge;
 import net.neoforged.neoforge.client.event.ClientTickEvent;
+import net.neoforged.neoforge.client.event.lifecycle.ClientStoppingEvent;
 import net.neoforged.neoforge.client.event.RegisterKeyMappingsEvent;
 import net.neoforged.neoforge.common.NeoForge;
 
@@ -29,6 +34,7 @@ public final class TomeWispNeoForgeClient {
         NeoForgeClientBridge bridge = new NeoForgeClientBridge();
         bridge.register(modBus);
         Gson gson = new Gson();
+        java.time.Clock clock = java.time.Clock.systemUTC();
         var dispatcher = (dev.tomewisp.client.ClientEventDispatcher)
                 runnable -> Minecraft.getInstance().execute(runnable);
         ToolResult<ClientGuideRuntime> guide = ClientGuideRuntime.create(
@@ -58,9 +64,24 @@ public final class TomeWispNeoForgeClient {
                     @Override public void disconnect() { bridge.disconnectState(); }
                 },
                 gson);
+        GuideHistoryRepository history = new GuideHistoryRepository(new SqliteGuideHistoryStore(
+                FMLPaths.CONFIGDIR.get().resolve("tomewisp/history.sqlite3"),
+                clock,
+                new GuideHistoryCodec()));
         GuideServiceManager services = new GuideServiceManager(
-                local, remote, contexts, dispatcher, java.time.Clock.systemUTC(), gson);
+                local,
+                remote,
+                contexts,
+                dispatcher,
+                clock,
+                gson,
+                history,
+                new MinecraftGuideHistoryScope(Minecraft.getInstance()));
         bridge.onDisconnect(services::disconnect);
+        NeoForge.EVENT_BUS.addListener((ClientStoppingEvent event) ->
+                services.shutdown()
+                        .handle((ignored, failure) -> null)
+                        .thenCompose(ignored -> history.closeAsync()));
         bridge.onCapabilitiesChanged(() -> {
             var current = services.current();
             if (current != null) current.refreshCapabilities();

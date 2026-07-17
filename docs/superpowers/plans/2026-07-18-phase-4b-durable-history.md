@@ -472,12 +472,12 @@ already-recorded Xerial restricted native-access warning.
 - Create: `common/src/test/java/dev/tomewisp/client/MinecraftGuideHistoryScopeTest.java`
 - Modify: `common/src/test/java/dev/tomewisp/architecture/CommonLoaderIsolationTest.java`
 
-- [ ] **Step 1: Write failing detached-scope tests**
+- [x] **Step 1: Write failing detached-scope tests**
 
 Test single-player, multiplayer normalization, actor separation, no active
 connection, and that results retain no live Minecraft object or raw path/address.
 
-- [ ] **Step 2: Run and confirm the resolver is absent**
+- [x] **Step 2: Run and confirm the resolver is absent**
 
 ```bash
 ./gradlew :common:test --tests 'dev.tomewisp.client.MinecraftGuideHistoryScopeTest'
@@ -485,7 +485,7 @@ connection, and that results retain no live Minecraft object or raw path/address
 
 Expected: compilation fails on the missing resolver.
 
-- [ ] **Step 3: Capture scope only on the client thread**
+- [x] **Step 3: Capture scope only on the client thread**
 
 For integrated worlds use `Minecraft.getSingleplayerServer().getWorldPath(
 LevelResource.ROOT).toAbsolutePath().normalize()`. For multiplayer use
@@ -493,7 +493,7 @@ LevelResource.ROOT).toAbsolutePath().normalize()`. For multiplayer use
 immediately pass detached strings to `GuideHistoryScope.derive`. Return
 `history_scope_unavailable` when no world/server is active.
 
-- [ ] **Step 4: Construct one repository in each loader**
+- [x] **Step 4: Construct one repository in each loader**
 
 Use loader config directories for `tomewisp/history.sqlite3`. Both entrypoints
 instantiate the common store/repository and resolver. Loader code may locate
@@ -501,7 +501,7 @@ paths and lifecycle events only; it must not decode rows or decide recovery.
 Close the repository asynchronously on client shutdown; disconnect releases the
 service but keeps the repository available for a later process-local partition.
 
-- [ ] **Step 5: Run parity checks and commit**
+- [x] **Step 5: Run parity checks and commit**
 
 ```bash
 ./gradlew :common:test --tests 'dev.tomewisp.architecture.*' \
@@ -516,6 +516,14 @@ git commit -m "feat: partition guide history by connection"
 ```
 
 Expected: architecture tests and both loader compilations pass.
+
+Verification on 2026-07-18 compiled the resolver against the actual Minecraft
+26.2 mappings, passed detached single-player/multiplayer normalization,
+privacy, actor isolation, unavailable-state, and common loader-isolation tests,
+then compiled both Fabric and NeoForge entrypoints. The full common suite passed
+with 151 tests, 0 failures, 0 errors, and 1 existing skip. Both loaders use the
+same common store/repository and asynchronously close it from their native
+client-stopping lifecycle event.
 
 ### Task 7: Expose Diagnostics and Document Behavior
 

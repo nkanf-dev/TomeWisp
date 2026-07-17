@@ -5,10 +5,14 @@ import dev.tomewisp.TomeWispRuntime;
 import dev.tomewisp.client.ClientGuideRuntime;
 import com.google.gson.Gson;
 import dev.tomewisp.client.MinecraftGuideContextProvider;
+import dev.tomewisp.client.MinecraftGuideHistoryScope;
 import dev.tomewisp.guide.GuideCommandFacade;
 import dev.tomewisp.guide.GuideLocalEndpoint;
 import dev.tomewisp.guide.GuideServiceManager;
 import dev.tomewisp.guide.PayloadGuideRemoteEndpoint;
+import dev.tomewisp.guide.history.GuideHistoryCodec;
+import dev.tomewisp.guide.history.GuideHistoryRepository;
+import dev.tomewisp.guide.history.SqliteGuideHistoryStore;
 import dev.tomewisp.guide.e2e.GuideClientE2EConfig;
 import dev.tomewisp.guide.e2e.GuideClientE2EController;
 import dev.tomewisp.client.gui.TomeWispKeyMappings;
@@ -16,6 +20,7 @@ import dev.tomewisp.client.gui.TomeWispScreen;
 import dev.tomewisp.tool.ToolResult;
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
+import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientLifecycleEvents;
 import net.fabricmc.fabric.api.client.keymapping.v1.KeyMappingHelper;
 import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.client.Minecraft;
@@ -30,6 +35,7 @@ public final class TomeWispFabricClient implements ClientModInitializer {
         FabricClientBridge bridge = new FabricClientBridge();
         bridge.register();
         Gson gson = new Gson();
+        java.time.Clock clock = java.time.Clock.systemUTC();
         var dispatcher = (dev.tomewisp.client.ClientEventDispatcher)
                 runnable -> Minecraft.getInstance().execute(runnable);
         ToolResult<ClientGuideRuntime> guide = ClientGuideRuntime.create(
@@ -59,9 +65,24 @@ public final class TomeWispFabricClient implements ClientModInitializer {
                     @Override public void disconnect() { bridge.disconnectState(); }
                 },
                 gson);
+        GuideHistoryRepository history = new GuideHistoryRepository(new SqliteGuideHistoryStore(
+                FabricLoader.getInstance().getConfigDir().resolve("tomewisp/history.sqlite3"),
+                clock,
+                new GuideHistoryCodec()));
         GuideServiceManager services = new GuideServiceManager(
-                local, remote, contexts, dispatcher, java.time.Clock.systemUTC(), gson);
+                local,
+                remote,
+                contexts,
+                dispatcher,
+                clock,
+                gson,
+                history,
+                new MinecraftGuideHistoryScope(Minecraft.getInstance()));
         bridge.onDisconnect(services::disconnect);
+        ClientLifecycleEvents.CLIENT_STOPPING.register(client ->
+                services.shutdown()
+                        .handle((ignored, failure) -> null)
+                        .thenCompose(ignored -> history.closeAsync()));
         bridge.onCapabilitiesChanged(() -> {
             var current = services.current();
             if (current != null) current.refreshCapabilities();

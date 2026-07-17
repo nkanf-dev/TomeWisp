@@ -12,6 +12,7 @@ accepted and contains explicit approval evidence.
 | SKMB-2026-07-17-002 | accepted | shared server model queue | A, B, C, D, F | decisions/2026-07-17-002-shared-server-model-queue.md | fc55c60 |
 | SKMB-2026-07-17-003 | accepted | multi-session endpoint rate scheduling | A, B, C, D, F | decisions/2026-07-17-003-multi-session-rate-scheduling.md | 17b2f20 |
 | SKMB-2026-07-17-004 | accepted | Phase 3 product state | A, B, C, D, E, F | decisions/2026-07-17-004-phase-3-product-state.md | e4a77ad |
+| SKMB-2026-07-18-005 | accepted | Phase 4 product state | A, B, C, D, E, F, G | decisions/2026-07-18-005-phase-4-product-state.md | pending |
 
 ## Named States
 
@@ -26,6 +27,10 @@ accepted and contains explicit approval evidence.
 | failed | The request ended with an explicit structured failure | AgentSessionStore | Terminal; no fabricated fallback | SKMB-2026-07-17-001 |
 | cancelled | The player, disconnect handler, or shutdown cancelled the request | AgentSessionStore | Terminal; late events are ignored | SKMB-2026-07-17-001 |
 | guide_unconfigured | The GUI is available but no usable client/server model is selected | GuideService | Configuration can be inspected; questions cannot submit | SKMB-2026-07-17-004 |
+| interrupted | Durable request history exists but its execution lost the client process | GuideHistoryStore | Terminal until explicit retry with a new request ID | SKMB-2026-07-18-005 |
+| compacting | History is being reduced or summarized before model dispatch | GuideService | Cancellable; original durable messages remain unchanged | SKMB-2026-07-18-005 |
+| persistence_unavailable | The active service is usable but durable history cannot be read or written reliably | GuideHistoryStore | Never claim an unsaved record was persisted | SKMB-2026-07-18-005 |
+| integration_degraded | One optional recipe/viewer adapter failed while other sources remain available | RecipeCatalog | Publish diagnostics and preserve unaffected snapshots | SKMB-2026-07-18-005 |
 
 ## Transition Decisions
 
@@ -46,6 +51,14 @@ accepted and contains explicit approval evidence.
 | T13 | any connection state | disconnect | cancelled then idle | Cancel requests, suppress late events, clear scoped sessions and capabilities | SKMB-2026-07-17-004 |
 | T14 | terminal failed/cancelled | explicit retry | preparing | Create a new request ID in the same session with the retained user message | SKMB-2026-07-17-004 |
 | T15 | any | model mode changes | unchanged | Apply selected topology only to future requests | SKMB-2026-07-17-004 |
+| T16 | preparing | context projection exceeds selected model budget | compacting | Reduce old tool results and, if required, create a structured summary checkpoint | SKMB-2026-07-18-005 |
+| T17 | compacting | valid projection fits | model_wait | Dispatch using the request's selected topology | SKMB-2026-07-18-005 |
+| T18 | compacting | reduction and summary cannot produce a valid projection | failed | Return `context_compaction_failed` without deleting durable history | SKMB-2026-07-18-005 |
+| T19 | active durable record | process loss detected on next load | interrupted | Preserve visible history and wait for explicit retry | SKMB-2026-07-18-005 |
+| T20 | interrupted | explicit retry | preparing | Create a new request ID; never automatically resend | SKMB-2026-07-18-005 |
+| T21 | recipe source available | one optional adapter fails | integration_degraded | Retain other source snapshots and publish a capability diagnostic | SKMB-2026-07-18-005 |
+| T22 | assistant segment streaming | tool invocation starts | tool_wait | Close the active visible segment and append the correlated tool entry at the next timeline ordinal | SKMB-2026-07-18-005 |
+| T23 | tool_wait | correlated tool completes and later text arrives | model_wait | Update the existing tool entry in place and append/continue a later assistant segment | SKMB-2026-07-18-005 |
 
 ## Invariants
 
@@ -69,6 +82,17 @@ accepted and contains explicit approval evidence.
 | I16 | Model-mode changes and failures never silently move an active request to another topology | SKMB-2026-07-17-004 |
 | I17 | An unloaded or empty knowledge snapshot carries explicit completeness; it is never silently treated as proof that no knowledge exists | SKMB-2026-07-17-004 |
 | I18 | Craftability allocates overlapping alternatives deterministically and never implies recursive intermediate crafting | SKMB-2026-07-17-004 |
+| I19 | Vanilla recipe-book unlock state is evidence and an optional filter, never the default recipe knowledge boundary | SKMB-2026-07-18-005 |
+| I20 | Durable history is partitioned by player and world/server scope; automatic model context never crosses partitions | SKMB-2026-07-18-005 |
+| I21 | Context reduction and summarization never delete or rewrite original durable messages | SKMB-2026-07-18-005 |
+| I22 | A summary is derived memory and never satisfies factual evidence requirements | SKMB-2026-07-18-005 |
+| I23 | Process loss never automatically repeats a provider request | SKMB-2026-07-18-005 |
+| I24 | Normal history and developer traces retain only their separately approved data classes | SKMB-2026-07-18-005 |
+| I25 | Rich components bind only registered component types and validated domain references | SKMB-2026-07-18-005 |
+| I26 | Failure of one optional recipe/viewer adapter never disables unrelated Agent capabilities | SKMB-2026-07-18-005 |
+| I27 | Player-visible assistant segments, tool entries, and status entries preserve actual Agent event order across streaming and durable recovery | SKMB-2026-07-18-005 |
+| I28 | Tool completion updates the exact invocation ID; repeated calls are never joined by tool name alone | SKMB-2026-07-18-005 |
+| I29 | Final text reconciliation never overwrites earlier assistant segments or reorders tool activity | SKMB-2026-07-18-005 |
 
 ## Fail Semantics
 
@@ -85,6 +109,12 @@ accepted and contains explicit approval evidence.
 | F9 | A source-scoped recipe/document reference is stale | Return `stale_reference`; a new search requires an explicit new action | SKMB-2026-07-17-004 |
 | F10 | A remote event is malformed or loses correlation | Fail the affected request closed and do not mutate another session | SKMB-2026-07-17-004 |
 | F11 | A factual output type returns success without evidence | Reject normalization with `Grounded tool output has no evidence`; do not expose the success to the model | SKMB-2026-07-17-004 |
+| F12 | A recovered request has no terminal event because the client process ended | Mark it `interrupted`; retain visible history and require explicit retry | SKMB-2026-07-18-005 |
+| F13 | Context compaction fails or still cannot fit the selected model budget | Use deterministic reduction only if valid; otherwise return `context_compaction_failed` without deleting history | SKMB-2026-07-18-005 |
+| F14 | A durable history transaction or load fails | Report persistence unavailable and never claim unsaved data was committed; keep the in-memory Agent usable where safe | SKMB-2026-07-18-005 |
+| F15 | An optional viewer/recipe adapter is missing or fails | Return an explicit capability diagnostic and retain unaffected recipe sources | SKMB-2026-07-18-005 |
+| F16 | A semantic reference or dynamic component is invalid or unsupported | Render safe fallback text with no action and no fabricated evidence | SKMB-2026-07-18-005 |
+| F17 | Timeline sequence or tool invocation correlation is missing, duplicated, or inconsistent | Fail the affected request closed; do not guess order or mutate another activity | SKMB-2026-07-18-005 |
 
 ## Statistical Defaults Allowed Temporarily
 

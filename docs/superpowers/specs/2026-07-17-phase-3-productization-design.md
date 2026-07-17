@@ -13,8 +13,10 @@ service and event stream used by commands.
 Phase 3 is complete only when all required Fabric and NeoForge 26.2 topology,
 tool, GUI, automation, documentation, and CI acceptance evidence exists.
 
-Structure parsing and generated Ponder scenes are Phase 4. They are not a
-Phase 3 completion dependency.
+Structure parsing and generated Ponder scenes are not a Phase 3 completion
+dependency. The later accepted `SKMB-2026-07-18-005` roadmap defers them beyond
+Phase 4; Phase 4 instead covers recipe sources, durable history/context, and
+Minecraft-native rich UI.
 
 ## 2. Delivery decomposition
 
@@ -150,4 +152,3 @@ artifacts and runtime evidence:
 - Service and E2E design: `2026-07-17-phase-3b-guide-service-e2e-design.md`
 - GUI design: `2026-07-17-phase-3c-player-gui-design.md`
 - State decisions: `docs/isme/decisions/2026-07-17-004-phase-3-product-state.md`
-

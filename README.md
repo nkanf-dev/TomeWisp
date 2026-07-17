@@ -60,11 +60,14 @@ loaders through one shared GuideService and an opt-in real-client probe:
 - a default-off Fabric/NeoForge real-client E2E controller plus deterministic
   loopback model fixture and redacted report contract.
 
-A server mod is not required for the main client model mode. Dynamic Ponder
-generation remains Phase 4 because Ponder/Ponderer do not yet provide a 26.2
-runtime target. Phase 3C now provides the native player GUI; graphical E2E
-remains explicit opt-in and is never inferred from compilation. The knowledge layer already retains Patchouli
-multiblock coordinates and structure references for the later Ponder workflow.
+A server mod is not required for the main client model mode. Phase 4 is planned
+to add all-known recipe sources and viewer integration, durable partitioned
+history and context compaction, and Minecraft-native rich messages. Dynamic
+Ponder generation is deferred beyond Phase 4 because Ponder/Ponderer do not yet
+provide a verified 26.2 runtime target. Phase 3C now provides the native player
+GUI; graphical E2E remains explicit opt-in and is never inferred from
+compilation. The knowledge layer already retains Patchouli multiblock
+coordinates and structure references for a later visual-tutorial workflow.
 
 Press the configurable `K` mapping or run bare `/guide` in-world to open the
 non-pausing screen. It streams the current GuideService transcript, displays

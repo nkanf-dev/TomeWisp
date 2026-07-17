@@ -44,6 +44,7 @@ public final class GuideStateReducer {
             case AgentEvent.ToolStarted started -> {
                 ArrayList<GuideToolActivity> next = new ArrayList<>(tools);
                 next.add(new GuideToolActivity(
+                        "migration-" + next.size(),
                         next.size(), started.toolId(), GuideToolStatus.RUNNING, null, List.of()));
                 tools = List.copyOf(next);
                 status = GuideRequestStatus.TOOL_WAIT;
@@ -53,6 +54,9 @@ public final class GuideStateReducer {
                 ArrayList<GuideToolActivity> next = new ArrayList<>(tools);
                 int index = lastRunning(next, completed.toolId());
                 GuideToolActivity replacement = new GuideToolActivity(
+                        index < 0
+                                ? "migration-" + next.size()
+                                : next.get(index).invocationId(),
                         index < 0 ? next.size() : next.get(index).index(),
                         completed.toolId(),
                         completed.failure() ? GuideToolStatus.FAILED : GuideToolStatus.SUCCEEDED,
@@ -116,9 +120,8 @@ public final class GuideStateReducer {
                 current.sessionId(),
                 current.topology(),
                 current.userMessage(),
-                text,
+                flattenedTimeline(text, tools, sources, terminalAt == null),
                 status,
-                tools,
                 sources,
                 usage,
                 retryAfter,
@@ -126,6 +129,22 @@ public final class GuideStateReducer {
                 current.createdAt(),
                 now,
                 terminalAt);
+    }
+
+    private static List<GuideTimelineEntry> flattenedTimeline(
+            String text,
+            List<GuideToolActivity> tools,
+            List<GuideSource> sources,
+            boolean streaming) {
+        ArrayList<GuideTimelineEntry> timeline = new ArrayList<>();
+        if (!text.isBlank()) {
+            timeline.add(new GuideTimelineEntry.Assistant(
+                    timeline.size(), text, streaming, sources));
+        }
+        for (GuideToolActivity tool : tools) {
+            timeline.add(new GuideTimelineEntry.Tool(timeline.size(), tool));
+        }
+        return List.copyOf(timeline);
     }
 
     private static GuideRequestStatus state(AgentState state) {

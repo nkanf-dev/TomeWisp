@@ -12,11 +12,48 @@ import dev.tomewisp.model.ModelEvent;
 import dev.tomewisp.model.ModelUsage;
 import dev.tomewisp.testing.GroundedTestFixtures;
 import java.time.Instant;
+import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 
 final class GuideStateReducerTest {
     private final GuideStateReducer reducer = new GuideStateReducer(new Gson());
+
+    @Test
+    void snapshotDerivesFinalTextAndToolsFromChronologicalTimeline() {
+        UUID requestId = UUID.randomUUID();
+        GuideToolActivity tool = new GuideToolActivity(
+                "call-1",
+                0,
+                "tomewisp:get_recipe",
+                GuideToolStatus.SUCCEEDED,
+                groundedResult(),
+                List.of());
+        GuideRequestSnapshot request = new GuideRequestSnapshot(
+                requestId,
+                "main",
+                GuideTopology.CLIENT_LOCAL,
+                "How?",
+                List.of(
+                        new GuideTimelineEntry.Assistant(0, "I will check.", false, List.of()),
+                        new GuideTimelineEntry.Tool(1, tool),
+                        new GuideTimelineEntry.Assistant(
+                                2, "You need nine ingots.", false, List.of())),
+                GuideRequestStatus.COMPLETED,
+                List.of(),
+                ModelUsage.empty(),
+                null,
+                null,
+                Instant.EPOCH,
+                Instant.EPOCH.plusSeconds(3),
+                Instant.EPOCH.plusSeconds(3));
+
+        assertEquals(List.of(0, 1, 2), request.timeline().stream()
+                .map(GuideTimelineEntry::ordinal)
+                .toList());
+        assertEquals("You need nine ingots.", request.assistantText());
+        assertEquals(List.of(tool), request.tools());
+    }
 
     @Test
     void reducesStreamingToolsSourcesUsageAndCompletion() {

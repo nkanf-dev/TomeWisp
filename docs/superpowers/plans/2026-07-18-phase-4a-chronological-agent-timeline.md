@@ -53,7 +53,7 @@ approved product semantics.
 - Modify: `common/src/main/java/dev/tomewisp/guide/GuideRequestSnapshot.java`
 - Test: `common/src/test/java/dev/tomewisp/guide/GuideStateReducerTest.java`
 
-- [ ] **Step 1: Write a failing snapshot-domain test**
+- [x] **Step 1: Write a failing snapshot-domain test**
 
 Add a test that constructs one assistant segment, one tool, and a later assistant
 segment, then verifies order and compatibility accessors:
@@ -82,7 +82,7 @@ void snapshotDerivesFinalTextAndToolsFromChronologicalTimeline() {
 }
 ```
 
-- [ ] **Step 2: Run the focused test and confirm the domain does not exist**
+- [x] **Step 2: Run the focused test and confirm the domain does not exist**
 
 Run:
 
@@ -93,7 +93,7 @@ Run:
 Expected: compilation fails because `GuideTimelineEntry` and the new
 constructors do not exist.
 
-- [ ] **Step 3: Add the timeline sealed interface**
+- [x] **Step 3: Add the timeline sealed interface**
 
 Create:
 
@@ -131,7 +131,7 @@ public sealed interface GuideTimelineEntry
 }
 ```
 
-- [ ] **Step 4: Add stable invocation identity to tool activity**
+- [x] **Step 4: Add stable invocation identity to tool activity**
 
 Change the record header and validation to:
 
@@ -155,7 +155,7 @@ public record GuideToolActivity(
 }
 ```
 
-- [ ] **Step 5: Replace snapshot storage with the timeline and compatibility accessors**
+- [x] **Step 5: Replace snapshot storage with the timeline and compatibility accessors**
 
 Use `List<GuideTimelineEntry> timeline` in the record header. Defensively copy
 and validate contiguous ordinals in the compact constructor:
@@ -192,7 +192,7 @@ public List<GuideToolActivity> tools() {
 
 Initialize `start(...)` with `List.of()`.
 
-- [ ] **Step 6: Update direct constructor call sites mechanically**
+- [x] **Step 6: Update direct constructor call sites mechanically**
 
 Replace old `assistantText, status, tools` constructor arguments with a timeline.
 For fixtures containing text only, use:
@@ -205,7 +205,7 @@ text.isBlank()
 
 Do not change reducer behavior yet.
 
-- [ ] **Step 7: Run the focused test**
+- [x] **Step 7: Run the focused test**
 
 Run:
 
@@ -215,7 +215,7 @@ Run:
 
 Expected: PASS.
 
-- [ ] **Step 8: Commit the timeline domain**
+- [x] **Step 8: Commit the timeline domain**
 
 ```bash
 git add common/src/main/java/dev/tomewisp/guide/GuideTimelineEntry.java \

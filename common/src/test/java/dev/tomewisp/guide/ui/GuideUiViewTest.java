@@ -12,6 +12,7 @@ import dev.tomewisp.guide.GuideRequestStatus;
 import dev.tomewisp.guide.GuideSessionSnapshot;
 import dev.tomewisp.guide.GuideSnapshot;
 import dev.tomewisp.guide.GuideTopology;
+import dev.tomewisp.guide.GuideTimelineEntry;
 import dev.tomewisp.model.ModelUsage;
 import java.time.Instant;
 import java.util.List;
@@ -67,8 +68,19 @@ final class GuideUiViewTest {
     private static GuideRequestSnapshot request(
             GuideRequestStatus status, String text, Instant terminal, GuideFailure failure) {
         return new GuideRequestSnapshot(
-                REQUEST, "main", GuideTopology.CLIENT_LOCAL, "question", text, status,
-                List.of(), List.of(), ModelUsage.empty(), null, failure,
+                REQUEST,
+                "main",
+                GuideTopology.CLIENT_LOCAL,
+                "question",
+                text.isBlank()
+                        ? List.of()
+                        : List.of(new GuideTimelineEntry.Assistant(
+                                0, text, terminal == null, List.of())),
+                status,
+                List.of(),
+                ModelUsage.empty(),
+                null,
+                failure,
                 Instant.EPOCH, terminal == null ? Instant.EPOCH.plusSeconds(1) : terminal, terminal);
     }
 }

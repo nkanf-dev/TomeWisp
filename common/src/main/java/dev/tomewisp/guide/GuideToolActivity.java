@@ -4,13 +4,15 @@ import com.google.gson.JsonObject;
 import java.util.List;
 
 public record GuideToolActivity(
+        String invocationId,
         int index,
         String toolId,
         GuideToolStatus status,
         JsonObject normalized,
         List<GuideSource> sources) {
     public GuideToolActivity {
-        if (index < 0 || toolId == null || toolId.isBlank()) {
+        if (invocationId == null || invocationId.isBlank()
+                || index < 0 || toolId == null || toolId.isBlank()) {
             throw new IllegalArgumentException("tool activity identity is invalid");
         }
         java.util.Objects.requireNonNull(status, "status");

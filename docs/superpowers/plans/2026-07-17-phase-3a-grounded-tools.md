@@ -8,6 +8,11 @@
 
 **Tech Stack:** Java 25, Minecraft 26.2 public APIs, Gson 2.14, JUnit 5.11, Gradle 9.5, Fabric, NeoForge.
 
+**Execution status (2026-07-17):** Tasks 1-8 are implemented in commits
+`bcaef73` through `bd628b3`. Task 9 verification passed with 100 common tests,
+both loader builds, artifact inspection, and secret scans. Repository docs are
+being finalized here; Phase 3B/3C remain explicitly out of scope for this plan.
+
 ---
 
 ## File structure

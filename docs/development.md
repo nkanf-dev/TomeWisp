@@ -88,6 +88,34 @@ recipe-display snapshots. If the server advertises enhancements, the same
 client Agent also sees separately named server read tools. Model location and
 tool location are independent.
 
+## Grounded built-in tools
+
+Every factual success carries immutable evidence: authority, completeness,
+capture time, source, provenance, game version, loader, and optional scoped
+details. Client recipe-display facts are `CLIENT_VISIBLE`; server RecipeManager
+facts are `SERVER_AUTHORITATIVE`. An unloaded knowledge snapshot is `UNKNOWN`,
+not proof that no documents exist. The result normalizer rejects any
+`EvidenceBearing` success whose evidence list is empty.
+
+The Phase 3A recipe workflow is:
+
+```text
+tomewisp:resolve_resource
+tomewisp:search_recipes
+tomewisp:get_recipe
+tomewisp:find_item_usages
+tomewisp:inspect_inventory
+tomewisp:calculate_craftability
+```
+
+`calculate_craftability` uses deterministic global capacity allocation, so
+overlapping item/tag alternatives are not assigned greedily. It reports the
+observed allocation, missing requirements, maximum crafts, and whether the
+evidence is conclusive. It does not recursively craft intermediate items.
+Incomplete recipe or inventory evidence may show an observed positive result,
+but `conclusive` remains false. `tomewisp:find_recipes` is retained only as a
+deprecated compatibility projection over the same recipe catalog.
+
 ## Knowledge and Skills
 
 Patchouli is read directly from active client resource packs, without a binary
@@ -130,6 +158,8 @@ The following commands require game-master permission:
 /tomewisp dev invoke tomewisp:platform_info
 /tomewisp dev replay platform-info
 /tomewisp dev replay iron-ingot-recipe
+/tomewisp dev replay iron-block-craftability
+/tomewisp dev replay find-recipes-compatibility
 /tomewisp dev replay player-context
 ```
 
@@ -191,8 +221,26 @@ tomewisp dev replay player-context
 stop
 ```
 
-The first two traces pass. The player trace fails explicitly with
-`player_required` from a dedicated-server console.
+`platform-info`, `iron-ingot-recipe`, and `find-recipes-compatibility` can run
+from the dedicated-server console. `iron-block-craftability` and
+`player-context` fail explicitly with `player_required` there because no player
+owns the invocation.
+
+## Phase 3A verification baseline
+
+On 2026-07-17 the complete common suite reported 100 tests, 0 failures, 0
+errors, and 1 opt-in live-provider test skipped. Both production artifacts built
+successfully:
+
+```text
+fabric/build/libs/tomewisp-fabric-26.2-0.1.0-SNAPSHOT.jar
+neoforge/build/libs/tomewisp-neoforge-26.2-0.1.0-SNAPSHOT.jar
+```
+
+Both JARs contain the five new grounded workflow tools,
+`EvidenceMetadata`, and `CraftabilityCalculator`. Repository and artifact
+credential-pattern scans returned no matches. Phase 3B command E2E,
+GuideService, and Phase 3C GUI are not included in this baseline.
 
 ## Loader boundary
 

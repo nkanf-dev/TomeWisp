@@ -46,6 +46,19 @@ Incomplete evidence cannot produce a conclusive positive craftability result.
 Context is captured on the owning Minecraft thread when queued work starts and
 remains immutable for that request.
 
+Phase 3A implementation fixes three additional projections of that decision:
+
+- an unloaded or source-empty knowledge snapshot carries explicit `UNKNOWN` or
+  source evidence and never means “the pack has no documentation” by omission;
+- recipe alternatives are allocated by deterministic global capacity matching,
+  while recursive crafting of intermediates remains outside this tool contract;
+- `find_recipes` is a deprecated compatibility projection over the same catalog;
+  new Skills use search, exact detail, inventory inspection, then craftability.
+
+The serialization boundary fails closed when an `EvidenceBearing` factual
+output returns no evidence, with stable failure text
+`Grounded tool output has no evidence`.
+
 The GUI is an independent full-screen non-pausing in-world Screen opened by a
 configurable default `K` mapping or `/guide`. Escape closes without cancelling.
 Reasoning deltas are diagnostic-only. Visible state comes only from GuideService.
@@ -71,6 +84,8 @@ Reasoning deltas are diagnostic-only. Visible state comes only from GuideService
    messages, packets, traces, or source details.
 7. Every factual success exposes evidence; unknown/incomplete remains explicit.
 8. No automatic topology fallback changes who pays for or answers a request.
+9. Empty evidence cannot cross the factual tool-result boundary as success.
+10. An observed craftability result is distinct from a conclusive result.
 
 ## Failure Semantics
 

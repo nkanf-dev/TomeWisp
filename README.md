@@ -34,7 +34,9 @@ and development commands.
 
 ## Status
 
-Phase 2 provides a working client-first guide Agent on Fabric and NeoForge:
+Phase 2 provides a working client-first guide Agent on Fabric and NeoForge.
+Phase 3A now adds the grounded tool substrate used by the upcoming shared
+GuideService and GUI:
 
 - Anthropic Messages and OpenAI-compatible HTTP adapters with streaming and
   tool-result continuation;
@@ -45,11 +47,19 @@ Phase 2 provides a working client-first guide Agent on Fabric and NeoForge:
 - deterministic search over Patchouli assets and optional visible FTB Quests;
 - optional authenticated server read tools and optional server-hosted models;
 - redacted live traces and deterministic Phase 1 trace replay.
+- evidence-bearing client/server snapshots with explicit authority,
+  completeness, capture time, source, provenance, game version, and loader;
+- stable recipe search, exact detail, item usage, and inventory inspection;
+- deterministic non-recursive craftability using global alternative allocation;
+- fail-closed normalization for factual tools that omit evidence;
+- a long recipe-to-inventory craftability replay, while `find_recipes` remains
+  only as a deprecated compatibility projection.
 
 A server mod is not required for the main client model mode. Dynamic Ponder
-generation remains Phase 3 because Ponder/Ponderer do not yet provide a 26.2
-runtime target; the knowledge layer already retains Patchouli multiblock
-coordinates and structure references for that workflow.
+generation remains Phase 4 because Ponder/Ponderer do not yet provide a 26.2
+runtime target. Phase 3B/3C first complete the real-game command E2E, shared
+GuideService, and player GUI. The knowledge layer already retains Patchouli
+multiblock coordinates and structure references for the later Ponder workflow.
 
 ## License
 

@@ -4,7 +4,7 @@
 - decided_by: statistical_default
 - approval_source: designer explicitly delegated implementation details with "按照你的最佳路径去走就可以了" after accepting SKMB-2026-07-18-005
 - date: 2026-07-18
-- commit: pending
+- commit: cb77181
 - patterns:
   - A_async_wait
   - B_state_persistence

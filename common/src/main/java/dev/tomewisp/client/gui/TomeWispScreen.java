@@ -101,7 +101,12 @@ public final class TomeWispScreen extends Screen {
     @Override
     public void added() {
         subscription = service.subscribe(snapshot -> {
-            view = GuideUiView.from(snapshot);
+            GuideUiView next = GuideUiView.from(snapshot);
+            boolean changedSession = !view.selectedSession().equals(next.selectedSession());
+            boolean closedDetail = refreshDetail(next);
+            view = next;
+            if (changedSession) scroll = 0;
+            if ((changedSession || closedDetail) && composer != null) rebuildForDetail();
             updateControls();
         });
     }
@@ -367,6 +372,36 @@ public final class TomeWispScreen extends Screen {
 
     private boolean detailOpen() {
         return selectedTool != null || selectedSource != null;
+    }
+
+    private boolean refreshDetail(GuideUiView next) {
+        boolean wasOpen = detailOpen();
+        if (selectedTool != null) {
+            GuideToolActivity replacement = next.rows().stream()
+                    .filter(GuideUiRow.Tool.class::isInstance)
+                    .map(GuideUiRow.Tool.class::cast)
+                    .map(GuideUiRow.Tool::activity)
+                    .filter(value -> value.index() == selectedTool.index()
+                            && value.toolId().equals(selectedTool.toolId()))
+                    .findFirst().orElse(null);
+            selectedTool = replacement;
+        }
+        if (selectedSource != null) {
+            boolean retained = next.rows().stream().anyMatch(row -> switch (row) {
+                case GuideUiRow.Assistant assistant -> assistant.sources().contains(selectedSource);
+                case GuideUiRow.Tool tool -> tool.activity().sources().contains(selectedSource);
+                default -> false;
+            });
+            if (!retained) selectedSource = null;
+        }
+        if (!wasOpen) return false;
+        if (!detailOpen()) return true;
+        if (!next.selectedSession().equals(view.selectedSession())) {
+            selectedTool = null;
+            selectedSource = null;
+            return true;
+        }
+        return false;
     }
 
     private void submit() {

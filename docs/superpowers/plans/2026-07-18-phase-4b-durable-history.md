@@ -596,7 +596,7 @@ are localized in English and Simplified Chinese.
 - Modify: `docs/isme/decisions/2026-07-18-006-durable-history-execution.md`
 - Modify: `docs/isme/SKMB.md`
 
-- [ ] **Step 1: Run focused durability and race suites**
+- [x] **Step 1: Run focused durability and race suites**
 
 ```bash
 ./gradlew :common:test --tests 'dev.tomewisp.guide.history.*' \
@@ -608,7 +608,7 @@ are localized in English and Simplified Chinese.
 
 Expected: all history, service, UI, and architecture tests pass.
 
-- [ ] **Step 2: Run clean product gate and packaging proof**
+- [x] **Step 2: Run clean product gate and packaging proof**
 
 ```bash
 ./gradlew clean :common:test :fabric:build :neoforge:build
@@ -618,7 +618,7 @@ Expected: all history, service, UI, and architecture tests pass.
 Expected: all common tests pass, both loaders build, and each production JAR
 executes its packaged SQLite driver with required native coverage.
 
-- [ ] **Step 3: Inspect exact artifacts and hygiene**
+- [x] **Step 3: Inspect exact artifacts and hygiene**
 
 ```bash
 find fabric/build/libs neoforge/build/libs -maxdepth 1 -type f -name '*.jar' -print
@@ -629,13 +629,13 @@ git status --short --branch
 Expected: no database, WAL, downloaded driver, run-directory, credential, or
 generated artifact is staged.
 
-- [ ] **Step 4: Record exact verification truth**
+- [x] **Step 4: Record exact verification truth**
 
 Append commands, test count, artifact names and SHA-256 values, SQLite version,
 native matrix, and explicit unrun checks. Do not claim graphical restart proof;
 that belongs to final Phase 4 modded-client acceptance.
 
-- [ ] **Step 5: Update ISME commit references and commit**
+- [x] **Step 5: Update ISME commit references and commit**
 
 Replace `pending` for SKMB-2026-07-18-006 with the decision-record commit that
 introduced it, run any repository SKMB consistency check, then:
@@ -646,3 +646,31 @@ git add docs/superpowers/plans/2026-07-18-phase-4b-durable-history.md \
   docs/isme/decisions/2026-07-18-006-durable-history-execution.md
 git commit -m "docs: verify durable guide history"
 ```
+
+Verification completed on 2026-07-18 with Java 25.0.2 on macOS. The focused
+history, lifecycle/race, UI, and architecture selection passed. The clean gate
+`./gradlew clean :common:test :fabric:build :neoforge:build` then reported
+153 common tests, 0 failures, 0 errors, and 1 opt-in skip; both production
+loader builds passed.
+
+`./scripts/verify-sqlite-packaging.sh` extracted each driver from its production
+mod JAR and executed SQLite `3.50.3` from that extracted artifact. It verified
+the packaged native entries for Linux x86_64/aarch64, macOS x86_64/aarch64, and
+Windows x86_64/aarch64.
+
+```text
+fabric/build/libs/tomewisp-fabric-26.2-0.1.0-SNAPSHOT.jar
+SHA-256 13de5fa159a04edc0936f91409df602105b33f0bebed9676b7ab82176da79672
+embedded driver SHA-256 0bc822a176492a4d3e2547b13a54bdf8540ea4e3a8ede8edc2d02f9a94c3c12a
+
+neoforge/build/libs/tomewisp-neoforge-26.2-0.1.0-SNAPSHOT.jar
+SHA-256 bc5cff5a2deed2a2182822edb4c0e70ba1a3d56617d8ba1b0ac55831e560a49c
+embedded driver SHA-256 a3f53a2aa15ae9425a9e793bbe9c8e5288febeb4b65ef5c1a4e80d4c2045cf08
+```
+
+No SQLite database, WAL, SHM, downloaded driver, run-directory output, or
+credential was staged. The expected Java 25 restricted native-access warning,
+Fabric warning for Xerial's four-component version, and existing Javadoc
+warnings remain non-fatal observations. This verification did not execute on
+Windows/Linux hosts and did not launch a graphical client or prove restart
+restoration; those remain part of final Phase 4 modded-client acceptance.

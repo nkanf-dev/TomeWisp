@@ -13,6 +13,8 @@
   - F_fail_semantics
   - G_irreversible_action
 - scope: Phase 4 durable history loading, transaction ordering, partition identity, recovery, and disconnect behavior
+- implemented_by: a0eaeff, 19ab90f, c6ca6bc
+- deterministic_verification: Phase 4B clean gate recorded in docs/superpowers/plans/2026-07-18-phase-4b-durable-history.md
 
 ## Context
 
@@ -87,6 +89,8 @@ or local paths part of the browsable database model.
 Review these defaults no later than the final Phase 4 real-client acceptance.
 If the designer selects different loading or persistence behavior, record a
 superseding decision and a versioned migration where durable identity changes.
+The final review must include retained graphical restart evidence and must not
+treat packaged Windows/Linux native entries as execution on those hosts.
 
 ## Supersedes
 

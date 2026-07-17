@@ -15,6 +15,10 @@ accepted and contains explicit approval evidence.
 | SKMB-2026-07-18-005 | accepted | Phase 4 product state | A, B, C, D, E, F, G | decisions/2026-07-18-005-phase-4-product-state.md | ad8ad52 |
 | SKMB-2026-07-18-006 | reviewable_default | Phase 4 durable history execution | A, B, C, E, F, G | decisions/2026-07-18-006-durable-history-execution.md | cb77181 |
 
+SKMB-2026-07-18-006 is implemented by `a0eaeff`, `19ab90f`, and `c6ca6bc`.
+Its deterministic clean-build and packaged-driver evidence is recorded in the
+Phase 4B durable-history plan. Final graphical restart review remains open.
+
 ## Named States
 
 | state | meaning | owner | notes | source |

@@ -1,5 +1,7 @@
 package dev.tomewisp.tool.builtin;
 
+import dev.tomewisp.context.EvidenceBearing;
+import dev.tomewisp.context.EvidenceMetadata;
 import dev.tomewisp.context.ToolInvocationContext;
 import dev.tomewisp.knowledge.KnowledgeRegistry;
 import dev.tomewisp.tool.Tool;
@@ -12,7 +14,13 @@ public final class ListKnowledgeSourcesTool
         implements Tool<ListKnowledgeSourcesTool.Input, ListKnowledgeSourcesTool.Output> {
     public record Input() {}
     public record Source(String id, int documents) {}
-    public record Output(List<Source> sources) {}
+    public record Output(List<Source> sources, List<EvidenceMetadata> evidence)
+            implements EvidenceBearing {
+        public Output {
+            sources = List.copyOf(sources);
+            evidence = List.copyOf(evidence);
+        }
+    }
 
     private static final ToolDescriptor<Input, Output> DESCRIPTOR = new ToolDescriptor<>(
             "tomewisp:list_knowledge_sources",
@@ -30,7 +38,8 @@ public final class ListKnowledgeSourcesTool
 
     @Override
     public ToolResult<Output> invoke(ToolInvocationContext context, Input input) {
-        List<Source> sources = registry.snapshot().documents().stream()
+        var snapshot = registry.snapshot();
+        List<Source> sources = snapshot.documents().stream()
                 .collect(java.util.stream.Collectors.groupingBy(
                         dev.tomewisp.knowledge.KnowledgeDocument::sourceId,
                         java.util.TreeMap::new,
@@ -38,6 +47,6 @@ public final class ListKnowledgeSourcesTool
                 .entrySet().stream()
                 .map(entry -> new Source(entry.getKey(), Math.toIntExact(entry.getValue())))
                 .toList();
-        return new ToolResult.Success<>(new Output(sources));
+        return new ToolResult.Success<>(new Output(sources, snapshot.evidence()));
     }
 }

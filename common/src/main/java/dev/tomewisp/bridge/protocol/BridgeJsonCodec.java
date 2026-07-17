@@ -17,6 +17,7 @@ public final class BridgeJsonCodec {
             RemoteCancelPayload.class, Set.of("version", "correlationId"),
             ServerAgentRequestPayload.class,
                     Set.of("version", "requestId", "sessionId", "question", "stream"),
+            ServerAgentCancelPayload.class, Set.of("version", "requestId"),
             ServerAgentEventPayload.class,
                     Set.of("version", "requestId", "eventType", "eventJson", "terminal"));
 

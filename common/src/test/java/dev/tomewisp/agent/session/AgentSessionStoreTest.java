@@ -36,6 +36,7 @@ final class AgentSessionStoreTest {
         AgentSessionStore.Lease lease = success(store.reserve(key, UUID.randomUUID())).value();
         assertTrue(store.cancel(key));
         assertTrue(lease.cancellation().isCancelled());
+        assertInstanceOf(ToolResult.Success.class, store.reserve(key, UUID.randomUUID()));
         assertFalse(store.cancel(new AgentSessionKey(UUID.randomUUID(), "main")));
         store.clear(key);
         assertFalse(store.status(key).active());

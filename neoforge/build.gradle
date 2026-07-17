@@ -43,6 +43,11 @@ tasks.named('runServer') {
     standardInput = System.in
 }
 
+tasks.matching { it.name == 'runClient' }.configureEach {
+    System.properties.findAll { key, value -> key.toString().startsWith('tomewisp.e2e.') }
+            .each { key, value -> systemProperty(key.toString(), value.toString()) }
+}
+
 sourceSets.main.resources { srcDir 'src/generated/resources' }
 
 // Implement mcgradleconventions loader attribute

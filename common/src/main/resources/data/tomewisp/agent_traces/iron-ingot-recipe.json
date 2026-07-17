@@ -6,7 +6,7 @@
   "steps": [
     {
       "type": "tool_call",
-      "tool": "tomewisp:find_recipes",
+      "tool": "tomewisp:search_recipes",
       "arguments": {
         "outputItem": "minecraft:iron_ingot"
       },
@@ -14,13 +14,15 @@
         "status": "success",
         "match": "contains",
         "value": {
-          "outputItem": "minecraft:iron_ingot"
+          "query": {
+            "outputItem": "minecraft:iron_ingot"
+          }
         }
       }
     },
     {
       "type": "assistant_message",
-      "content": "铁锭的制作方式应以工具返回的当前服务端完整配方数据为准。"
+      "content": "铁锭的制作方式应以工具返回的当前配方快照及其 authority/completeness 证据为准。"
     }
   ]
 }

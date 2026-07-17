@@ -16,7 +16,7 @@
     },
     {
       "type": "assistant_message",
-      "content": "回答将只使用本次调用捕获的玩家位置、双手物品和完整背包快照。"
+      "content": "回答将只使用本次调用捕获的玩家与背包快照，并按 completeness 证据说明可见范围。"
     }
   ]
 }

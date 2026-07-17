@@ -40,7 +40,12 @@ final class TraceRepositoryTest {
 
     @Test
     void bundledTracesAreStrictlyValidAndDiscoverable() {
-        List<String> ids = List.of("iron-ingot-recipe", "platform-info", "player-context");
+        List<String> ids = List.of(
+                "find-recipes-compatibility",
+                "iron-block-craftability",
+                "iron-ingot-recipe",
+                "platform-info",
+                "player-context");
         List<TraceRepository.TraceSource> sources = ids.stream()
                 .map(id -> new TraceRepository.TraceSource(
                         "tomewisp:agent_traces/" + id + ".json",

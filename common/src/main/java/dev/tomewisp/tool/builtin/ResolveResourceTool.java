@@ -1,6 +1,8 @@
 package dev.tomewisp.tool.builtin;
 
 import dev.tomewisp.context.RegistryEntrySnapshot;
+import dev.tomewisp.context.EvidenceBearing;
+import dev.tomewisp.context.EvidenceMetadata;
 import dev.tomewisp.agent.tool.ToolOptional;
 import dev.tomewisp.context.ToolInvocationContext;
 import dev.tomewisp.tool.Tool;
@@ -18,9 +20,15 @@ public final class ResolveResourceTool
     public record Match(
             String id, String kind, String displayName, String namespace, String provenance) {}
 
-    public record Output(String requestedId, boolean exists, List<Match> matches) {
+    public record Output(
+            String requestedId,
+            boolean exists,
+            List<Match> matches,
+            List<EvidenceMetadata> evidence)
+            implements EvidenceBearing {
         public Output {
             matches = List.copyOf(matches);
+            evidence = List.copyOf(evidence);
         }
     }
 
@@ -54,12 +62,14 @@ public final class ResolveResourceTool
                     "missing_context", "registry context was not captured for this invocation");
         }
 
-        List<Match> matches = context.registries().orElseThrow().entries().stream()
+        var snapshot = context.registries().orElseThrow();
+        List<Match> matches = snapshot.entries().stream()
                 .filter(entry -> entry.id().equals(input.id()))
                 .filter(entry -> kind.isEmpty() || entry.kind().equals(kind))
                 .map(ResolveResourceTool::toMatch)
                 .toList();
-        return new ToolResult.Success<>(new Output(input.id(), !matches.isEmpty(), matches));
+        return new ToolResult.Success<>(new Output(
+                input.id(), !matches.isEmpty(), matches, List.of(snapshot.evidence())));
     }
 
     private static Match toMatch(RegistryEntrySnapshot entry) {

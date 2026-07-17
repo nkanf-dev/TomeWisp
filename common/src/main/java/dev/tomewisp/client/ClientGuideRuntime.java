@@ -13,6 +13,7 @@ import dev.tomewisp.agent.tool.LocalAgentToolExecutor;
 import dev.tomewisp.agent.tool.AgentToolExecutor;
 import dev.tomewisp.agent.tool.CompositeAgentToolExecutor;
 import dev.tomewisp.context.ToolInvocationContext;
+import dev.tomewisp.guide.GuideLocalEndpoint;
 import dev.tomewisp.model.ModelClient;
 import dev.tomewisp.model.anthropic.AnthropicMessagesClient;
 import dev.tomewisp.model.config.ModelConfig;
@@ -29,7 +30,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Consumer;
 
-public final class ClientGuideRuntime {
+public final class ClientGuideRuntime implements GuideLocalEndpoint {
     private final TomeWispRuntime runtime;
     private final AgentSessionStore sessions;
     private final GameGuideAgent agent;
@@ -122,9 +123,25 @@ public final class ClientGuideRuntime {
             String question,
             ToolInvocationContext context,
             Consumer<AgentEvent> events) {
-        String session = selectedSession(actor);
-        AgentRequest request = new AgentRequest(
+        return ask(
+                actor,
+                selectedSession(actor),
                 UUID.randomUUID(),
+                question,
+                context,
+                events);
+    }
+
+    @Override
+    public CompletableFuture<AgentResult> ask(
+            UUID actor,
+            String session,
+            UUID requestId,
+            String question,
+            ToolInvocationContext context,
+            Consumer<AgentEvent> events) {
+        AgentRequest request = new AgentRequest(
+                requestId,
                 actor,
                 session,
                 question,
@@ -167,7 +184,17 @@ public final class ClientGuideRuntime {
     }
 
     public boolean cancel(UUID actor) {
-        return sessions.cancel(new AgentSessionKey(actor, selectedSession(actor)));
+        return cancel(actor, selectedSession(actor));
+    }
+
+    @Override
+    public boolean cancel(UUID actor, String sessionId) {
+        return sessions.cancel(new AgentSessionKey(actor, sessionId));
+    }
+
+    @Override
+    public void clearSession(UUID actor, String sessionId) {
+        sessions.clear(new AgentSessionKey(actor, sessionId));
     }
 
     public void clearActor(UUID actor) {

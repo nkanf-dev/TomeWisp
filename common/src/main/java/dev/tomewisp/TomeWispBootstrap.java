@@ -12,14 +12,20 @@ import dev.tomewisp.skill.LoadSkillTool;
 import dev.tomewisp.skill.SkillParser;
 import dev.tomewisp.skill.SkillRepository;
 import dev.tomewisp.tool.ToolRegistry;
+import dev.tomewisp.tool.Tool;
+import dev.tomewisp.tool.builtin.CalculateCraftabilityTool;
 import dev.tomewisp.tool.builtin.FindRecipesTool;
+import dev.tomewisp.tool.builtin.FindItemUsagesTool;
+import dev.tomewisp.tool.builtin.GetRecipeTool;
 import dev.tomewisp.tool.builtin.GetKnowledgeDocumentTool;
 import dev.tomewisp.tool.builtin.GetPatchouliMultiblockTool;
 import dev.tomewisp.tool.builtin.ListKnowledgeSourcesTool;
+import dev.tomewisp.tool.builtin.InspectInventoryTool;
 import dev.tomewisp.tool.builtin.PlatformInfoTool;
 import dev.tomewisp.tool.builtin.PlayerContextTool;
 import dev.tomewisp.tool.builtin.ResolveResourceTool;
 import dev.tomewisp.tool.builtin.SearchKnowledgeTool;
+import dev.tomewisp.tool.builtin.SearchRecipesTool;
 import dev.tomewisp.trace.json.TraceParser;
 import dev.tomewisp.trace.minecraft.TraceReplayService;
 import dev.tomewisp.trace.minecraft.TraceRepository;
@@ -38,13 +44,7 @@ public final class TomeWispBootstrap {
 
         PlatformService platform = PlatformServices.load();
         ToolRegistry tools = new ToolRegistry();
-        tools.register(
-                "tomewisp:builtins",
-                List.of(
-                        new PlatformInfoTool(platform),
-                        new ResolveResourceTool(),
-                        new FindRecipesTool(),
-                        new PlayerContextTool()));
+        tools.register("tomewisp:builtins", builtinTools(platform));
         KnowledgeRegistry knowledge = new KnowledgeRegistry();
         PatchouliMultiblockStore patchouliMultiblocks = new PatchouliMultiblockStore();
         tools.register(
@@ -83,5 +83,18 @@ public final class TomeWispBootstrap {
                 platform.platformName(),
                 tools.descriptors().size());
         return runtime;
+    }
+
+    static List<Tool<?, ?>> builtinTools(PlatformService platform) {
+        return List.of(
+                new PlatformInfoTool(platform),
+                new ResolveResourceTool(),
+                new SearchRecipesTool(),
+                new GetRecipeTool(),
+                new FindItemUsagesTool(),
+                new InspectInventoryTool(),
+                new CalculateCraftabilityTool(),
+                new FindRecipesTool(),
+                new PlayerContextTool());
     }
 }

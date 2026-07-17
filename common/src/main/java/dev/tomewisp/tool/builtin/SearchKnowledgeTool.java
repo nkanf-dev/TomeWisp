@@ -2,6 +2,8 @@ package dev.tomewisp.tool.builtin;
 
 import dev.tomewisp.agent.tool.ToolOptional;
 import dev.tomewisp.context.ToolInvocationContext;
+import dev.tomewisp.context.EvidenceBearing;
+import dev.tomewisp.context.EvidenceMetadata;
 import dev.tomewisp.knowledge.KnowledgeRegistry;
 import dev.tomewisp.knowledge.search.KnowledgeIndex;
 import dev.tomewisp.knowledge.search.KnowledgeSearchResult;
@@ -14,7 +16,16 @@ import java.util.List;
 public final class SearchKnowledgeTool
         implements Tool<SearchKnowledgeTool.Input, SearchKnowledgeTool.Output> {
     public record Input(String query, @ToolOptional Integer limit) {}
-    public record Output(String query, List<KnowledgeSearchResult> results) {}
+    public record Output(
+            String query,
+            List<KnowledgeSearchResult> results,
+            List<EvidenceMetadata> evidence)
+            implements EvidenceBearing {
+        public Output {
+            results = List.copyOf(results);
+            evidence = List.copyOf(evidence);
+        }
+    }
 
     private static final ToolDescriptor<Input, Output> DESCRIPTOR = new ToolDescriptor<>(
             "tomewisp:search_knowledge",
@@ -36,8 +47,11 @@ public final class SearchKnowledgeTool
             return new ToolResult.Failure<>("invalid_arguments", "query must not be blank");
         }
         try {
+            var snapshot = registry.snapshot();
             return new ToolResult.Success<>(new Output(
-                    input.query(), new KnowledgeIndex(registry.snapshot()).search(input.query(), input.limit())));
+                    input.query(),
+                    new KnowledgeIndex(snapshot).search(input.query(), input.limit()),
+                    snapshot.evidence()));
         } catch (IllegalArgumentException failure) {
             return new ToolResult.Failure<>("invalid_arguments", failure.getMessage());
         }

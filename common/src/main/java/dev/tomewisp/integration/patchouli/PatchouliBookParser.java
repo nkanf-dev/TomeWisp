@@ -6,6 +6,9 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import dev.tomewisp.client.resource.ClientResource;
 import dev.tomewisp.client.resource.ClientResourceAccess;
+import dev.tomewisp.context.DataAuthority;
+import dev.tomewisp.context.DataCompleteness;
+import dev.tomewisp.context.EvidenceMetadata;
 import dev.tomewisp.knowledge.KnowledgeDiagnostic;
 import dev.tomewisp.knowledge.KnowledgeDocument;
 import dev.tomewisp.knowledge.KnowledgeKind;
@@ -21,6 +24,22 @@ public final class PatchouliBookParser {
     private final PatchouliTextNormalizer text = new PatchouliTextNormalizer();
 
     public PatchouliParseResult parse(ClientResourceAccess resources, String activeLocale) {
+        return parse(resources, activeLocale, new EvidenceMetadata(
+                DataAuthority.RESOURCE_ASSET,
+                DataCompleteness.COMPLETE,
+                java.time.Instant.EPOCH,
+                "patchouli:resources",
+                "patchouli:book_parser",
+                "test",
+                "common-test",
+                Map.of()));
+    }
+
+    public PatchouliParseResult parse(
+            ClientResourceAccess resources,
+            String activeLocale,
+            EvidenceMetadata evidence) {
+        java.util.Objects.requireNonNull(evidence, "evidence");
         List<ClientResource> selected = resources.selected(PREFIX);
         Map<String, List<EntryResource>> candidates = new LinkedHashMap<>();
         for (ClientResource resource : selected) {
@@ -38,17 +57,19 @@ public final class PatchouliBookParser {
             if (chosen == null) {
                 continue;
             }
-            parseEntry(chosen, documents, multiblocks, diagnostics);
+            parseEntry(chosen, evidence, documents, multiblocks, diagnostics);
         }
         return new PatchouliParseResult(documents, multiblocks, diagnostics);
     }
 
     private void parseEntry(
             EntryResource entry,
+            EvidenceMetadata baseEvidence,
             List<KnowledgeDocument> documents,
             Map<String, PatchouliMultiblock> multiblocks,
             List<KnowledgeDiagnostic> diagnostics) {
         String sourceId = "patchouli:" + entry.namespace + "/" + entry.book;
+        EvidenceMetadata evidence = entryEvidence(baseEvidence, entry);
         try {
             JsonObject json = JsonParser.parseString(entry.resource.content()).getAsJsonObject();
             if (!visibilityIsKnown(json)) {
@@ -88,7 +109,7 @@ public final class PatchouliBookParser {
                 if (type.endsWith("multiblock") && page.has("multiblock")) {
                     String id = sourceId + ":" + entry.documentId + "#page-" + index;
                     PatchouliMultiblock parsed = parseMultiblock(id, page.get("multiblock"),
-                            entry.resource.provenance(), diagnostics, sourceId);
+                            entry.resource.provenance(), evidence, diagnostics, sourceId);
                     if (parsed != null) {
                         multiblocks.put(id, parsed);
                         structureRef = id;
@@ -114,7 +135,8 @@ public final class PatchouliBookParser {
                     recipes,
                     structureRef,
                     true,
-                    provenance));
+                    provenance,
+                    evidence));
         } catch (RuntimeException failure) {
             diagnostics.add(diagnostic(sourceId, "malformed_entry",
                     "Could not parse " + entry.documentId + ": " + failure.getMessage(),
@@ -126,6 +148,7 @@ public final class PatchouliBookParser {
             String id,
             JsonElement value,
             String provenance,
+            EvidenceMetadata evidence,
             List<KnowledgeDiagnostic> diagnostics,
             String sourceId) {
         if (!value.isJsonObject()) {
@@ -166,7 +189,24 @@ public final class PatchouliBookParser {
                     "Embedded multiblock contains no resolvable blocks", provenance));
             return null;
         }
-        return new PatchouliMultiblock(id, blocks, provenance);
+        return new PatchouliMultiblock(id, blocks, provenance, evidence);
+    }
+
+    private static EvidenceMetadata entryEvidence(
+            EvidenceMetadata base, EntryResource entry) {
+        java.util.TreeMap<String, String> details = new java.util.TreeMap<>(base.details());
+        details.put("patchouli:resource", entry.resource.resourceId());
+        details.put("patchouli:resource_provenance", entry.resource.provenance());
+        details.put("patchouli:locale", entry.locale);
+        return new EvidenceMetadata(
+                base.authority(),
+                base.completeness(),
+                base.capturedAt(),
+                base.sourceId(),
+                base.provenance(),
+                base.gameVersion(),
+                base.loader(),
+                details);
     }
 
     private static String state(JsonElement value) {

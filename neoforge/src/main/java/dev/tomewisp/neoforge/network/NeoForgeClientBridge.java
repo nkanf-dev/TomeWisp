@@ -7,6 +7,7 @@ import dev.tomewisp.bridge.protocol.CapabilityPayload;
 import dev.tomewisp.bridge.protocol.RemoteToolResultChunkPayload;
 import dev.tomewisp.bridge.protocol.ServerAgentEventPayload;
 import dev.tomewisp.bridge.protocol.ServerAgentRequestPayload;
+import dev.tomewisp.bridge.protocol.ServerAgentCancelPayload;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
@@ -23,6 +24,10 @@ public final class NeoForgeClientBridge {
     private final RemoteCapabilityStore capabilities = new RemoteCapabilityStore();
     private final Map<UUID, Consumer<ServerAgentEventPayload>> serverRequests =
             new ConcurrentHashMap<>();
+    private final java.util.List<Runnable> disconnectListeners =
+            new java.util.concurrent.CopyOnWriteArrayList<>();
+    private final java.util.List<Runnable> capabilityListeners =
+            new java.util.concurrent.CopyOnWriteArrayList<>();
     private final RemoteToolExecutor remoteTools = new RemoteToolExecutor(
             capabilities,
             new RemoteToolExecutor.Transport() {
@@ -40,14 +45,20 @@ public final class NeoForgeClientBridge {
         modBus.addListener((RegisterClientPayloadHandlersEvent event) ->
                 event.register(NeoForgeBridgePayloads.Packet.TYPE, this::receive));
         NeoForge.EVENT_BUS.addListener((ClientPlayerNetworkEvent.LoggingOut event) -> {
-            capabilities.clear();
-            remoteTools.disconnect();
-            serverRequests.clear();
+            disconnectState();
+            disconnectListeners.forEach(Runnable::run);
         });
     }
 
     public RemoteToolExecutor remoteTools() { return remoteTools; }
     public CapabilityPayload capabilities() { return capabilities.snapshot(); }
+    public void onDisconnect(Runnable listener) { disconnectListeners.add(listener); }
+    public void onCapabilitiesChanged(Runnable listener) { capabilityListeners.add(listener); }
+    public void disconnectState() {
+        capabilities.clear();
+        remoteTools.disconnect();
+        serverRequests.clear();
+    }
 
     public boolean askServer(
             ServerAgentRequestPayload request, Consumer<ServerAgentEventPayload> events) {
@@ -57,10 +68,20 @@ public final class NeoForgeClientBridge {
         return true;
     }
 
+    public boolean cancelServer(UUID requestId) {
+        Consumer<ServerAgentEventPayload> removed = serverRequests.remove(requestId);
+        if (removed == null) return false;
+        send("agent_cancel", new ServerAgentCancelPayload(
+                dev.tomewisp.bridge.protocol.BridgeProtocol.VERSION, requestId));
+        return true;
+    }
+
     private void receive(NeoForgeBridgePayloads.Packet packet, IPayloadContext context) {
         switch (packet.kind()) {
-            case "capabilities" -> capabilities.replace(
-                    codec.decode(packet.json(), CapabilityPayload.class));
+            case "capabilities" -> {
+                capabilities.replace(codec.decode(packet.json(), CapabilityPayload.class));
+                capabilityListeners.forEach(Runnable::run);
+            }
             case "tool_result" -> remoteTools.receive(
                     codec.decode(packet.json(), RemoteToolResultChunkPayload.class));
             case "agent_event" -> {

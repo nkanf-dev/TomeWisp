@@ -34,7 +34,9 @@ and development commands.
 
 ## Status
 
-Phase 2 provides a working client-first guide Agent on Fabric and NeoForge:
+Phase 2 provides a working client-first guide Agent on Fabric and NeoForge.
+Phase 3A provides the grounded tool substrate, while Phase 3B now routes both
+loaders through one shared GuideService and an opt-in real-client probe:
 
 - Anthropic Messages and OpenAI-compatible HTTP adapters with streaming and
   tool-result continuation;
@@ -45,11 +47,29 @@ Phase 2 provides a working client-first guide Agent on Fabric and NeoForge:
 - deterministic search over Patchouli assets and optional visible FTB Quests;
 - optional authenticated server read tools and optional server-hosted models;
 - redacted live traces and deterministic Phase 1 trace replay.
+- evidence-bearing client/server snapshots with explicit authority,
+  completeness, capture time, source, provenance, game version, and loader;
+- stable recipe search, exact detail, item usage, and inventory inspection;
+- deterministic non-recursive craftability using global alternative allocation;
+- fail-closed normalization for factual tools that omit evidence;
+- a long recipe-to-inventory craftability replay, while `find_recipes` remains
+  only as a deprecated compatibility projection.
+- immutable shared command/GUI request state with cancellation, retry,
+  multi-session isolation, strict protocol-v2 server events, and disconnect
+  cleanup;
+- a default-off Fabric/NeoForge real-client E2E controller plus deterministic
+  loopback model fixture and redacted report contract.
 
 A server mod is not required for the main client model mode. Dynamic Ponder
-generation remains Phase 3 because Ponder/Ponderer do not yet provide a 26.2
-runtime target; the knowledge layer already retains Patchouli multiblock
-coordinates and structure references for that workflow.
+generation remains Phase 4 because Ponder/Ponderer do not yet provide a 26.2
+runtime target. Phase 3C now provides the native player GUI; graphical E2E
+remains explicit opt-in and is never inferred from compilation. The knowledge layer already retains Patchouli
+multiblock coordinates and structure references for the later Ponder workflow.
+
+Press the configurable `K` mapping or run bare `/guide` in-world to open the
+non-pausing screen. It streams the current GuideService transcript, displays
+grounded tool/source details, and supports cancel, retry, sessions and explicit
+client/server model selection. Escape closes only the screen, not the request.
 
 ## License
 

@@ -41,7 +41,8 @@ public final class KnowledgeIndex {
                         excerpt(document.body(), normalizedQuery),
                         score.value,
                         score.fields,
-                        document.provenance()));
+                        document.provenance(),
+                        document.evidence()));
             }
         }
         results.sort(java.util.Comparator.comparingInt(KnowledgeSearchResult::score)

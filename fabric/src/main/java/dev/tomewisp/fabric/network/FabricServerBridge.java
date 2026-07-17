@@ -10,6 +10,7 @@ import dev.tomewisp.bridge.protocol.CapabilityPayload;
 import dev.tomewisp.bridge.protocol.RemoteCancelPayload;
 import dev.tomewisp.bridge.protocol.RemoteToolCallPayload;
 import dev.tomewisp.bridge.protocol.ServerAgentRequestPayload;
+import dev.tomewisp.bridge.protocol.ServerAgentCancelPayload;
 import dev.tomewisp.bridge.server.ExportedToolPolicy;
 import dev.tomewisp.bridge.server.RemoteToolServer;
 import dev.tomewisp.context.minecraft.MinecraftContextCapture;
@@ -126,6 +127,14 @@ public final class FabricServerBridge {
                         if (serverGuide instanceof ToolResult.Success<ServerGuideRuntime> success) {
                             success.value().service().ask(
                                     actor, codec.decode(packet.json(), ServerAgentRequestPayload.class));
+                        }
+                    }
+                    case "agent_cancel" -> {
+                        if (serverGuide instanceof ToolResult.Success<ServerGuideRuntime> success) {
+                            success.value().service().cancel(
+                                    actor,
+                                    codec.decode(packet.json(), ServerAgentCancelPayload.class)
+                                            .requestId());
                         }
                     }
                     default -> throw new IllegalArgumentException("Unknown bridge packet " + packet.kind());

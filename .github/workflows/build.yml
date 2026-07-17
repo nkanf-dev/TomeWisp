@@ -21,6 +21,13 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
       - name: Test common
         run: ./gradlew :common:test
+      - name: Validate opt-in E2E harness
+        run: |
+          bash -n scripts/run-real-client-e2e.sh
+          python3 - <<'PY'
+          import ast, pathlib
+          ast.parse(pathlib.Path("scripts/e2e-model-fixture.py").read_text(encoding="utf-8"))
+          PY
       - name: Build loaders
         run: ./gradlew :fabric:build :neoforge:build
       - uses: actions/upload-artifact@v4

@@ -5,6 +5,7 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import dev.tomewisp.tool.ToolResult;
+import dev.tomewisp.context.EvidenceBearing;
 import java.util.Objects;
 import java.util.TreeSet;
 
@@ -18,6 +19,13 @@ public final class ToolResultNormalizer {
     public JsonObject normalize(ToolResult<?> result, Class<?> outputType) {
         JsonObject normalized = new JsonObject();
         if (result instanceof ToolResult.Success<?> success) {
+            if (EvidenceBearing.class.isAssignableFrom(outputType)) {
+                if (!(success.value() instanceof EvidenceBearing grounded)
+                        || grounded.evidence() == null
+                        || grounded.evidence().isEmpty()) {
+                    throw new IllegalArgumentException("Grounded tool output has no evidence");
+                }
+            }
             normalized.addProperty("status", "success");
             normalized.addProperty("outputType", outputType.getName());
             normalized.add("value", canonicalize(gson.toJsonTree(success.value())));

@@ -2,11 +2,14 @@ package dev.tomewisp.trace.replay;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import com.google.gson.Gson;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import dev.tomewisp.tool.ToolResult;
+import dev.tomewisp.context.EvidenceBearing;
+import dev.tomewisp.context.EvidenceMetadata;
 import java.util.ArrayList;
 import java.util.List;
 import org.junit.jupiter.api.Test;
@@ -15,6 +18,9 @@ final class ToolCodecAndNormalizerTest {
     record Input(int count) {}
 
     record Output(String zeta, String alpha, List<Integer> complete) {}
+
+    record UngroundedOutput(String fact, List<EvidenceMetadata> evidence)
+            implements EvidenceBearing {}
 
     private final Gson gson = new Gson();
 
@@ -45,6 +51,17 @@ final class ToolCodecAndNormalizerTest {
                 new ArrayList<>(value.getAsJsonObject("value").keySet()));
         assertEquals("unabridged", value.getAsJsonObject("value").get("zeta").getAsString());
         assertEquals(3, value.getAsJsonObject("value").getAsJsonArray("complete").size());
+    }
+
+    @Test
+    void rejectsSuccessfulGroundedOutputsWithoutEvidence() {
+        IllegalArgumentException failure = assertThrows(
+                IllegalArgumentException.class,
+                () -> new ToolResultNormalizer(gson).normalize(
+                        new ToolResult.Success<>(new UngroundedOutput("claim", List.of())),
+                        UngroundedOutput.class));
+
+        assertEquals("Grounded tool output has no evidence", failure.getMessage());
     }
 
     private static JsonObject object(String json) {

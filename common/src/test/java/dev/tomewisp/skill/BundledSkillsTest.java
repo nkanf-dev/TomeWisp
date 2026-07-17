@@ -13,6 +13,11 @@ final class BundledSkillsTest {
         Set<String> tools = Set.of(
                 "tomewisp:resolve_resource",
                 "tomewisp:find_recipes",
+                "tomewisp:search_recipes",
+                "tomewisp:get_recipe",
+                "tomewisp:find_item_usages",
+                "tomewisp:inspect_inventory",
+                "tomewisp:calculate_craftability",
                 "tomewisp:player_context",
                 "tomewisp:list_knowledge_sources",
                 "tomewisp:search_knowledge",

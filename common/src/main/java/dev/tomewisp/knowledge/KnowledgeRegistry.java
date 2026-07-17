@@ -13,11 +13,13 @@ public final class KnowledgeRegistry {
     public synchronized boolean reload(List<? extends KnowledgeSourceProvider> providers) {
         List<KnowledgeDocument> documents = new ArrayList<>();
         List<KnowledgeDiagnostic> nextDiagnostics = new ArrayList<>();
+        List<dev.tomewisp.context.EvidenceMetadata> evidence = new ArrayList<>();
         Set<String> keys = new HashSet<>();
         try {
             for (KnowledgeSourceProvider provider : List.copyOf(providers)) {
                 KnowledgeLoad load = provider.load();
                 nextDiagnostics.addAll(load.diagnostics());
+                evidence.addAll(load.evidence());
                 for (KnowledgeDocument document : load.documents()) {
                     if (!document.sourceId().equals(provider.sourceId())
                             && !document.sourceId().startsWith(provider.sourceId() + ":")) {
@@ -33,7 +35,8 @@ public final class KnowledgeRegistry {
                 }
             }
             documents.sort(java.util.Comparator.comparing(KnowledgeDocument::key));
-            snapshot = new KnowledgeSnapshot(documents, Instant.now());
+            snapshot = new KnowledgeSnapshot(
+                    documents, Instant.now(), evidence.stream().distinct().toList());
             diagnostics = List.copyOf(nextDiagnostics);
             return true;
         } catch (Exception failure) {

@@ -11,6 +11,7 @@ accepted and contains explicit approval evidence.
 | SKMB-2026-07-17-001 | accepted | Phase 2 client-first Agent runtime | A, B, C, D, E, F, G | decisions/2026-07-17-001-client-first-agent-runtime.md | 77b4970 |
 | SKMB-2026-07-17-002 | accepted | shared server model queue | A, B, C, D, F | decisions/2026-07-17-002-shared-server-model-queue.md | fc55c60 |
 | SKMB-2026-07-17-003 | accepted | multi-session endpoint rate scheduling | A, B, C, D, F | decisions/2026-07-17-003-multi-session-rate-scheduling.md | 17b2f20 |
+| SKMB-2026-07-17-004 | accepted | Phase 3 product state | A, B, C, D, E, F | decisions/2026-07-17-004-phase-3-product-state.md | e4a77ad |
 
 ## Named States
 
@@ -24,6 +25,7 @@ accepted and contains explicit approval evidence.
 | completed | A grounded final answer has been delivered | AgentSessionStore | Terminal | SKMB-2026-07-17-001 |
 | failed | The request ended with an explicit structured failure | AgentSessionStore | Terminal; no fabricated fallback | SKMB-2026-07-17-001 |
 | cancelled | The player, disconnect handler, or shutdown cancelled the request | AgentSessionStore | Terminal; late events are ignored | SKMB-2026-07-17-001 |
+| guide_unconfigured | The GUI is available but no usable client/server model is selected | GuideService | Configuration can be inspected; questions cannot submit | SKMB-2026-07-17-004 |
 
 ## Transition Decisions
 
@@ -40,13 +42,17 @@ accepted and contains explicit approval evidence.
 | T9 | queued | endpoint cooldown expires and fair scheduler selects session | preparing | Remove queue head and capture current context/history | SKMB-2026-07-17-003 |
 | T10 | queued | cancel or disconnect | cancelled | Remove item and publish cancellation if connected | SKMB-2026-07-17-002 |
 | T11 | model_wait | provider returns HTTP 429 | queued | Read Retry-After or compute backoff, close endpoint gate, and requeue request | SKMB-2026-07-17-003 |
+| T12 | any active | GUI closes | unchanged | Keep request and session alive; detach only the screen listener | SKMB-2026-07-17-004 |
+| T13 | any connection state | disconnect | cancelled then idle | Cancel requests, suppress late events, clear scoped sessions and capabilities | SKMB-2026-07-17-004 |
+| T14 | terminal failed/cancelled | explicit retry | preparing | Create a new request ID in the same session with the retained user message | SKMB-2026-07-17-004 |
+| T15 | any | model mode changes | unchanged | Apply selected topology only to future requests | SKMB-2026-07-17-004 |
 
 ## Invariants
 
 | id | invariant | source |
 | --- | --- | --- |
 | I1 | Client-local mode works without TomeWisp installed on the server | SKMB-2026-07-17-001 |
-| I2 | At most one Agent request is active per player/client | SKMB-2026-07-17-001 |
+| I2 | At most one Agent request is active per `(actorId, sessionId)`; other sessions may run concurrently | SKMB-2026-07-17-003 |
 | I3 | API credentials never enter packets, prompts, traces, logs, or tool results | SKMB-2026-07-17-001 |
 | I4 | Only registered read-only tools are callable in Phase 2 | SKMB-2026-07-17-001 |
 | I5 | Live Minecraft objects never leave their owning game thread | SKMB-2026-07-17-001 |
@@ -56,6 +62,13 @@ accepted and contains explicit approval evidence.
 | I9 | A failed or cancelled server request releases its slot and cannot stall the queue | SKMB-2026-07-17-002 |
 | I10 | Different sessions owned by the same player may execute concurrently | SKMB-2026-07-17-003 |
 | I11 | Rate-limit state is isolated by model endpoint/credential configuration | SKMB-2026-07-17-003 |
+| I12 | Commands and GUI project the same GuideService request/session state | SKMB-2026-07-17-004 |
+| I13 | Closing a Screen never implicitly cancels an Agent request | SKMB-2026-07-17-004 |
+| I14 | Connection-scoped sessions, capabilities, and knowledge never cross a disconnect | SKMB-2026-07-17-004 |
+| I15 | Every factual success exposes authority, completeness, capture time, source, and provenance | SKMB-2026-07-17-004 |
+| I16 | Model-mode changes and failures never silently move an active request to another topology | SKMB-2026-07-17-004 |
+| I17 | An unloaded or empty knowledge snapshot carries explicit completeness; it is never silently treated as proof that no knowledge exists | SKMB-2026-07-17-004 |
+| I18 | Craftability allocates overlapping alternatives deterministically and never implies recursive intermediate crafting | SKMB-2026-07-17-004 |
 
 ## Fail Semantics
 
@@ -68,6 +81,10 @@ accepted and contains explicit approval evidence.
 | F5 | Server bridge identity or correlation is invalid | Reject and log a redacted diagnostic | SKMB-2026-07-17-001 |
 | F6 | Optional FTB Quests or Patchouli integration is absent | Keep the Agent operational and expose an unavailable capability diagnostic | SKMB-2026-07-17-001 |
 | F7 | A model endpoint returns 429 | Queue/requeue against that endpoint until Retry-After or cancellable backoff expires | SKMB-2026-07-17-003 |
+| F8 | Recipe or inventory evidence is incomplete | Return a non-conclusive result; never claim craftability conclusively | SKMB-2026-07-17-004 |
+| F9 | A source-scoped recipe/document reference is stale | Return `stale_reference`; a new search requires an explicit new action | SKMB-2026-07-17-004 |
+| F10 | A remote event is malformed or loses correlation | Fail the affected request closed and do not mutate another session | SKMB-2026-07-17-004 |
+| F11 | A factual output type returns success without evidence | Reject normalization with `Grounded tool output has no evidence`; do not expose the success to the model | SKMB-2026-07-17-004 |
 
 ## Statistical Defaults Allowed Temporarily
 

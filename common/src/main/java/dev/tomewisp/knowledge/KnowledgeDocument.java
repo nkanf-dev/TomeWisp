@@ -1,5 +1,10 @@
 package dev.tomewisp.knowledge;
 
+import dev.tomewisp.context.DataAuthority;
+import dev.tomewisp.context.DataCompleteness;
+import dev.tomewisp.context.EvidenceMetadata;
+import java.time.Instant;
+import java.util.Map;
 import java.util.Set;
 
 public record KnowledgeDocument(
@@ -13,7 +18,8 @@ public record KnowledgeDocument(
         Set<String> recipeIds,
         String structureRef,
         boolean visible,
-        String provenance) {
+        String provenance,
+        EvidenceMetadata evidence) {
     public KnowledgeDocument {
         require(sourceId, "sourceId");
         require(documentId, "documentId");
@@ -24,6 +30,42 @@ public record KnowledgeDocument(
         itemIds = Set.copyOf(itemIds);
         recipeIds = Set.copyOf(recipeIds);
         require(provenance, "provenance");
+        java.util.Objects.requireNonNull(evidence, "evidence");
+    }
+
+    public KnowledgeDocument(
+            String sourceId,
+            String documentId,
+            KnowledgeKind kind,
+            String title,
+            String body,
+            String namespace,
+            Set<String> itemIds,
+            Set<String> recipeIds,
+            String structureRef,
+            boolean visible,
+            String provenance) {
+        this(
+                sourceId,
+                documentId,
+                kind,
+                title,
+                body,
+                namespace,
+                itemIds,
+                recipeIds,
+                structureRef,
+                visible,
+                provenance,
+                new EvidenceMetadata(
+                        DataAuthority.DETERMINISTIC_TEST,
+                        DataCompleteness.COMPLETE,
+                        Instant.EPOCH,
+                        "tomewisp:test_fixture",
+                        "tomewisp:knowledge_fixture",
+                        "test",
+                        "common-test",
+                        Map.of("tomewisp:fixture_provenance", provenance)));
     }
 
     public String key() {

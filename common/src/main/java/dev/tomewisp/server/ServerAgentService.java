@@ -7,7 +7,7 @@ import dev.tomewisp.agent.GameGuideAgent;
 import dev.tomewisp.agent.session.AgentSessionKey;
 import dev.tomewisp.agent.session.AgentSessionStore;
 import dev.tomewisp.agent.tool.AgentToolExecutor;
-import dev.tomewisp.bridge.protocol.BridgeProtocol;
+import dev.tomewisp.bridge.protocol.ServerAgentEventCodec;
 import dev.tomewisp.bridge.protocol.ServerAgentEventPayload;
 import dev.tomewisp.bridge.protocol.ServerAgentRequestPayload;
 import dev.tomewisp.context.ContextCapability;
@@ -32,7 +32,7 @@ public final class ServerAgentService {
     private final AgentSessionStore sessions;
     private final ContextProvider contexts;
     private final ServerGuideEvents events;
-    private final Gson gson;
+    private final ServerAgentEventCodec eventCodec;
     private final String systemPrompt;
     private final Function<dev.tomewisp.model.CancellationSignal, CompletableFuture<Void>> dispatchReady;
     private final Map<UUID, Owner> active = new ConcurrentHashMap<>();
@@ -63,7 +63,7 @@ public final class ServerAgentService {
         this.sessions = sessions;
         this.contexts = contexts;
         this.events = events;
-        this.gson = gson;
+        this.eventCodec = new ServerAgentEventCodec(gson);
         this.systemPrompt = systemPrompt;
         this.dispatchReady = dispatchReady;
     }
@@ -142,16 +142,7 @@ public final class ServerAgentService {
             return;
         }
         boolean terminal = event instanceof AgentEvent.FinalText || event instanceof AgentEvent.Failed;
-        String type = switch (event) {
-            case AgentEvent.StateChanged ignored -> "state";
-            case AgentEvent.ModelProgress ignored -> "model_progress";
-            case AgentEvent.ToolStarted ignored -> "tool_started";
-            case AgentEvent.ToolCompleted ignored -> "tool_completed";
-            case AgentEvent.FinalText ignored -> "final_text";
-            case AgentEvent.Failed ignored -> "failed";
-        };
-        events.send(owner.actorId(), new ServerAgentEventPayload(
-                BridgeProtocol.VERSION, requestId, type, gson.toJson(event), terminal));
+        events.send(owner.actorId(), eventCodec.encode(requestId, event));
         if (terminal) {
             active.remove(requestId, owner);
         }
@@ -167,8 +158,7 @@ public final class ServerAgentService {
         }
         String message = cause.getMessage() == null ? cause.getClass().getSimpleName() : cause.getMessage();
         AgentEvent.Failed failed = new AgentEvent.Failed("server_agent_failure", message);
-        events.send(owner.actorId(), new ServerAgentEventPayload(
-                BridgeProtocol.VERSION, requestId, "failed", gson.toJson(failed), true));
+        events.send(owner.actorId(), eventCodec.encode(requestId, failed));
     }
 
     private boolean owns(UUID requestId, Owner owner) {

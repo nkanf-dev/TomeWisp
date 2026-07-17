@@ -53,7 +53,12 @@ public final class AgentSessionStore {
 
     public synchronized boolean cancel(AgentSessionKey key) {
         Session session = sessions.get(key);
-        return session != null && session.active != null && session.active.cancellation().cancel();
+        if (session == null || session.active == null) {
+            return false;
+        }
+        Lease cancelled = session.active;
+        session.active = null;
+        return cancelled.cancellation().cancel();
     }
 
     public synchronized void clear(AgentSessionKey key) {

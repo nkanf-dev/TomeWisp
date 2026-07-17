@@ -152,7 +152,8 @@ public final class GameGuideAgent {
                 return tools.execute(call.name(), call.input(), request.context(), lease.cancellation())
                         .thenApply(result -> {
                             trace.toolResult(result);
-                            events.accept(new AgentEvent.ToolCompleted(result.toolId(), result.failure()));
+                            events.accept(new AgentEvent.ToolCompleted(
+                                    result.toolId(), result.failure(), result.normalized()));
                             List<ModelContent> results = new ArrayList<>(outcome.results());
                             results.add(new ModelContent.ToolResult(
                                     call.id(), result.normalized(), result.failure()));

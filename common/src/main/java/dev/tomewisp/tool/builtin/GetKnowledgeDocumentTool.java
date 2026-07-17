@@ -1,17 +1,25 @@
 package dev.tomewisp.tool.builtin;
 
 import dev.tomewisp.context.ToolInvocationContext;
+import dev.tomewisp.context.EvidenceBearing;
+import dev.tomewisp.context.EvidenceMetadata;
 import dev.tomewisp.knowledge.KnowledgeDocument;
 import dev.tomewisp.knowledge.KnowledgeRegistry;
 import dev.tomewisp.tool.Tool;
 import dev.tomewisp.tool.ToolAccess;
 import dev.tomewisp.tool.ToolDescriptor;
 import dev.tomewisp.tool.ToolResult;
+import java.util.List;
 
 public final class GetKnowledgeDocumentTool
         implements Tool<GetKnowledgeDocumentTool.Input, GetKnowledgeDocumentTool.Output> {
     public record Input(String sourceId, String documentId) {}
-    public record Output(KnowledgeDocument document) {}
+    public record Output(KnowledgeDocument document, List<EvidenceMetadata> evidence)
+            implements EvidenceBearing {
+        public Output {
+            evidence = List.copyOf(evidence);
+        }
+    }
 
     private static final ToolDescriptor<Input, Output> DESCRIPTOR = new ToolDescriptor<>(
             "tomewisp:get_knowledge_document",
@@ -36,7 +44,8 @@ public final class GetKnowledgeDocumentTool
                 .filter(document -> document.sourceId().equals(input.sourceId())
                         && document.documentId().equals(input.documentId()))
                 .findFirst()
-                .<ToolResult<Output>>map(document -> new ToolResult.Success<>(new Output(document)))
+                .<ToolResult<Output>>map(document -> new ToolResult.Success<>(new Output(
+                        document, List.of(document.evidence()))))
                 .orElseGet(() -> new ToolResult.Failure<>(
                         "knowledge_not_found", "No visible indexed document matches that identity"));
     }

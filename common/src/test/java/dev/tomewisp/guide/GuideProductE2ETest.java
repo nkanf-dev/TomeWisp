@@ -52,13 +52,13 @@ final class GuideProductE2ETest {
                 new CalculateCraftabilityTool()));
         TomeWispRuntime base = runtime(tools);
         ScriptedModel model = new ScriptedModel(List.of(
-                tool("1", "tomewisp__search_recipes", json(
+                toolWithText("1", "准备查询配方。", "tomewisp__search_recipes", json(
                         "outputItem", "minecraft:iron_block")),
-                tool("2", "tomewisp__get_recipe", json(
+                toolWithText("2", "我再确认完整配方。", "tomewisp__get_recipe", json(
                         "sourceId", "minecraft:recipe_manager",
                         "recipeId", "minecraft:iron_block")),
-                tool("3", "tomewisp__inspect_inventory", new JsonObject()),
-                tool("4", "tomewisp__calculate_craftability", json(
+                toolWithText("3", "现在检查你的库存。", "tomewisp__inspect_inventory", new JsonObject()),
+                toolWithText("4", "最后计算材料缺口。", "tomewisp__calculate_craftability", json(
                         "sourceId", "minecraft:recipe_manager",
                         "recipeId", "minecraft:iron_block",
                         "crafts", 1)),
@@ -91,6 +91,18 @@ final class GuideProductE2ETest {
 
         assertEquals(GuideRequestStatus.COMPLETED, completed.status());
         assertEquals(4, completed.tools().size());
+        assertEquals(
+                List.of(
+                        GuideTimelineEntry.Assistant.class,
+                        GuideTimelineEntry.Tool.class,
+                        GuideTimelineEntry.Assistant.class,
+                        GuideTimelineEntry.Tool.class,
+                        GuideTimelineEntry.Assistant.class,
+                        GuideTimelineEntry.Tool.class,
+                        GuideTimelineEntry.Assistant.class,
+                        GuideTimelineEntry.Tool.class,
+                        GuideTimelineEntry.Assistant.class),
+                completed.timeline().stream().map(Object::getClass).toList());
         assertTrue(completed.tools().stream().allMatch(
                 value -> value.status() == GuideToolStatus.SUCCEEDED));
         assertFalse(completed.sources().isEmpty());
@@ -121,6 +133,13 @@ final class GuideProductE2ETest {
 
     private static ModelTurn tool(String id, String name, JsonObject arguments) {
         return new ModelTurn("fixture", "scripted", List.of(
+                new ModelContent.ToolUse(id, name, arguments)), "tool_use", ModelUsage.empty());
+    }
+
+    private static ModelTurn toolWithText(
+            String id, String text, String name, JsonObject arguments) {
+        return new ModelTurn("fixture", "scripted", List.of(
+                new ModelContent.Text(text),
                 new ModelContent.ToolUse(id, name, arguments)), "tool_use", ModelUsage.empty());
     }
 
@@ -157,8 +176,10 @@ final class GuideProductE2ETest {
                 CancellationSignal cancellation) {
             requests.add(request);
             ModelTurn turn = turns.removeFirst();
-            if (turn.toolUses().isEmpty()) {
+            if (!turn.text().isBlank()) {
                 events.accept(new ModelEvent.TextDelta(turn.text()));
+            }
+            if (turn.toolUses().isEmpty()) {
                 events.accept(new ModelEvent.UsageUpdate(turn.usage()));
             }
             return CompletableFuture.completedFuture(turn);

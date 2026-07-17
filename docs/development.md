@@ -130,11 +130,13 @@ the latest immutable GuideSnapshot.
 The screen provides a responsive session rail/overlay, virtualized wrapped
 transcript, multiline composer (`Ctrl+Enter` sends), stop/retry controls, and an
 explicit local/server model selector. Only model text deltas are visible;
-reasoning is absent from the UI view type. Grounded recipe, inventory and
-craftability tools receive first-class summaries, while other tools use a
-deterministic normalized-result fallback. Clicking a tool or source opens an
-in-game evidence detail panel; no browser is launched. Session switches and
-disconnect cleanup remove stale detail state.
+reasoning is absent from the UI view type. Assistant segments and tool cards
+render in actual Agent event order, and a running card updates in place by its
+tool invocation ID before later assistant text appears. Grounded recipe,
+inventory and craftability tools receive first-class summaries, while other
+tools use a deterministic normalized-result fallback. Clicking a tool or source
+opens an in-game evidence detail panel; no browser is launched. Session switches
+and disconnect cleanup remove stale detail state.
 
 If the selected model is unavailable, the screen still opens and shows the
 configuration/capability state. Client configuration remains at

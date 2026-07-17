@@ -669,7 +669,7 @@ git commit -m "feat: render interleaved agent timeline"
 - Modify: `README.md`
 - Modify: `docs/development.md`
 
-- [ ] **Step 1: Write a service-level interleaving test**
+- [x] **Step 1: Write a service-level interleaving test**
 
 Extend `FakeLocal` to emit assistant text, two exact tool lifecycles, later
 assistant text, and final text. Assert the snapshot timeline order and that the
@@ -681,13 +681,13 @@ assertEquals(5, request.timeline().size());
 assertEquals("final answer", session.messages().getLast().text());
 ```
 
-- [ ] **Step 2: Write an E2E assertion for the long grounded chain**
+- [x] **Step 2: Write an E2E assertion for the long grounded chain**
 
 In `GuideProductE2ETest`, assert that recipe search/detail/inventory/
 craftability tool entries occupy their emitted positions and that any visible
 assistant continuation after a tool appears after that tool entry.
 
-- [ ] **Step 3: Run focused guide tests and confirm failures**
+- [x] **Step 3: Run focused guide tests and confirm failures**
 
 ```bash
 ./gradlew :common:test --tests 'dev.tomewisp.guide.GuideServiceTest' \
@@ -697,7 +697,7 @@ assistant continuation after a tool appears after that tool entry.
 
 Expected: FAIL until fixtures and terminal message behavior use the timeline.
 
-- [ ] **Step 4: Keep service history terminal-only and timeline-safe**
+- [x] **Step 4: Keep service history terminal-only and timeline-safe**
 
 When a request becomes terminal, add a session assistant message only from
 `after.assistantText()`. Do not concatenate intermediate explanatory segments
@@ -707,7 +707,7 @@ already retains provider turns and tool messages.
 If reducer application produces terminal `timeline_protocol_error`, publish it
 like every other structured failure and release the active session slot.
 
-- [ ] **Step 5: Update command tool notices without flattened indexes**
+- [x] **Step 5: Update command tool notices without flattened indexes**
 
 Track seen invocation IDs rather than only a count:
 
@@ -722,13 +722,13 @@ for (GuideToolActivity tool : request.tools()) {
 
 The terminal command answer remains `request.assistantText()`.
 
-- [ ] **Step 6: Document the visible chronology**
+- [x] **Step 6: Document the visible chronology**
 
 Update README and development GUI sections to state that assistant segments and
 tool cards render in actual event order, running cards update in place, and
 reasoning remains hidden.
 
-- [ ] **Step 7: Run the focused guide suite**
+- [x] **Step 7: Run the focused guide suite**
 
 ```bash
 ./gradlew :common:test --tests 'dev.tomewisp.guide.*'
@@ -736,7 +736,7 @@ reasoning remains hidden.
 
 Expected: PASS.
 
-- [ ] **Step 8: Run architecture and bridge coverage**
+- [x] **Step 8: Run architecture and bridge coverage**
 
 ```bash
 ./gradlew :common:test --tests 'dev.tomewisp.client.ClientArchitectureTest' \
@@ -745,7 +745,7 @@ Expected: PASS.
 
 Expected: PASS.
 
-- [ ] **Step 9: Commit service and documentation integration**
+- [x] **Step 9: Commit service and documentation integration**
 
 ```bash
 git add common/src/main/java/dev/tomewisp/guide \

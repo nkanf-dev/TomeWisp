@@ -2,7 +2,9 @@ package dev.tomewisp.guide;
 
 import dev.tomewisp.TomeWispRuntime;
 import dev.tomewisp.tool.ToolResult;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 import java.util.function.Consumer;
 
@@ -32,15 +34,16 @@ public final class GuideCommandFacade {
         GuideService service = services.forActor(actor);
         final GuideSubscription[] subscription = new GuideSubscription[1];
         final UUID[] requestId = new UUID[1];
-        final int[] seenTools = {0};
+        Set<String> seenTools = new LinkedHashSet<>();
         final GuideRequestStatus[] seenStatus = {null};
         subscription[0] = service.subscribe(snapshot -> {
             if (requestId[0] == null) return;
             GuideRequestSnapshot request = find(snapshot, requestId[0]);
             if (request == null) return;
-            while (seenTools[0] < request.tools().size()) {
-                GuideToolActivity tool = request.tools().get(seenTools[0]++);
-                notices.accept(GuideNotice.info("查询 " + tool.toolId()));
+            for (GuideToolActivity tool : request.tools()) {
+                if (seenTools.add(tool.invocationId())) {
+                    notices.accept(GuideNotice.info("查询 " + tool.toolId()));
+                }
             }
             if (request.status() == GuideRequestStatus.RATE_LIMITED
                     && seenStatus[0] != GuideRequestStatus.RATE_LIMITED) {

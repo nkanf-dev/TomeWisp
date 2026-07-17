@@ -341,7 +341,8 @@ public final class GuideService {
             return;
         }
         session.requests.set(index, after);
-        if (after.terminal() && !after.assistantText().isBlank()) {
+        if (after.status() == GuideRequestStatus.COMPLETED
+                && !after.assistantText().isBlank()) {
             session.messages.add(new GuideMessage(
                     after.requestId(),
                     GuideMessage.Role.ASSISTANT,

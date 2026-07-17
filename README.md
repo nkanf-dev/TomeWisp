@@ -71,8 +71,11 @@ coordinates and structure references for a later visual-tutorial workflow.
 
 Press the configurable `K` mapping or run bare `/guide` in-world to open the
 non-pausing screen. It streams the current GuideService transcript, displays
-grounded tool/source details, and supports cancel, retry, sessions and explicit
-client/server model selection. Escape closes only the screen, not the request.
+grounded tool/source details, and preserves the real Agent chronology: assistant
+segments, inline tool calls/results, later continuations, and the final answer.
+Running tool cards update in place. The screen also supports cancel, retry,
+sessions and explicit client/server model selection. Escape closes only the
+screen, not the request.
 
 ## License
 

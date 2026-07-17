@@ -22,7 +22,7 @@
 
 - Modify `gradle.properties`, `common/build.gradle`, `fabric/build.gradle`, and `neoforge/build.gradle` for one packaged SQLite version.
 - Create `common/src/main/java/dev/tomewisp/guide/history/` for scope, durable records, strict codec, JDBC store, and asynchronous repository.
-- Modify `GuideToolActivity` and `GuideToolPresenter` so durable normal-mode cards retain only presentation lines, never full normalized results.
+- Create `GuideToolPresentation` and modify `GuideToolActivity`/`GuideToolPresenter` so durable normal-mode cards retain only presentation lines, never full normalized results.
 - Create `common/src/main/java/dev/tomewisp/guide/GuidePersistenceSnapshot.java` and update GuideService snapshots/status.
 - Create `common/src/main/java/dev/tomewisp/client/MinecraftGuideHistoryScope.java` and wire both loader client entrypoints.
 - Create `scripts/verify-sqlite-packaging.sh` for retained production-JAR runtime proof.
@@ -164,7 +164,7 @@ must retain the warning behavior as compatibility evidence.
 - Modify: `common/src/test/java/dev/tomewisp/guide/GuideStateReducerTest.java`
 - Modify: `common/src/test/java/dev/tomewisp/guide/ui/GuideToolPresenterTest.java`
 
-- [ ] **Step 1: Write failing scope and round-trip tests**
+- [x] **Step 1: Write failing scope and round-trip tests**
 
 Cover deterministic hashing, actor and connection isolation, absence of raw
 address/path in `scopeId`, exact assistant/tool chronology, evidence, usage,
@@ -191,7 +191,7 @@ assertThrows(IllegalArgumentException.class,
         () -> codec.decodeTimeline(malformed.toString()));
 ```
 
-- [ ] **Step 2: Run and confirm the domain is absent**
+- [x] **Step 2: Run and confirm the domain is absent**
 
 ```bash
 ./gradlew :common:test --tests 'dev.tomewisp.guide.history.GuideHistoryCodecTest'
@@ -199,7 +199,7 @@ assertThrows(IllegalArgumentException.class,
 
 Expected: compilation fails because the history records do not exist.
 
-- [ ] **Step 3: Implement immutable scope and partition records**
+- [x] **Step 3: Implement immutable scope and partition records**
 
 `GuideHistoryScope.derive` lowercases and trims multiplayer addresses,
 normalizes absolute single-player paths, hashes UTF-8 bytes with SHA-256, and
@@ -211,7 +211,7 @@ belongs to its containing session and every message references a same-session
 request. Do not store capabilities, inventory, recipe generations, or live
 objects.
 
-- [ ] **Step 4: Implement a manual strict codec**
+- [x] **Step 4: Implement a manual strict codec**
 
 Use `JsonParser` and exact field-set checks for every object. Encode `Instant`
 as ISO-8601, enums by exact name, and normalized JSON as deep copies. Do not use
@@ -225,7 +225,7 @@ null and retain invocation ID, index, tool ID, status, sources, and presentation
 lines. The codec has no representable field for reasoning, credentials,
 authorization headers, cookies, or raw provider bodies.
 
-- [ ] **Step 5: Run strict codec tests**
+- [x] **Step 5: Run strict codec tests**
 
 ```bash
 ./gradlew :common:test --tests 'dev.tomewisp.guide.history.GuideHistoryCodecTest'
@@ -233,7 +233,7 @@ authorization headers, cookies, or raw provider bodies.
 
 Expected: PASS for complete round trips and explicit malformed failures.
 
-- [ ] **Step 6: Commit the durable domain**
+- [x] **Step 6: Commit the durable domain**
 
 ```bash
 git add common/src/main/java/dev/tomewisp/guide/history \

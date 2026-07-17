@@ -321,11 +321,12 @@ public final class TomeWispScreen extends Screen {
         if (selectedTool != null) {
             y = detailLine(graphics, "工具: " + selectedTool.toolId(), detail, y);
             y = detailLine(graphics, "状态: " + selectedTool.status(), detail, y);
-            if (selectedTool.normalized() != null) {
-                for (String line : GuideToolPresenter.lines(
-                        selectedTool.toolId(), selectedTool.normalized())) {
-                    y = detailLine(graphics, line, detail, y);
-                }
+            List<String> presentation = selectedTool.presentationLines().isEmpty()
+                    && selectedTool.normalized() != null
+                    ? GuideToolPresenter.lines(selectedTool.toolId(), selectedTool.normalized())
+                    : selectedTool.presentationLines();
+            for (String line : presentation) {
+                y = detailLine(graphics, line, detail, y);
             }
             for (GuideSource source : selectedTool.sources()) {
                 y = evidence(graphics, source, detail, y);

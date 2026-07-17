@@ -9,6 +9,7 @@ public record GuideToolActivity(
         String toolId,
         GuideToolStatus status,
         JsonObject normalized,
+        List<String> presentationLines,
         List<GuideSource> sources) {
     public GuideToolActivity {
         if (invocationId == null || invocationId.isBlank()
@@ -17,6 +18,7 @@ public record GuideToolActivity(
         }
         java.util.Objects.requireNonNull(status, "status");
         normalized = normalized == null ? null : normalized.deepCopy();
+        presentationLines = List.copyOf(presentationLines);
         sources = List.copyOf(sources);
     }
 

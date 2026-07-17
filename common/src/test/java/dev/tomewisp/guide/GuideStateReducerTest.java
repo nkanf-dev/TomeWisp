@@ -28,6 +28,7 @@ final class GuideStateReducerTest {
                 "tomewisp:get_recipe",
                 GuideToolStatus.SUCCEEDED,
                 groundedResult(),
+                List.of("配方详情不可用"),
                 List.of());
         GuideRequestSnapshot request = new GuideRequestSnapshot(
                 requestId,
@@ -101,6 +102,8 @@ final class GuideStateReducerTest {
         assertEquals("You are missing five ingots.", request.assistantText());
         assertEquals(GuideRequestStatus.COMPLETED, request.status());
         assertEquals(GuideToolStatus.SUCCEEDED, request.tools().getFirst().status());
+        assertEquals(List.of("配方详情不可用"),
+                request.tools().getFirst().presentationLines());
         assertEquals(List.of("call-1", "call-2"), request.tools().stream()
                 .map(GuideToolActivity::invocationId)
                 .toList());

@@ -64,10 +64,10 @@ final class GuideUiViewTest {
     void projectsInterleavedTimelineInStoredOrder() {
         GuideToolActivity recipe = new GuideToolActivity(
                 "call-1", 0, "tomewisp:get_recipe",
-                GuideToolStatus.SUCCEEDED, null, List.of());
+                GuideToolStatus.SUCCEEDED, null, List.of(), List.of());
         GuideToolActivity inventory = new GuideToolActivity(
                 "call-2", 1, "tomewisp:inspect_inventory",
-                GuideToolStatus.SUCCEEDED, null, List.of());
+                GuideToolStatus.SUCCEEDED, null, List.of(), List.of());
         GuideRequestSnapshot request = new GuideRequestSnapshot(
                 REQUEST,
                 "main",

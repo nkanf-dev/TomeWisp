@@ -78,6 +78,7 @@ public final class GuideStateReducer {
                         completed.toolId(),
                         completed.failure() ? GuideToolStatus.FAILED : GuideToolStatus.SUCCEEDED,
                         completed.normalized(),
+                        GuideToolPresentation.lines(completed.toolId(), completed.normalized()),
                         toolSources);
                 ArrayList<GuideTimelineEntry> next = new ArrayList<>(timeline);
                 next.set(match, new GuideTimelineEntry.Tool(running.ordinal(), replacement));
@@ -177,6 +178,7 @@ public final class GuideStateReducer {
                 started.toolId(),
                 GuideToolStatus.RUNNING,
                 null,
+                List.of(),
                 List.of())));
         return List.copyOf(next);
     }

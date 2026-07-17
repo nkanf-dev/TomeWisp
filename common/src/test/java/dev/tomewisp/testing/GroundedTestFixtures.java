@@ -25,6 +25,7 @@ import dev.tomewisp.context.RegistrySnapshot;
 import dev.tomewisp.context.ToolInvocationContext;
 import java.time.Instant;
 import java.util.List;
+import java.util.ArrayList;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
@@ -104,6 +105,66 @@ public final class GroundedTestFixtures {
                 ItemStackSnapshot.empty(),
                 true,
                 playerEvidence());
+    }
+
+    public static InventorySnapshot inventory(Map<String, Long> counts) {
+        return inventory(counts, DataCompleteness.COMPLETE);
+    }
+
+    public static InventorySnapshot inventory(
+            Map<String, Long> counts, DataCompleteness completeness) {
+        ArrayList<InventorySlotSnapshot> slots = new ArrayList<>();
+        counts.entrySet().stream()
+                .sorted(Map.Entry.comparingByKey())
+                .forEach(entry -> slots.add(new InventorySlotSnapshot(
+                        slots.size(),
+                        new ItemStackSnapshot(
+                                entry.getKey(), Math.toIntExact(entry.getValue()), entry.getKey()))));
+        EvidenceMetadata base = playerEvidence();
+        EvidenceMetadata evidence = new EvidenceMetadata(
+                base.authority(),
+                completeness,
+                base.capturedAt(),
+                base.sourceId(),
+                base.provenance(),
+                base.gameVersion(),
+                base.loader(),
+                base.details());
+        return new InventorySnapshot(
+                slots,
+                slots.size(),
+                slots.isEmpty() ? -1 : 0,
+                slots.isEmpty() ? -1 : 0,
+                ItemStackSnapshot.empty(),
+                completeness == DataCompleteness.COMPLETE,
+                evidence);
+    }
+
+    public static RecipeEntrySnapshot overlappingAlternativeRecipe() {
+        IngredientAlternativeSnapshot oak = new IngredientAlternativeSnapshot(
+                "item", "minecraft:oak_planks", List.of("minecraft:oak_planks"));
+        IngredientAlternativeSnapshot planks = new IngredientAlternativeSnapshot(
+                "tag",
+                "minecraft:planks",
+                List.of("minecraft:birch_planks", "minecraft:oak_planks"));
+        return new RecipeEntrySnapshot(
+                new RecipeReference("minecraft:recipe_manager", "test:overlapping_planks"),
+                "test:overlapping_planks",
+                "minecraft:crafting",
+                new RecipeLayoutSnapshot(2, 1, true),
+                "minecraft:crafting_table",
+                List.of(
+                        new IngredientRequirementSnapshot("flexible", 1, true, List.of(planks)),
+                        new IngredientRequirementSnapshot("oak", 1, true, List.of(oak))),
+                List.of(),
+                List.of(),
+                List.of(new RecipeOutputSnapshot(
+                        new ItemStackSnapshot("minecraft:stick", 4, "Stick"), 1.0D)),
+                List.of(),
+                RecipeProcessingSnapshot.unknown(),
+                List.of(),
+                Map.of(),
+                serverEvidence());
     }
 
     public static PlayerSnapshot player() {

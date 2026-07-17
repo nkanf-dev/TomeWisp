@@ -758,7 +758,7 @@ git commit -m "test: verify interleaved guide workflow"
 **Files:**
 - Modify: `docs/superpowers/plans/2026-07-18-phase-4a-chronological-agent-timeline.md`
 
-- [ ] **Step 1: Run the clean product gate**
+- [x] **Step 1: Run the clean product gate**
 
 ```bash
 ./gradlew clean :common:test :fabric:build :neoforge:build
@@ -766,7 +766,7 @@ git commit -m "test: verify interleaved guide workflow"
 
 Expected: all common tests pass and both loader artifacts build.
 
-- [ ] **Step 2: Inspect artifacts and protocol metadata**
+- [x] **Step 2: Inspect artifacts and protocol metadata**
 
 ```bash
 find fabric/build/libs neoforge/build/libs -maxdepth 1 -type f -name '*.jar' -print
@@ -777,15 +777,43 @@ git status --short --branch
 Expected: production JARs exist, no whitespace errors, and no generated/runtime
 files are staged.
 
-- [ ] **Step 3: Mark completed checkboxes and record exact verification truth**
+- [x] **Step 3: Mark completed checkboxes and record exact verification truth**
 
 Update this plan with the commands run, test count, artifact names, and any
 explicitly unrun graphical/live-provider checks. Do not claim the final modded
 smoke; that belongs to the final Phase 4 verification plan.
 
-- [ ] **Step 4: Commit the Phase 4A verification record**
+- [x] **Step 4: Commit the Phase 4A verification record**
 
 ```bash
 git add docs/superpowers/plans/2026-07-18-phase-4a-chronological-agent-timeline.md
 git commit -m "docs: record chronological timeline verification"
 ```
+
+### Verification record
+
+Verified on 2026-07-18 with Java 25 using:
+
+```bash
+./gradlew clean :common:test :fabric:build :neoforge:build
+```
+
+The clean gate completed successfully in 22 seconds. Gradle reported 130
+passing common tests across 58 test result suites, with no test failures. The
+existing Javadoc and deprecation warnings remain non-fatal.
+
+The loader builds produced these production artifacts:
+
+```text
+fabric/build/libs/tomewisp-fabric-26.2-0.1.0-SNAPSHOT.jar
+neoforge/build/libs/tomewisp-neoforge-26.2-0.1.0-SNAPSHOT.jar
+```
+
+Both loader builds also produced their source and Javadoc JARs. `git diff
+--check` completed with no whitespace errors, and the worktree contained no
+generated or runtime changes. Protocol documentation was inspected against the
+strict server event protocol version 3 implementation.
+
+No graphical client or live provider request was run for Phase 4A. The final
+modded real-client smoke remains a Phase 4 completion gate and must retain its
+own evidence before being claimed.

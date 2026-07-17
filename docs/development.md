@@ -93,7 +93,7 @@ tool location are independent.
 Commands, the Phase 3C screen, and development probes consume one
 connection-scoped `GuideService`. It owns immutable request/session snapshots,
 model mode, topology, cancellation, retry, sources, and disconnect cleanup.
-The server Agent event protocol is version 2 and is decoded once in common
+The server Agent event protocol is version 3 and is decoded once in common
 code. Unknown or malformed events fail only their correlated request; there is
 no silent client/server fallback.
 

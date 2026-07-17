@@ -23,9 +23,16 @@ dependencies {
     testImplementation('com.google.code.gson:gson:2.14.0')
     testImplementation('org.junit.jupiter:junit-jupiter:5.11.4')
     testRuntimeOnly('org.junit.platform:junit-platform-launcher:1.11.4')
+    testRuntimeOnly("org.xerial:sqlite-jdbc:${sqlite_jdbc_version}")
 }
 
 tasks.withType(Test).configureEach { useJUnitPlatform() }
+
+tasks.register('printSqliteProofSupportClasspath') {
+    doLast {
+        println(sourceSets.test.runtimeClasspath.asPath)
+    }
+}
 
 configurations {
     commonJava {

@@ -39,7 +39,7 @@
 - Create: `common/src/test/java/dev/tomewisp/guide/history/SqliteRuntimeCompatibilityTest.java`
 - Create: `scripts/verify-sqlite-packaging.sh`
 
-- [ ] **Step 1: Add a failing Java 25 JDBC test**
+- [x] **Step 1: Add a failing Java 25 JDBC test**
 
 Create a temporary-file test using only `java.sql` production APIs:
 
@@ -70,7 +70,7 @@ void opensWalDatabaseAndCommitsTransaction() throws Exception {
 }
 ```
 
-- [ ] **Step 2: Prove the driver is absent**
+- [x] **Step 2: Prove the driver is absent**
 
 Run:
 
@@ -80,7 +80,7 @@ Run:
 
 Expected: FAIL with `No suitable driver found for jdbc:sqlite`.
 
-- [ ] **Step 3: Add exact runtime and embedded dependencies**
+- [x] **Step 3: Add exact runtime and embedded dependencies**
 
 Add `sqlite_jdbc_version=3.50.3.0` to `gradle.properties`, then:
 
@@ -99,7 +99,7 @@ jarJar("org.xerial:sqlite-jdbc:${sqlite_jdbc_version}")
 If ModDevGradle rejects the last notation, use its documented
 `jarJar(implementation(...))` equivalent. Do not unpack or shade native files.
 
-- [ ] **Step 4: Run the JDBC test and both loader builds**
+- [x] **Step 4: Run the JDBC test and both loader builds**
 
 ```bash
 ./gradlew :common:test --tests 'dev.tomewisp.guide.history.SqliteRuntimeCompatibilityTest' \
@@ -108,7 +108,7 @@ If ModDevGradle rejects the last notation, use its documented
 
 Expected: PASS and both production loader JARs build.
 
-- [ ] **Step 5: Add and run the production-JAR verifier**
+- [x] **Step 5: Add and run the production-JAR verifier**
 
 The shell script must locate each production mod JAR, extract its nested driver
 to a temporary directory, verify the Xerial class plus Linux/Mac/Windows
@@ -126,7 +126,7 @@ bash -n scripts/verify-sqlite-packaging.sh
 
 Expected: both loaders report SQLite `3.50.3` and all six required targets.
 
-- [ ] **Step 6: Commit the packaging proof**
+- [x] **Step 6: Commit the packaging proof**
 
 ```bash
 git add gradle.properties common/build.gradle fabric/build.gradle neoforge/build.gradle \
@@ -134,6 +134,21 @@ git add gradle.properties common/build.gradle fabric/build.gradle neoforge/build
   scripts/verify-sqlite-packaging.sh
 git commit -m "build: package sqlite history runtime"
 ```
+
+Verification on 2026-07-18 used Java 25.0.2. The red test failed at the
+initial JDBC connection before the runtime dependency was present. After
+packaging, the focused JDBC test and both loader builds passed in 16 seconds.
+The production-JAR proof loaded SQLite `3.50.3` from each extracted nested JAR
+and verified Linux, macOS, and Windows x86_64/aarch64 native entries.
+
+Fabric production JAR SHA-256:
+`4f8476a3b6d4f7461e0c305327cd9874c0bdd95dc481f304531341a110d82c2b`.
+NeoForge production JAR SHA-256:
+`09671a45ea395c927eadf9a5a777693f1b61cb3926ecdb0390960d036e468b1b`.
+The build emits a non-fatal Fabric metadata warning for Xerial's four-component
+version and Java 25 emits a restricted native-access warning. Both artifacts
+still registered and executed their own nested driver; final real-client smoke
+must retain the warning behavior as compatibility evidence.
 
 ### Task 2: Define Strict Durable Records
 

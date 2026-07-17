@@ -3,6 +3,11 @@ plugins {
     id 'net.neoforged.moddev'
 }
 
+dependencies {
+    implementation("org.xerial:sqlite-jdbc:${sqlite_jdbc_version}")
+    jarJar("org.xerial:sqlite-jdbc:${sqlite_jdbc_version}")
+}
+
 neoForge {
     version = neoforge_version
     // Automatically enable neoforge AccessTransformers if the file exists

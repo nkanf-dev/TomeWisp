@@ -4,7 +4,7 @@
 - decided_by: designer
 - approval_source: designer explicitly instructed “接下来我不会在这里监管，直接用你最推荐的设计就可以。但是记得把所有的决策设计，就像你被要求的那样，你把它落盘，可以追溯就可以” after the recommended full-screen GUI and Phase 3 decomposition were presented
 - date: 2026-07-17
-- commit: pending
+- commit: e4a77ad
 - patterns:
   - A_async_wait
   - B_state_persistence
@@ -103,4 +103,3 @@ Reasoning deltas are diagnostic-only. Visible state comes only from GuideService
 ## Superseded By
 
 None.
-

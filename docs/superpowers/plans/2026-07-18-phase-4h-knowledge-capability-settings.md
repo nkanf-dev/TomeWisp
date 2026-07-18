@@ -30,7 +30,7 @@
 - Modify: `common/src/test/java/dev/tomewisp/recipe/config/RecipeClientRuntimeTest.java`
 - Create: `common/src/test/java/dev/tomewisp/recipe/config/RecipeClientConfigWriterTest.java`
 
-- [ ] **Step 1: Rewrite tests for the one current pre-release schema**
+- [x] **Step 1: Rewrite tests for the one current pre-release schema**
 
 ```java
 @Test
@@ -61,13 +61,13 @@ Also cover duplicate/blank/malformed IDs, canonical sorted output, retained
 unknown disabled IDs, `auto` deterministic order, source disablement, and
 writer-loader round trip.
 
-- [ ] **Step 2: Run recipe config/runtime tests and verify the old shape fails expectations**
+- [x] **Step 2: Run recipe config/runtime tests and verify the old shape fails expectations**
 
 ```bash
 ./gradlew :common:test --tests 'dev.tomewisp.recipe.config.*'
 ```
 
-- [ ] **Step 3: Implement schema 2 and generic runtime selection**
+- [x] **Step 3: Implement schema 2 and generic runtime selection**
 
 ```java
 public record RecipeClientConfig(
@@ -87,7 +87,7 @@ Explicit preferred viewer selects only that enabled/available navigator;
 `auto` applies the deterministic known-viewer rank and then stable ID as a
 tie-breaker. Keep known rank in one helper, not the persisted schema.
 
-- [ ] **Step 4: Run tests, verify no v1 compatibility code, and commit**
+- [x] **Step 4: Run tests, verify no v1 compatibility code, and commit**
 
 ```bash
 ./gradlew :common:test --tests 'dev.tomewisp.recipe.config.*' \

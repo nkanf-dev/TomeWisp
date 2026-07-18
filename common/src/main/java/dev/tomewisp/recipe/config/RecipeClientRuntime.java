@@ -76,12 +76,7 @@ public final class RecipeClientRuntime {
     }
 
     public boolean sourceEnabled(String sourceId) {
-        return switch (RecipeReference.requireSourceId(sourceId)) {
-            case "minecraft:client_recipe_book" -> config.vanillaEnabled();
-            case "viewer:jei" -> config.jeiEnabled();
-            case "viewer:rei" -> config.reiEnabled();
-            default -> true;
-        };
+        return !config.disabledSources().contains(RecipeReference.requireSourceId(sourceId));
     }
 
     public boolean supportsExact(RecipeReference reference) {
@@ -123,19 +118,14 @@ public final class RecipeClientRuntime {
 
     private Optional<RecipeViewerNavigator> preferredNavigator() {
         List<RecipeViewerNavigator> available = availableNavigators();
-        String preferred = switch (config.preferredViewer()) {
-            case AUTO -> null;
-            case JEI -> "viewer:jei";
-            case REI -> "viewer:rei";
-        };
-        if (preferred != null) {
-            return available.stream().filter(value -> value.viewerId().equals(preferred)).findFirst();
+        if (!RecipeClientConfig.AUTO.equals(config.preferredViewer())) {
+            return available.stream()
+                    .filter(value -> value.viewerId().equals(config.preferredViewer()))
+                    .findFirst();
         }
-        return available.stream().min(Comparator.comparingInt(value -> switch (value.viewerId()) {
-            case "viewer:jei" -> 0;
-            case "viewer:rei" -> 1;
-            default -> 2;
-        }));
+        return available.stream().min(Comparator
+                .comparingInt((RecipeViewerNavigator value) -> viewerRank(value.viewerId()))
+                .thenComparing(RecipeViewerNavigator::viewerId));
     }
 
     private Optional<RecipeViewerNavigator> navigator(String sourceId) {
@@ -155,9 +145,16 @@ public final class RecipeClientRuntime {
     }
 
     private RecipeNavigationResult unavailable() {
-        String code = config.preferredViewer() == RecipeViewerPreference.AUTO
-                ? "viewer_unavailable"
-                : "preferred_viewer_unavailable";
-        return RecipeNavigationResult.failed(code, "No enabled recipe viewer is available");
+        return RecipeNavigationResult.failed(
+                "viewer_unavailable", "No enabled recipe viewer is available");
+    }
+
+    private static int viewerRank(String viewerId) {
+        return switch (viewerId) {
+            case "viewer:jei" -> 0;
+            case "viewer:rei" -> 1;
+            case "viewer:emi" -> 2;
+            default -> 100;
+        };
     }
 }

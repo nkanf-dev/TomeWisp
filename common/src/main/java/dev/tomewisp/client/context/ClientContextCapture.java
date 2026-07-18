@@ -124,12 +124,12 @@ public final class ClientContextCapture {
         if (!client.isSameThread()) {
             throw new IllegalStateException("Recipe readiness must be sampled on the Minecraft client thread");
         }
-        RecipeClientConfig config = recipeClient.config();
         List<String> required = new ArrayList<>();
-        if (config.jeiEnabled() && platform.isModLoaded("jei")) {
+        if (recipeClient.sourceEnabled("viewer:jei") && platform.isModLoaded("jei")) {
             required.add("viewer:jei");
         }
-        if (config.reiEnabled() && platform.isModLoaded("roughlyenoughitems")) {
+        if (recipeClient.sourceEnabled("viewer:rei")
+                && platform.isModLoaded("roughlyenoughitems")) {
             required.add("viewer:rei");
         }
         return gate.evaluate(
@@ -207,7 +207,7 @@ public final class ClientContextCapture {
             }
         };
         List<RecipeKnowledgeProvider> providers = new ArrayList<>();
-        providers.add(config.vanillaEnabled()
+        providers.add(recipeClient.sourceEnabled("minecraft:client_recipe_book")
                 ? vanilla
                 : inactiveViewer(
                         "minecraft:client_recipe_book",
@@ -220,14 +220,14 @@ public final class ClientContextCapture {
                 registered,
                 "viewer:jei",
                 "jei",
-                config.jeiEnabled(),
+                recipeClient.sourceEnabled("viewer:jei"),
                 "JEI");
         addViewerProvider(
                 providers,
                 registered,
                 "viewer:rei",
                 "roughlyenoughitems",
-                config.reiEnabled(),
+                recipeClient.sourceEnabled("viewer:rei"),
                 "REI");
         registered.stream()
                 .filter(provider -> providers.stream().noneMatch(existing ->

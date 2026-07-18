@@ -1,5 +1,6 @@
 package dev.tomewisp.recipe.config;
 
+import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
@@ -7,17 +8,17 @@ import dev.tomewisp.recipe.RecipeVisibilityPolicy;
 import dev.tomewisp.tool.ToolResult;
 import java.io.IOException;
 import java.io.Reader;
+import java.math.BigDecimal;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.math.BigDecimal;
+import java.util.LinkedHashSet;
 import java.util.Locale;
 import java.util.Objects;
 import java.util.Set;
 
 public final class RecipeClientConfigLoader {
     private static final Set<String> ROOT_FIELDS = Set.of(
-            "schemaVersion", "visibility", "preferredViewer", "sources");
-    private static final Set<String> SOURCE_FIELDS = Set.of("vanilla", "jei", "rei");
+            "schemaVersion", "visibility", "preferredViewer", "disabledSources");
 
     public ToolResult<RecipeClientConfig> load(Path path) {
         Objects.requireNonNull(path, "path");
@@ -35,23 +36,25 @@ public final class RecipeClientConfigLoader {
     public ToolResult<RecipeClientConfig> load(Reader reader) {
         Objects.requireNonNull(reader, "reader");
         try {
-            JsonElement root = JsonParser.parseReader(reader);
-            JsonObject object = object(root, "Recipe configuration");
+            JsonObject object = object(JsonParser.parseReader(reader), "Recipe configuration");
             exactFields(object, ROOT_FIELDS, "recipe configuration");
             int schema = integer(object, "schemaVersion");
             RecipeVisibilityPolicy visibility = enumValue(
                     RecipeVisibilityPolicy.class, string(object, "visibility"));
-            RecipeViewerPreference preferred = enumValue(
-                    RecipeViewerPreference.class, string(object, "preferredViewer"));
-            JsonObject sources = object(required(object, "sources"), "sources");
-            exactFields(sources, SOURCE_FIELDS, "recipe sources");
+            String preferred = string(object, "preferredViewer");
+            JsonArray disabled = array(object, "disabledSources");
+            LinkedHashSet<String> disabledSources = new LinkedHashSet<>();
+            for (JsonElement encoded : disabled) {
+                if (!encoded.isJsonPrimitive() || !encoded.getAsJsonPrimitive().isString()) {
+                    throw new IllegalArgumentException("disabledSources entries must be strings");
+                }
+                String sourceId = encoded.getAsString();
+                if (!disabledSources.add(sourceId)) {
+                    throw new IllegalArgumentException("disabledSources must not contain duplicates");
+                }
+            }
             return new ToolResult.Success<>(new RecipeClientConfig(
-                    schema,
-                    visibility,
-                    preferred,
-                    bool(sources, "vanilla"),
-                    bool(sources, "jei"),
-                    bool(sources, "rei")));
+                    schema, visibility, preferred, disabledSources));
         } catch (RuntimeException failure) {
             return new ToolResult.Failure<>(
                     "invalid_recipe_config",
@@ -81,10 +84,20 @@ public final class RecipeClientConfigLoader {
         return value.getAsJsonObject();
     }
 
+    private static JsonArray array(JsonObject object, String field) {
+        JsonElement value = required(object, field);
+        if (!value.isJsonArray()) {
+            throw new IllegalArgumentException(field + " must be an array");
+        }
+        return value.getAsJsonArray();
+    }
+
     private static String string(JsonObject object, String field) {
         JsonElement value = required(object, field);
-        if (!value.isJsonPrimitive() || !value.getAsJsonPrimitive().isString()) {
-            throw new IllegalArgumentException(field + " must be a string");
+        if (!value.isJsonPrimitive()
+                || !value.getAsJsonPrimitive().isString()
+                || value.getAsString().isBlank()) {
+            throw new IllegalArgumentException(field + " must be nonblank text");
         }
         return value.getAsString();
     }
@@ -99,14 +112,6 @@ public final class RecipeClientConfigLoader {
         } catch (ArithmeticException | NumberFormatException failure) {
             throw new IllegalArgumentException(field + " must be an integer");
         }
-    }
-
-    private static boolean bool(JsonObject object, String field) {
-        JsonElement value = required(object, field);
-        if (!value.isJsonPrimitive() || !value.getAsJsonPrimitive().isBoolean()) {
-            throw new IllegalArgumentException(field + " must be a boolean");
-        }
-        return value.getAsBoolean();
     }
 
     private static <T extends Enum<T>> T enumValue(Class<T> type, String value) {

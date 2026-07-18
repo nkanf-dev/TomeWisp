@@ -13,6 +13,7 @@ import dev.tomewisp.tool.ToolResult;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -21,11 +22,11 @@ final class RecipeClientRuntimeTest {
     @TempDir Path directory;
 
     @Test
-    void loadsPersistedConfigAndRetainsLastValidStateOnReloadFailure() throws Exception {
+    void loadsGenericConfigAndRetainsLastValidStateOnReloadFailure() throws Exception {
         Path path = directory.resolve("recipes.json");
         Files.writeString(path, """
-                {"schemaVersion":1,"visibility":"unlocked_only","preferredViewer":"rei",
-                "sources":{"vanilla":false,"jei":false,"rei":true}}
+                {"schemaVersion":2,"visibility":"unlocked_only","preferredViewer":"viewer:rei",
+                 "disabledSources":["minecraft:client_recipe_book","viewer:jei"]}
                 """);
         RecipeClientRuntime runtime = new RecipeClientRuntime(path);
 
@@ -36,32 +37,58 @@ final class RecipeClientRuntimeTest {
 
         Files.writeString(path, "{}");
         assertInstanceOf(ToolResult.Failure.class, runtime.reload());
-        assertEquals(RecipeViewerPreference.REI, runtime.config().preferredViewer());
+        assertEquals("viewer:rei", runtime.config().preferredViewer());
         assertTrue(runtime.failure().isPresent());
     }
 
     @Test
-    void preferenceAndExactOwnershipSelectOnlyEnabledViewer() {
+    void explicitUnavailableViewerNeverFallsBack() {
+        AtomicInteger jeiRecipes = new AtomicInteger();
+        RecipeClientConfig config = config("viewer:emi", Set.of());
+        RecipeClientRuntime runtime = RecipeClientRuntime.forTest(
+                config, () -> List.of(navigator("viewer:jei", true, jeiRecipes)));
+
+        assertEquals("viewer_unavailable", runtime.openRecipes("minecraft:stick").code());
+        assertEquals(0, jeiRecipes.get());
+    }
+
+    @Test
+    void autoUsesKnownRankThenStableIdAndHonorsSourceDisablement() {
         AtomicInteger jeiRecipes = new AtomicInteger();
         AtomicInteger reiRecipes = new AtomicInteger();
-        RecipeViewerNavigator jei = navigator("viewer:jei", true, jeiRecipes);
-        RecipeViewerNavigator rei = navigator("viewer:rei", false, reiRecipes);
-        RecipeClientConfig config = new RecipeClientConfig(
-                RecipeClientConfig.SCHEMA_VERSION,
-                RecipeVisibilityPolicy.ALL_KNOWN,
-                RecipeViewerPreference.REI,
-                true,
-                true,
-                true);
-        RecipeClientRuntime runtime = RecipeClientRuntime.forTest(config, () -> List.of(jei, rei));
+        AtomicInteger futureRecipes = new AtomicInteger();
+        RecipeClientRuntime runtime = RecipeClientRuntime.forTest(
+                config(RecipeClientConfig.AUTO, Set.of("viewer:jei")),
+                () -> List.of(
+                        navigator("future:zeta", true, futureRecipes),
+                        navigator("viewer:rei", false, reiRecipes),
+                        navigator("viewer:jei", true, jeiRecipes)));
 
         assertTrue(runtime.openRecipes("minecraft:iron_ingot").opened());
         assertEquals(0, jeiRecipes.get());
         assertEquals(1, reiRecipes.get());
+        assertEquals(0, futureRecipes.get());
+    }
+
+    @Test
+    void exactOwnershipSelectsOnlyEnabledViewer() {
+        RecipeViewerNavigator jei = navigator("viewer:jei", true, new AtomicInteger());
+        RecipeViewerNavigator rei = navigator("viewer:rei", false, new AtomicInteger());
+        RecipeClientRuntime runtime = RecipeClientRuntime.forTest(
+                config("viewer:rei", Set.of()), () -> List.of(jei, rei));
+
         assertFalse(runtime.supportsExact(reference("viewer:rei")));
         assertTrue(runtime.supportsExact(reference("viewer:jei")));
         assertEquals("exact_unsupported", runtime.openExact(reference("viewer:rei")).code());
         assertTrue(runtime.openExact(reference("viewer:jei")).opened());
+    }
+
+    private static RecipeClientConfig config(String viewer, Set<String> disabled) {
+        return new RecipeClientConfig(
+                RecipeClientConfig.SCHEMA_VERSION,
+                RecipeVisibilityPolicy.ALL_KNOWN,
+                viewer,
+                disabled);
     }
 
     private static RecipeReference reference(String sourceId) {

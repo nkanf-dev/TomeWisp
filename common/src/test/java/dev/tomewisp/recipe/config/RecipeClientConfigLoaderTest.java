@@ -1,13 +1,14 @@
 package dev.tomewisp.recipe.config;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertInstanceOf;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 
 import dev.tomewisp.recipe.RecipeVisibilityPolicy;
 import dev.tomewisp.tool.ToolResult;
 import java.io.StringReader;
+import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Set;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -15,57 +16,75 @@ final class RecipeClientConfigLoaderTest {
     private final RecipeClientConfigLoader loader = new RecipeClientConfigLoader();
 
     @Test
-    void missingFileUsesAllKnownDefaults(@TempDir Path directory) {
-        RecipeClientConfig config = success(loader.load(directory.resolve("missing.json"))).value();
+    void missingFileUsesAllKnownGenericDefaultsWithoutWriting(@TempDir Path directory) {
+        Path path = directory.resolve("missing.json");
+        RecipeClientConfig config = success(loader.load(path));
 
         assertEquals(RecipeVisibilityPolicy.ALL_KNOWN, config.visibility());
-        assertEquals(RecipeViewerPreference.AUTO, config.preferredViewer());
-        assertTrue(config.vanillaEnabled());
-        assertTrue(config.jeiEnabled());
-        assertTrue(config.reiEnabled());
+        assertEquals(RecipeClientConfig.AUTO, config.preferredViewer());
+        assertEquals(Set.of(), config.disabledSources());
+        assertFalse(Files.exists(path));
     }
 
     @Test
-    void parsesExactSchemaVersionOne() {
+    void loadsGenericStableSourceIdsAndRetainsUnknownDisabledIds() {
         RecipeClientConfig config = success(loader.load(new StringReader("""
-                {
-                  "schemaVersion": 1,
-                  "visibility": "unlocked_only",
-                  "preferredViewer": "jei",
-                  "sources": {"vanilla": true, "jei": false, "rei": true}
-                }
-                """))).value();
+                {"schemaVersion":2,"visibility":"ALL_KNOWN",
+                 "preferredViewer":"viewer:emi",
+                 "disabledSources":["viewer:jei","future:viewer"]}
+                """)));
 
-        assertEquals(RecipeVisibilityPolicy.UNLOCKED_ONLY, config.visibility());
-        assertEquals(RecipeViewerPreference.JEI, config.preferredViewer());
-        assertTrue(!config.jeiEnabled());
+        assertEquals("viewer:emi", config.preferredViewer());
+        assertEquals(Set.of("viewer:jei", "future:viewer"), config.disabledSources());
     }
 
     @Test
-    void rejectsMissingUnknownAndNonIntegralFields() {
-        assertInvalid("""
-                {"schemaVersion":1,"visibility":"all_known","preferredViewer":"auto"}
-                """);
+    void oldAdapterSpecificSchemaFailsWithoutMigration() {
         assertInvalid("""
                 {"schemaVersion":1,"visibility":"all_known","preferredViewer":"auto",
-                 "sources":{"vanilla":true,"jei":true,"rei":true},"extra":true}
-                """);
-        assertInvalid("""
-                {"schemaVersion":1.5,"visibility":"all_known","preferredViewer":"auto",
                  "sources":{"vanilla":true,"jei":true,"rei":true}}
                 """);
     }
 
+    @Test
+    void rejectsMissingUnknownDuplicateBlankMalformedAndNonIntegralFields() {
+        assertInvalid("""
+                {"schemaVersion":2,"visibility":"all_known","preferredViewer":"auto"}
+                """);
+        assertInvalid("""
+                {"schemaVersion":2,"visibility":"all_known","preferredViewer":"auto",
+                 "disabledSources":[],"extra":true}
+                """);
+        assertInvalid("""
+                {"schemaVersion":2.5,"visibility":"all_known","preferredViewer":"auto",
+                 "disabledSources":[]}
+                """);
+        assertInvalid("""
+                {"schemaVersion":2,"visibility":"all_known","preferredViewer":"auto",
+                 "disabledSources":["viewer:jei","viewer:jei"]}
+                """);
+        assertInvalid("""
+                {"schemaVersion":2,"visibility":"all_known","preferredViewer":"auto",
+                 "disabledSources":[""]}
+                """);
+        assertInvalid("""
+                {"schemaVersion":2,"visibility":"all_known","preferredViewer":"not an id",
+                 "disabledSources":[]}
+                """);
+    }
+
     private void assertInvalid(String json) {
-        ToolResult.Failure<RecipeClientConfig> failure = assertInstanceOf(
-                ToolResult.Failure.class, loader.load(new StringReader(json)));
+        ToolResult<RecipeClientConfig> result = loader.load(new StringReader(json));
+        if (!(result instanceof ToolResult.Failure<RecipeClientConfig> failure)) {
+            throw new AssertionError("expected invalid recipe settings");
+        }
         assertEquals("invalid_recipe_config", failure.code());
     }
 
-    @SuppressWarnings("unchecked")
-    private static ToolResult.Success<RecipeClientConfig> success(
-            ToolResult<RecipeClientConfig> result) {
-        return (ToolResult.Success<RecipeClientConfig>)
-                assertInstanceOf(ToolResult.Success.class, result);
+    private static RecipeClientConfig success(ToolResult<RecipeClientConfig> result) {
+        if (result instanceof ToolResult.Success<RecipeClientConfig> success) {
+            return success.value();
+        }
+        throw new AssertionError("expected valid recipe settings");
     }
 }

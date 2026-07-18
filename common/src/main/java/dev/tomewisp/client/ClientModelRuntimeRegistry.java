@@ -8,6 +8,9 @@ import dev.tomewisp.agent.context.ContextCheckpoint;
 import dev.tomewisp.agent.session.AgentSessionKey;
 import dev.tomewisp.agent.session.AgentSessionStore;
 import dev.tomewisp.agent.tool.AgentToolExecutor;
+import dev.tomewisp.capability.CapabilityPolicy;
+import dev.tomewisp.capability.ClientCapabilityResolver;
+import dev.tomewisp.capability.ClientCapabilitySnapshot;
 import dev.tomewisp.context.ContextCapability;
 import dev.tomewisp.context.ToolInvocationContext;
 import dev.tomewisp.guide.GuideClientModelProfile;
@@ -40,13 +43,13 @@ import java.util.function.Function;
 
 /** Atomic named-profile registry whose runtimes share provider-neutral sessions. */
 public final class ClientModelRuntimeRegistry implements GuideLocalEndpoint {
-    private final TomeWispRuntime productRuntime;
     private final Gson gson;
     private final ClientEventDispatcher dispatcher;
     private final AgentToolExecutor extension;
     private final Function<ResolvedModelProfile, ModelClient> modelFactory;
     private final AgentSessionStore sessions = new AgentSessionStore();
     private final AtomicReference<State> state = new AtomicReference<>();
+    private final AtomicReference<ClientCapabilitySnapshot> capabilities;
 
     ClientModelRuntimeRegistry(
             TomeWispRuntime productRuntime,
@@ -55,11 +58,12 @@ public final class ClientModelRuntimeRegistry implements GuideLocalEndpoint {
             ClientEventDispatcher dispatcher,
             AgentToolExecutor extension,
             Function<ResolvedModelProfile, ModelClient> modelFactory) {
-        this.productRuntime = Objects.requireNonNull(productRuntime, "productRuntime");
+        Objects.requireNonNull(productRuntime, "productRuntime");
         this.gson = Objects.requireNonNull(gson, "gson");
         this.dispatcher = Objects.requireNonNull(dispatcher, "dispatcher");
         this.extension = extension;
         this.modelFactory = Objects.requireNonNull(modelFactory, "modelFactory");
+        capabilities = new AtomicReference<>(resolveDefaultCapabilities(productRuntime));
         replace(initial, modelFactory);
     }
 
@@ -108,6 +112,25 @@ public final class ClientModelRuntimeRegistry implements GuideLocalEndpoint {
     public synchronized PreparedReplacement prepare(
             ModelProfilesConfigLoader.Load replacement) {
         return new PreparedReplacement(this, build(replacement, modelFactory));
+    }
+
+    /** Publishes a prepared capability view for future requests without replacing endpoints. */
+    public synchronized void replaceCapabilities(ClientCapabilitySnapshot replacement) {
+        Objects.requireNonNull(replacement, "replacement");
+        State current = state.get();
+        Map<String, ClientGuideRuntime> runtimes = new LinkedHashMap<>();
+        current.runtimes().forEach((id, runtime) ->
+                runtimes.put(id, runtime.withCapabilities(replacement)));
+        capabilities.set(replacement);
+        state.set(new State(current.defaultProfileId(), current.profiles(), runtimes));
+    }
+
+    public ClientCapabilitySnapshot capabilities() {
+        return capabilities.get();
+    }
+
+    Object endpointIdentity(String profileId) {
+        return runtime(state.get(), profileId).endpointIdentity();
     }
 
     @Override
@@ -211,7 +234,6 @@ public final class ClientModelRuntimeRegistry implements GuideLocalEndpoint {
                 ModelClient model = Objects.requireNonNull(
                         factory.apply(profile), "model factory result");
                 runtimes.put(profile.definition().id(), new ClientGuideRuntime(
-                        productRuntime,
                         model,
                         sessions,
                         gson,
@@ -221,10 +243,22 @@ public final class ClientModelRuntimeRegistry implements GuideLocalEndpoint {
                                 null,
                                 Set.of(profile.runtimeConfig().apiKey().reveal())),
                         profile.runtimeConfig().contextBudget(),
-                        profile.runtimeConfig().model()));
+                        profile.runtimeConfig().model(),
+                        capabilities.get()));
             }
         }
         return new State(load.config().defaultProfileId(), summaries, runtimes);
+    }
+
+    private static ClientCapabilitySnapshot resolveDefaultCapabilities(TomeWispRuntime runtime) {
+        ToolResult<ClientCapabilitySnapshot> resolved = new ClientCapabilityResolver().resolve(
+                CapabilityPolicy.defaults(), runtime.tools().registrations(), runtime.skills());
+        if (resolved instanceof ToolResult.Success<ClientCapabilitySnapshot> success) {
+            return success.value();
+        }
+        ToolResult.Failure<ClientCapabilitySnapshot> failure =
+                (ToolResult.Failure<ClientCapabilitySnapshot>) resolved;
+        throw new IllegalStateException(failure.code() + ": " + failure.message());
     }
 
     private static ClientGuideRuntime runtime(State state, String profileId) {

@@ -278,7 +278,7 @@ git commit -m "refactor: snapshot Tool and Skill catalogs"
 - Modify: `common/src/test/java/dev/tomewisp/client/ClientModelRuntimeRegistryTest.java`
 - Create: `common/src/test/java/dev/tomewisp/capability/ClientCapabilityResolverTest.java`
 
-- [ ] **Step 1: Write dependency and active-request capture races**
+- [x] **Step 1: Write dependency and active-request capture races**
 
 ```java
 @Test
@@ -308,14 +308,14 @@ void capabilityReplacementAffectsFutureRequestOnlyAndSharesSchedulerHistory() {
 Also prove `load_skill` is derived only when at least one Skill is enabled and
 is never represented in `disabledTools` UI policy.
 
-- [ ] **Step 2: Run capability/registry tests and verify current shared repository leakage**
+- [x] **Step 2: Run capability/registry tests and verify current shared repository leakage**
 
 ```bash
 ./gradlew :common:test --tests 'dev.tomewisp.capability.*' \
   --tests 'dev.tomewisp.client.ClientModelRuntimeRegistryTest'
 ```
 
-- [ ] **Step 3: Implement dependency resolution and scheduler-preserving reconfiguration**
+- [x] **Step 3: Implement dependency resolution and scheduler-preserving reconfiguration**
 
 ```java
 public record ClientCapabilitySnapshot(
@@ -343,7 +343,7 @@ local executor/system-prompt Skill view. Registry capability replacement uses
 `withCapabilities`; model-profile replacement still creates new endpoints.
 An already selected `ClientGuideRuntime` object continues an active ask.
 
-- [ ] **Step 4: Run Agent/context/scheduler/registry tests and commit**
+- [x] **Step 4: Run Agent/context/scheduler/registry tests and commit**
 
 ```bash
 ./gradlew :common:test --tests 'dev.tomewisp.capability.*' \

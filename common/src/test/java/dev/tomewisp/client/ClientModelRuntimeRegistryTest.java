@@ -1,12 +1,19 @@
 package dev.tomewisp.client;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.google.gson.Gson;
 import dev.tomewisp.TomeWispRuntime;
 import dev.tomewisp.agent.AgentResult;
+import dev.tomewisp.capability.CapabilityPolicy;
+import dev.tomewisp.capability.ClientCapabilityResolver;
+import dev.tomewisp.capability.ClientCapabilitySnapshot;
+import dev.tomewisp.context.ContextCapability;
+import dev.tomewisp.context.ToolInvocationContext;
 import dev.tomewisp.devmode.DevelopmentToolInspector;
 import dev.tomewisp.guide.GuideModelProfileException;
 import dev.tomewisp.integration.patchouli.PatchouliMultiblockStore;
@@ -29,11 +36,16 @@ import dev.tomewisp.platform.PlatformService;
 import dev.tomewisp.skill.SkillParser;
 import dev.tomewisp.skill.SkillRepository;
 import dev.tomewisp.tool.ToolRegistry;
+import dev.tomewisp.tool.Tool;
+import dev.tomewisp.tool.ToolAccess;
+import dev.tomewisp.tool.ToolDescriptor;
+import dev.tomewisp.tool.ToolResult;
 import java.net.URI;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.function.Consumer;
@@ -131,11 +143,62 @@ final class ClientModelRuntimeRegistryTest {
                 IllegalStateException.class, prepared::publish);
     }
 
+    @Test
+    void capabilityReplacementAffectsFutureRequestsOnlyAndSharesEndpointAndHistory() {
+        CompletableFuture<ModelTurn> pending = new CompletableFuture<>();
+        ToolSequenceModel model = new ToolSequenceModel(pending);
+        TomeWispRuntime product = runtimeWithFactTool();
+        ClientModelRuntimeRegistry registry = registry(
+                product, load("a", "a"), Map.of("a", model));
+        UUID actor = UUID.randomUUID();
+        Object endpointBefore = registry.endpointIdentity("a");
+
+        CompletableFuture<AgentResult> active = registry.ask(
+                "a", actor, "main", UUID.randomUUID(), "first question",
+                ToolInvocationContext.developmentConsole("test"), ignored -> {});
+        ClientCapabilitySnapshot withoutFact = success(new ClientCapabilityResolver().resolve(
+                new CapabilityPolicy(1, Set.of("test:fact"), Set.of()),
+                product.tools().registrations(),
+                product.skills()));
+        registry.replaceCapabilities(withoutFact);
+        pending.complete(toolTurn("call-1", "test__fact", 42));
+
+        assertTrue(active.join().successful());
+        assertSame(endpointBefore, registry.endpointIdentity("a"));
+        assertTrue(model.requests.getFirst().tools().stream()
+                .anyMatch(tool -> tool.name().equals("test__fact")));
+        assertTrue(model.requests.get(1).tools().stream()
+                .anyMatch(tool -> tool.name().equals("test__fact")));
+
+        AgentResult next = registry.ask(
+                "a", actor, "main", UUID.randomUUID(), "second question",
+                ToolInvocationContext.developmentConsole("test"), ignored -> {}).join();
+
+        assertTrue(next.successful());
+        ModelRequest nextRequest = model.requests.get(2);
+        assertFalse(nextRequest.tools().stream()
+                .anyMatch(tool -> tool.name().equals("test__fact")));
+        List<String> text = nextRequest.messages().stream()
+                .flatMap(message -> message.content().stream())
+                .filter(ModelContent.Text.class::isInstance)
+                .map(ModelContent.Text.class::cast)
+                .map(ModelContent.Text::text)
+                .toList();
+        assertEquals(List.of("first question", "tool-complete", "second question"), text);
+    }
+
     private static ClientModelRuntimeRegistry registry(
             ModelProfilesConfigLoader.Load load,
             Map<String, ModelClient> clients) {
+        return registry(runtime(), load, clients);
+    }
+
+    private static ClientModelRuntimeRegistry registry(
+            TomeWispRuntime runtime,
+            ModelProfilesConfigLoader.Load load,
+            Map<String, ModelClient> clients) {
         return new ClientModelRuntimeRegistry(
-                runtime(),
+                runtime,
                 load,
                 new Gson(),
                 Runnable::run,
@@ -199,6 +262,56 @@ final class ClientModelRuntimeRegistryTest {
                 null);
     }
 
+    private static TomeWispRuntime runtimeWithFactTool() {
+        ToolRegistry tools = new ToolRegistry();
+        tools.register("test-provider", List.of(new Tool<FactInput, FactOutput>() {
+            private final ToolDescriptor<FactInput, FactOutput> descriptor = new ToolDescriptor<>(
+                    "test:fact",
+                    "Return a fact",
+                    FactInput.class,
+                    FactOutput.class,
+                    ToolAccess.READ_ONLY,
+                    Set.of(ContextCapability.RECIPES));
+
+            @Override public ToolDescriptor<FactInput, FactOutput> descriptor() { return descriptor; }
+            @Override
+            public ToolResult<FactOutput> invoke(ToolInvocationContext context, FactInput input) {
+                return new ToolResult.Success<>(new FactOutput(input.value()));
+            }
+        }));
+        return new TomeWispRuntime(
+                new PlatformService() {
+                    @Override public String platformName() { return "test"; }
+                    @Override public boolean isModLoaded(String modId) { return false; }
+                    @Override public boolean isDevelopmentEnvironment() { return true; }
+                },
+                tools,
+                new KnowledgeRegistry(),
+                new PatchouliMultiblockStore(),
+                new SkillRepository(new SkillParser(), List.of("test:fact")),
+                new DevelopmentToolInspector(tools),
+                null);
+    }
+
+    private record FactInput(int value) {}
+    private record FactOutput(int value) {}
+
+    private static ModelTurn toolTurn(String id, String name, int value) {
+        com.google.gson.JsonObject input = new com.google.gson.JsonObject();
+        input.addProperty("value", value);
+        return new ModelTurn(
+                "test",
+                "model-a",
+                List.of(new ModelContent.ToolUse(id, name, input)),
+                "tool_use",
+                ModelUsage.empty());
+    }
+
+    private static ClientCapabilitySnapshot success(ToolResult<ClientCapabilitySnapshot> result) {
+        return ((ToolResult.Success<ClientCapabilitySnapshot>) assertInstanceOf(
+                ToolResult.Success.class, result)).value();
+    }
+
     private static ModelTurn turn(String model) {
         return new ModelTurn(
                 "test",
@@ -229,6 +342,34 @@ final class ClientModelRuntimeRegistryTest {
                 CancellationSignal cancellation) {
             requests.add(request);
             return fixed == null ? CompletableFuture.completedFuture(turn(model)) : fixed;
+        }
+    }
+
+    private static final class ToolSequenceModel implements ModelClient {
+        private final CompletableFuture<ModelTurn> first;
+        private final List<ModelRequest> requests = new ArrayList<>();
+
+        private ToolSequenceModel(CompletableFuture<ModelTurn> first) {
+            this.first = first;
+        }
+
+        @Override
+        public CompletableFuture<ModelTurn> complete(
+                ModelRequest request,
+                Consumer<ModelEvent> events,
+                CancellationSignal cancellation) {
+            requests.add(request);
+            if (requests.size() == 1) {
+                return first;
+            }
+            return CompletableFuture.completedFuture(new ModelTurn(
+                    "test",
+                    "model-a",
+                    List.of(new ModelContent.Text(requests.size() == 2
+                            ? "tool-complete"
+                            : "next-complete")),
+                    "end_turn",
+                    ModelUsage.empty()));
         }
     }
 }

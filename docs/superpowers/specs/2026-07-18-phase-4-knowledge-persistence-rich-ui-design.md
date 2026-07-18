@@ -171,10 +171,10 @@ Normal mode does not retain full inventory snapshots, raw provider bodies,
 authorization data, model reasoning, or full normalized tool results. It stores
 only the structured projection required to reconstruct the player UI.
 
-Developer mode additionally retains complete normalized tool arguments and
+Debug mode additionally retains complete normalized tool arguments and
 results, GuideService transitions, queue and retry events, compaction details,
-and redacted traces. Developer data is separately identifiable, exportable, and
-deletable. Developer mode is disabled by default and affects only future
+and redacted traces. Debug data is separately identifiable, exportable, and
+deletable. Debug mode is disabled by default and affects only future
 requests.
 
 No mode stores API keys, authorization headers, cookies, raw secrets, or model
@@ -341,6 +341,16 @@ Recipe and item components may offer recipe, usage, inventory-check, and viewer
 navigation actions. Actions send typed intents through existing services; they
 do not execute arbitrary model-authored behavior.
 
+Normal tool/source details are player-facing cards, not diagnostics. They show
+localized names, Minecraft item icons, quantities, inputs/outputs, workstation
+or processing facts, available/required/missing materials, steps, and friendly
+errors. Raw tool/request IDs, confidence, authority/completeness enums, capture
+timestamps, provenance, stable internal handles, normalized JSON, and technical
+failure codes are hidden. The player-facing “调试模式” / “Debug Mode” setting
+may append those redacted diagnostics in a visibly separate section; it never
+reveals reasoning, credentials, authorization data, raw provider bodies, or
+another player's state.
+
 Animation is never the state source. Closing and reopening the screen rebuilds
 the same content from immutable semantic records.
 
@@ -416,13 +426,13 @@ context/output limits, timeouts, and a redacted connection test. Players select
 the profile used by future requests without rebinding or clearing the current
 session; an active request retains the profile selected when it started.
 Settings also cover recipe visibility, enabled sources, preferred viewer,
-database health, history management, compaction state, developer mode,
-animation, accessibility, and reload.
+database health, history management, compaction state, debug mode, animation,
+accessibility, and reload. Debug mode is disabled by default.
 
 The GUI may report whether a named environment variable is present but never
 read out or persist its value.
 
-Developer diagnostics expose request/session IDs, topology, provider and recipe
+Debug diagnostics expose request/session IDs, topology, provider and recipe
 source capability, snapshot generation and counts, tool and evidence data,
 queue and 429 state, database schema and migrations, compaction checkpoints,
 token estimates, and redacted trace export. They never expose reasoning,
@@ -496,7 +506,7 @@ count as a successful viewer, Patchouli, or sample-mod smoke claim.
 9. Replace the flattened request projection with the ordered timeline and
    version its local, remote, and durable identities.
 10. Add native item/recipe renderers and controlled component registry.
-11. Add settings, developer diagnostics, paging, and accessibility.
+11. Add settings, debug diagnostics, paging, and accessibility.
 12. Extend deterministic, race, migration, redaction, and loader tests.
 13. Run the full build, then execute and retain the approved modded client smoke.
 

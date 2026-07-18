@@ -32,6 +32,27 @@ final class ModelConfigLoaderTest {
         assertFalse(config.toString().contains("environment-secret"));
         assertFalse(new Gson().toJson(config.diagnosticView()).contains("environment-secret"));
         assertEquals("https://example.test/v1/", config.baseUri().toString());
+        assertEquals(128_000, config.contextWindowTokens());
+        assertEquals(128_000 - 2 * 1024, config.contextBudget().inputTokens());
+    }
+
+    @Test
+    void contextWindowCanBeOverriddenAndMustExceedDoubleOutputReserve() {
+        ModelConfig overridden = success(loader.load(
+                new StringReader("""
+                        {"protocol":"anthropic_messages","baseUrl":"https://example.test/v1",
+                         "model":"m","apiKey":"k","contextWindowTokens":64000,
+                         "maxOutputTokens":4096}
+                        """),
+                Map.of("TOMEWISP_CONTEXT_WINDOW_TOKENS", "96000"))).value();
+        assertEquals(96_000, overridden.contextWindowTokens());
+
+        assertEquals("invalid_model_config", failure(loader.load(
+                new StringReader("""
+                        {"protocol":"anthropic_messages","baseUrl":"https://example.test/v1",
+                         "model":"m","apiKey":"k","contextWindowTokens":8192,
+                         "maxOutputTokens":4096}
+                        """), Map.of())).code());
     }
 
     @Test

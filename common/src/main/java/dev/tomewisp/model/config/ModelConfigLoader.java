@@ -22,6 +22,7 @@ public final class ModelConfigLoader {
             "model",
             "apiKeyEnv",
             "apiKey",
+            "contextWindowTokens",
             "maxOutputTokens",
             "connectTimeoutSeconds",
             "requestTimeoutSeconds");
@@ -71,6 +72,12 @@ public final class ModelConfigLoader {
                     optionalString(object, "apiKey"));
             int maxOutputTokens = integer(
                     environment, "TOMEWISP_MAX_OUTPUT_TOKENS", object, "maxOutputTokens", 8192);
+            int contextWindowTokens = integer(
+                    environment,
+                    "TOMEWISP_CONTEXT_WINDOW_TOKENS",
+                    object,
+                    "contextWindowTokens",
+                    128_000);
             int connectSeconds = integer(
                     environment, "TOMEWISP_CONNECT_TIMEOUT_SECONDS", object, "connectTimeoutSeconds", 30);
             int requestSeconds = integer(
@@ -81,6 +88,7 @@ public final class ModelConfigLoader {
                     java.net.URI.create(require(baseUrl, "baseUrl")),
                     require(model, "model"),
                     SecretValue.of(require(apiKey, "API key")),
+                    contextWindowTokens,
                     maxOutputTokens,
                     Duration.ofSeconds(connectSeconds),
                     Duration.ofSeconds(requestSeconds)));

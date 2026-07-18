@@ -145,6 +145,7 @@ final class AnthropicMessagesClientTest {
                 uri.resolve("v1/"),
                 "mimo-v2.5-pro",
                 SecretValue.of("test-secret"),
+                128_000,
                 1024,
                 Duration.ofSeconds(5),
                 Duration.ofSeconds(10));

@@ -6,6 +6,10 @@ import dev.tomewisp.agent.AgentEvent;
 import dev.tomewisp.agent.AgentRequest;
 import dev.tomewisp.agent.AgentResult;
 import dev.tomewisp.agent.GameGuideAgent;
+import dev.tomewisp.agent.context.ContextBudget;
+import dev.tomewisp.agent.context.ContextCompactor;
+import dev.tomewisp.agent.context.ToolResultContextReducer;
+import dev.tomewisp.agent.context.Utf8ContextTokenEstimator;
 import dev.tomewisp.agent.session.AgentSessionKey;
 import dev.tomewisp.agent.session.AgentSessionStore;
 import dev.tomewisp.agent.trace.LiveTraceStore;
@@ -29,6 +33,7 @@ import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Consumer;
+import java.time.Clock;
 
 public final class ClientGuideRuntime implements GuideLocalEndpoint {
     private final TomeWispRuntime runtime;
@@ -45,7 +50,7 @@ public final class ClientGuideRuntime implements GuideLocalEndpoint {
             AgentSessionStore sessions,
             Gson gson,
             ClientEventDispatcher dispatcher) {
-        this(runtime, model, sessions, gson, dispatcher, null, new LiveTraceStore(null, Set.of()));
+        this(runtime, model, sessions, gson, dispatcher, null, new LiveTraceStore(null, Set.of()), null, null);
     }
 
     public ClientGuideRuntime(
@@ -55,7 +60,7 @@ public final class ClientGuideRuntime implements GuideLocalEndpoint {
             Gson gson,
             ClientEventDispatcher dispatcher,
             AgentToolExecutor extension) {
-        this(runtime, model, sessions, gson, dispatcher, extension, new LiveTraceStore(null, Set.of()));
+        this(runtime, model, sessions, gson, dispatcher, extension, new LiveTraceStore(null, Set.of()), null, null);
     }
 
     private ClientGuideRuntime(
@@ -65,7 +70,9 @@ public final class ClientGuideRuntime implements GuideLocalEndpoint {
             Gson gson,
             ClientEventDispatcher dispatcher,
             AgentToolExecutor extension,
-            LiveTraceStore traces) {
+            LiveTraceStore traces,
+            ContextBudget contextBudget,
+            String modelIdentifier) {
         this.runtime = runtime;
         this.sessions = sessions;
         this.dispatcher = dispatcher;
@@ -74,7 +81,11 @@ public final class ClientGuideRuntime implements GuideLocalEndpoint {
         toolExecutor = extension == null
                 ? local
                 : new CompositeAgentToolExecutor(List.of(local, extension));
-        agent = new GameGuideAgent(new ModelRequestScheduler(model), toolExecutor, sessions, gson);
+        ModelRequestScheduler scheduled = new ModelRequestScheduler(model);
+        ContextCompactor compactor = contextBudget == null ? null : new ContextCompactor(
+                scheduled, gson, new Utf8ContextTokenEstimator(), new ToolResultContextReducer(),
+                contextBudget, modelIdentifier, Clock.systemUTC());
+        agent = new GameGuideAgent(scheduled, toolExecutor, sessions, gson, compactor);
     }
 
     public static ToolResult<ClientGuideRuntime> create(
@@ -111,7 +122,9 @@ public final class ClientGuideRuntime implements GuideLocalEndpoint {
                 gson,
                 dispatcher,
                 extension,
-                new LiveTraceStore(null, Set.of(config.apiKey().reveal()))));
+                new LiveTraceStore(null, Set.of(config.apiKey().reveal())),
+                config.contextBudget(),
+                config.model()));
     }
 
     public Set<dev.tomewisp.context.ContextCapability> requiredContext() {

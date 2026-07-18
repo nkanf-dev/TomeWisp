@@ -52,6 +52,7 @@ final class OpenAiChatClientTest {
                     uri,
                     "compatible-model",
                     SecretValue.of("test-secret"),
+                    128_000,
                     512,
                     Duration.ofSeconds(5),
                     Duration.ofSeconds(10));

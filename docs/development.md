@@ -45,6 +45,7 @@ in an environment variable:
   "baseUrl": "https://provider.example/v1/",
   "model": "model-id",
   "apiKeyEnv": "TOMEWISP_API_KEY",
+  "contextWindowTokens": 128000,
   "maxOutputTokens": 8192,
   "connectTimeoutSeconds": 30,
   "requestTimeoutSeconds": 300

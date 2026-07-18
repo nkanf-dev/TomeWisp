@@ -58,7 +58,7 @@ Fabric and NeoForge client adapters.
 - Test: `common/src/test/java/dev/tomewisp/model/config/ModelProfilesConfigLoaderTest.java`
 - Modify: `common/src/test/java/dev/tomewisp/model/config/ModelConfigLoaderTest.java`
 
-- [ ] **Step 1: Write red strict-schema, order, duplicate, secret, and legacy tests**
+- [x] **Step 1: Write red strict-schema, order, duplicate, secret, and legacy tests**
 
 Cover an ordered two-profile file, stable IDs/display names, disabled profiles,
 missing explicit context windows, duplicate IDs, missing default, future schema,
@@ -66,7 +66,7 @@ unknown fields, inline `apiKey`, absent environment variables, and a legacy
 `model.json` imported as synthetic profile `default` only when `models.json` is
 absent.
 
-- [ ] **Step 2: Implement the credential-free profile document**
+- [x] **Step 2: Implement the credential-free profile document**
 
 `models.json` schema 1 contains exactly `schemaVersion`, `defaultProfileId`, and
 `profiles`. Each profile contains exactly its stable identity, display name,
@@ -75,7 +75,7 @@ explicit context limit, output limit, and timeouts. Lists retain file order and
 constructors copy all mutable values. New-format parsing rejects `apiKey` at the
 schema boundary before environment resolution.
 
-- [ ] **Step 3: Resolve runtime profiles without network access**
+- [x] **Step 3: Resolve runtime profiles without network access**
 
 Convert enabled definitions with an explicit context window and present named
 environment secret into existing `ModelConfig`. Retain disabled/unresolved
@@ -83,12 +83,19 @@ definitions with structured redacted diagnostics so the UI can show and repair
 them. A malformed whole document is `invalid_model_config`; an absent file with
 no legacy file is `model_not_configured`.
 
-- [ ] **Step 4: Run focused tests and commit**
+- [x] **Step 4: Run focused tests and commit**
 
 ```bash
 ./gradlew :common:test --tests 'dev.tomewisp.model.config.*'
 git commit -m "feat: load named model profiles"
 ```
+
+The red run failed only on the intentionally absent profile types. The complete
+model-config suite now passes. Schema-1 parsing preserves file order, retains
+disabled/unresolved profiles with distinct redacted failures, rejects inline
+keys and every unknown field, and resolves only explicit context limits plus a
+present named environment secret. Legacy `model.json` imports as `default` only
+when `models.json` is absent; missing both formats is `model_not_configured`.
 
 ### Task 2: Atomic client runtime registry with shared sessions
 

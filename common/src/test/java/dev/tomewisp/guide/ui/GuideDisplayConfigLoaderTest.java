@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.io.StringReader;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import org.junit.jupiter.api.Test;
@@ -33,6 +34,24 @@ final class GuideDisplayConfigLoaderTest {
 
         assertTrue(load.config().debugMode());
         assertNull(load.failure());
+    }
+
+    @Test
+    void canonicalWriterRoundTripsThroughStrictReaderLoader() {
+        GuideDisplayConfig candidate = new GuideDisplayConfig(1, true);
+
+        String encoded = new GuideDisplayConfigWriter().encode(candidate);
+        GuideDisplayConfigLoader.Load load = new GuideDisplayConfigLoader()
+                .load(new StringReader(encoded));
+
+        assertEquals(candidate, load.config());
+        assertNull(load.failure());
+        assertEquals("""
+                {
+                  \"schemaVersion\": 1,
+                  \"debugMode\": true
+                }
+                """, encoded);
     }
 
     @Test

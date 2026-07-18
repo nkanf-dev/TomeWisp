@@ -269,7 +269,7 @@ git commit -m "feat: coordinate player history deletion"
 - Create: `common/src/test/java/dev/tomewisp/guide/ui/GuideDisplayRuntimeTest.java`
 - Modify: `common/src/test/java/dev/tomewisp/client/gui/TomeWispScreenProjectionTest.java`
 
-- [ ] **Step 1: Write writer/runtime/live-projection tests**
+- [x] **Step 1: Write writer/runtime/live-projection tests**
 
 ```java
 @Test
@@ -289,14 +289,14 @@ void successfulToggleRebuildsCurrentGuideProjectionWithoutHistoryWrite() {
 }
 ```
 
-- [ ] **Step 2: Run display/GUI tests and verify static config behavior**
+- [x] **Step 2: Run display/GUI tests and verify static config behavior**
 
 ```bash
 ./gradlew :common:test --tests 'dev.tomewisp.guide.ui.GuideDisplay*Test' \
   --tests 'dev.tomewisp.client.gui.TomeWispScreenProjectionTest'
 ```
 
-- [ ] **Step 3: Implement canonical writer and atomic runtime**
+- [x] **Step 3: Implement canonical writer and atomic runtime**
 
 ```java
 public final class GuideDisplayRuntime {
@@ -312,7 +312,7 @@ last valid runtime on error. `TomeWispScreen` receives the runtime or display
 supplier and constructs `GuideUiView.from(snapshot, display.config())` on each
 projection rather than retaining the launch-time record.
 
-- [ ] **Step 4: Run display/history privacy tests and commit**
+- [x] **Step 4: Run display/history privacy tests and commit**
 
 ```bash
 ./gradlew :common:test --tests 'dev.tomewisp.guide.ui.*' \

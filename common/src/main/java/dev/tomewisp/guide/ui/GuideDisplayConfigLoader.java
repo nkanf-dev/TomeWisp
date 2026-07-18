@@ -5,6 +5,7 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import dev.tomewisp.guide.GuideFailure;
 import java.io.IOException;
+import java.io.Reader;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Objects;
@@ -24,8 +25,17 @@ public final class GuideDisplayConfigLoader {
         if (!Files.exists(path)) {
             return new Load(GuideDisplayConfig.defaults(), null);
         }
+        try (Reader reader = Files.newBufferedReader(path)) {
+            return load(reader);
+        } catch (IOException failure) {
+            return invalid(failure);
+        }
+    }
+
+    public Load load(Reader reader) {
+        Objects.requireNonNull(reader, "reader");
         try {
-            JsonElement parsed = JsonParser.parseString(Files.readString(path));
+            JsonElement parsed = JsonParser.parseReader(reader);
             if (!parsed.isJsonObject()) {
                 throw new IllegalArgumentException("Display configuration must be an object");
             }
@@ -42,16 +52,20 @@ public final class GuideDisplayConfigLoader {
             int version = integer(object, "schemaVersion");
             boolean debugMode = bool(object, "debugMode");
             return new Load(new GuideDisplayConfig(version, debugMode), null);
-        } catch (IOException | RuntimeException failure) {
-            String message = failure.getMessage();
-            return new Load(
-                    GuideDisplayConfig.defaults(),
-                    new GuideFailure(
-                            "invalid_display_config",
-                            message == null || message.isBlank()
-                                    ? "Invalid display configuration"
-                                    : message));
+        } catch (RuntimeException failure) {
+            return invalid(failure);
         }
+    }
+
+    private static Load invalid(Exception failure) {
+        String message = failure.getMessage();
+        return new Load(
+                GuideDisplayConfig.defaults(),
+                new GuideFailure(
+                        "invalid_display_config",
+                        message == null || message.isBlank()
+                                ? "Invalid display configuration"
+                                : message));
     }
 
     private static int integer(JsonObject object, String field) {

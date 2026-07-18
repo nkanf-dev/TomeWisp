@@ -7,6 +7,7 @@ import dev.tomewisp.guide.GuideRequestStatus;
 import dev.tomewisp.guide.GuideService;
 import dev.tomewisp.guide.GuideSource;
 import dev.tomewisp.guide.GuideSubscription;
+import dev.tomewisp.guide.GuideSnapshot;
 import dev.tomewisp.guide.GuideToolActivity;
 import dev.tomewisp.guide.GuideToolStatus;
 import dev.tomewisp.guide.ui.GuideUiLayout;
@@ -16,6 +17,7 @@ import dev.tomewisp.guide.ui.GuideUiSession;
 import dev.tomewisp.guide.ui.GuideUiView;
 import dev.tomewisp.guide.ui.GuideDetailCard;
 import dev.tomewisp.guide.ui.GuideDisplayConfig;
+import dev.tomewisp.guide.ui.GuideDisplayRuntime;
 import dev.tomewisp.guide.ui.GuideItemView;
 import dev.tomewisp.guide.ui.GuideRecipeCard;
 import dev.tomewisp.guide.ui.GuideToolDetailView;
@@ -25,8 +27,10 @@ import dev.tomewisp.recipe.config.RecipeClientRuntime;
 import dev.tomewisp.tool.ToolResult;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import java.util.UUID;
 import java.util.function.Consumer;
+import java.util.function.Supplier;
 import net.minecraft.ChatFormatting;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.components.Button;
@@ -51,7 +55,7 @@ public final class TomeWispScreen extends Screen {
     private static final int ERROR = 0xFFFF7D7D;
     private final GuideService service;
     private final RecipeClientRuntime recipeClient;
-    private final GuideDisplayConfig displayConfig;
+    private final Supplier<GuideDisplayConfig> display;
     private final Runnable settingsOpener;
     private volatile GuideUiView view;
     private GuideSubscription subscription;
@@ -71,6 +75,7 @@ public final class TomeWispScreen extends Screen {
     private GuideUiRow.Tool selectedTool;
     private GuideSource selectedSource;
     private final List<Hit> hits = new ArrayList<>();
+    private GuideDisplayConfig projectedDisplay;
 
     public TomeWispScreen(GuideService service) {
         this(service, RecipeClientRuntime.defaults(), GuideDisplayConfig.defaults());
@@ -101,12 +106,35 @@ public final class TomeWispScreen extends Screen {
             GuideDisplayConfig displayConfig,
             GuideFailure displayFailure,
             Runnable settingsOpener) {
+        this(service, recipeClient, () -> displayConfig, displayFailure, settingsOpener);
+    }
+
+    public TomeWispScreen(
+            GuideService service,
+            RecipeClientRuntime recipeClient,
+            GuideDisplayRuntime display,
+            Runnable settingsOpener) {
+        this(
+                service,
+                recipeClient,
+                Objects.requireNonNull(display, "display")::config,
+                display.failure(),
+                settingsOpener);
+    }
+
+    private TomeWispScreen(
+            GuideService service,
+            RecipeClientRuntime recipeClient,
+            Supplier<GuideDisplayConfig> display,
+            GuideFailure displayFailure,
+            Runnable settingsOpener) {
         super(Component.translatable("screen.tomewisp.guide"));
         this.service = java.util.Objects.requireNonNull(service, "service");
         this.recipeClient = java.util.Objects.requireNonNull(recipeClient, "recipeClient");
-        this.displayConfig = java.util.Objects.requireNonNull(displayConfig, "displayConfig");
+        this.display = java.util.Objects.requireNonNull(display, "display");
         this.settingsOpener = settingsOpener;
-        this.view = GuideUiView.from(service.snapshot(), displayConfig);
+        this.projectedDisplay = currentDisplay();
+        this.view = GuideUiView.from(service.snapshot(), projectedDisplay);
         List<String> startupNotices = new ArrayList<>();
         recipeClient.failure().ifPresent(failure -> startupNotices.add(Component.translatable(
                 "screen.tomewisp.recipe.invalid_config", failure.code()).getString()));
@@ -164,9 +192,11 @@ public final class TomeWispScreen extends Screen {
     @Override
     public void added() {
         subscription = service.subscribe(snapshot -> {
+            GuideDisplayConfig displayConfig = currentDisplay();
             GuideUiView next = GuideUiView.from(snapshot, displayConfig);
             boolean changedSession = !view.selectedSession().equals(next.selectedSession());
             boolean closedDetail = refreshDetail(next);
+            projectedDisplay = displayConfig;
             view = next;
             if (changedSession) scroll = 0;
             if ((changedSession || closedDetail) && composer != null) rebuildForDetail();
@@ -267,6 +297,7 @@ public final class TomeWispScreen extends Screen {
 
     @Override
     public void extractRenderState(GuiGraphicsExtractor graphics, int mouseX, int mouseY, float a) {
+        refreshDisplayProjection();
         graphics.fill(0, 0, width, height, 0xC00B0D12);
         renderTop(graphics);
         renderSessions(graphics);
@@ -349,7 +380,7 @@ public final class TomeWispScreen extends Screen {
             }
             for (GuideSource source : assistant.sources()) {
                 int sourceY = y;
-                String label = sourceLabel(source, displayConfig.debugMode());
+                String label = sourceLabel(source, projectedDisplay.debugMode());
                 graphics.text(font, label, x + 6, sourceY, ACCENT, false);
                 hits.add(new Hit(new GuideUiLayout.Rect(x + 4, sourceY - 2, width - 8, 12),
                         HitKind.CONTENT, () -> open(source)));
@@ -453,7 +484,7 @@ public final class TomeWispScreen extends Screen {
                 }
             }
         } else if (selectedSource != null) {
-            if (displayConfig.debugMode()) {
+            if (projectedDisplay.debugMode()) {
                 y = evidence(graphics, selectedSource, detail, y);
             } else {
                 y = detailLine(graphics,
@@ -833,6 +864,28 @@ public final class TomeWispScreen extends Screen {
             return true;
         }
         return false;
+    }
+
+    private void refreshDisplayProjection() {
+        GuideDisplayConfig nextDisplay = currentDisplay();
+        if (nextDisplay.equals(projectedDisplay)) return;
+        GuideUiView next = GuideUiView.from(service.snapshot(), nextDisplay);
+        refreshDetail(next);
+        projectedDisplay = nextDisplay;
+        view = next;
+        updateControls();
+    }
+
+    private GuideDisplayConfig currentDisplay() {
+        return Objects.requireNonNull(display.get(), "display config");
+    }
+
+    static GuideUiView project(
+            GuideSnapshot snapshot, Supplier<GuideDisplayConfig> display) {
+        Objects.requireNonNull(snapshot, "snapshot");
+        Objects.requireNonNull(display, "display");
+        return GuideUiView.from(
+                snapshot, Objects.requireNonNull(display.get(), "display config"));
     }
 
     private void submit() {

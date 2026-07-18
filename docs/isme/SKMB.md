@@ -22,7 +22,9 @@ accepted and contains explicit approval evidence.
 | SKMB-2026-07-18-012 | accepted | model metadata cache and refresh | A, B, D, F | decisions/2026-07-18-012-model-metadata-cache.md | 7e2a735 |
 | SKMB-2026-07-18-013 | accepted | shared outbound HTTP authority boundaries | D, E, F | decisions/2026-07-18-013-outbound-http-boundaries.md | 7e2a735 |
 | SKMB-2026-07-18-014 | accepted | player history administration | B, C, F, G | decisions/2026-07-18-014-history-administration.md | adaffaf |
-| SKMB-2026-07-18-015 | accepted | settings model administration and live connection testing | A, B, C, D, E, F, G | decisions/2026-07-18-015-settings-model-administration.md | pending |
+| SKMB-2026-07-18-015 | accepted | settings model administration and live connection testing | A, B, C, D, E, F, G | decisions/2026-07-18-015-settings-model-administration.md | f1ba74b |
+| SKMB-2026-07-18-016 | accepted | native settings coordination and domain config writes | A, B, C, E, F | decisions/2026-07-18-016-native-settings-coordination.md | pending |
+| SKMB-2026-07-18-017 | accepted | knowledge/capability catalog and local Tool/Skill policy | B, C, D, E, F | decisions/2026-07-18-017-capability-settings-policy.md | pending |
 
 SKMB-2026-07-18-006 is implemented by `a0eaeff`, `19ab90f`, and `c6ca6bc`.
 Its deterministic clean-build and packaged-driver evidence is recorded in the
@@ -95,6 +97,8 @@ Delight graphical evidence are recorded in the Phase 4C plan and
 | T37 | history idle | player confirms current-partition/current-actor deletion | deletion_pending | Serialize after prior writes, transactionally delete only the approved scope, reset matching in-memory sessions, then return idle | SKMB-2026-07-18-014 |
 | T38 | settings idle | player confirms a valid profile candidate | settings_saving | Prepare a complete replacement, atomically replace `models.json`, then publish the prepared runtime for future requests | SKMB-2026-07-18-015 |
 | T39 | settings idle | player starts connection test after cost notice | connection_testing | Send one isolated cancellable real model probe; discard content and retain only redacted transient status/latency | SKMB-2026-07-18-015 |
+| T40 | settings idle | confirmed typed settings action starts | settings_mutating | Run one domain-owned async mutation; publish one immutable terminal snapshot and never enqueue a hidden second write | SKMB-2026-07-18-016 |
+| T41 | capability policy current | player confirms valid Tool/Skill policy | capability policy saving | Atomically persist disabled identities and publish one prepared immutable capability snapshot for future client requests | SKMB-2026-07-18-017 |
 
 ## Invariants
 
@@ -147,6 +151,10 @@ Delight graphical evidence are recorded in the Phase 4C plan and
 | I45 | Normal history management is actor-scoped; whole-database reset is Debug Mode-only, separately confirmed, and never automatic | SKMB-2026-07-18-014 |
 | I46 | Profile replacement is candidate-validated, atomically persisted, and published as one prepared runtime state; failure retains the prior file/runtime | SKMB-2026-07-18-015 |
 | I47 | Connection testing is an explicit isolated real request with no Guide context/tools/history, no retry/fallback, and no retained secret/body/output | SKMB-2026-07-18-015 |
+| I48 | Native settings use one common operation/snapshot service while model, capability, capability-owned, display, metadata, and history persistence remain independently versioned | SKMB-2026-07-18-016 |
+| I49 | Settings file/provider/SQLite work never runs on a Minecraft-owned thread, and screen detach never owns or rolls back a confirmed durable mutation | SKMB-2026-07-18-016 |
+| I50 | Knowledge/capability settings can only narrow registered local Tool/Skill access; every active request retains one captured immutable capability snapshot | SKMB-2026-07-18-017 |
+| I51 | Tool-specific source settings use stable registered IDs under that tool's child page; adding JEI/REI/EMI/future adapters does not add top-level mod settings fields | SKMB-2026-07-18-017 |
 
 ## Fail Semantics
 
@@ -182,6 +190,8 @@ Delight graphical evidence are recorded in the Phase 4C plan and
 | F28 | History deletion overlaps an active request/pending write or its transaction fails | Reject or roll back without deleting/resurrecting data; require an explicit later retry | SKMB-2026-07-18-014 |
 | F29 | Profile validation/preparation/write fails | Report `invalid_model_config` or `settings_write_failed`; retain the previous file and runtime without partial publication | SKMB-2026-07-18-015 |
 | F30 | Connection probe is busy, cancelled, rejected, rate-limited, times out, or returns malformed/empty output | Classify it into a stable redacted `connection_*` failure, send no retry, and leave settings/history unchanged | SKMB-2026-07-18-015 |
+| F31 | A settings mutation conflicts, strict validation fails, or atomic persistence/reload fails | Reject as `settings_busy` or a stable domain/write failure; retain every unaffected prior file/runtime and never partially apply another domain | SKMB-2026-07-18-016 |
+| F32 | Capability policy has a Skill/tool dependency conflict or a disabled/unavailable capability is invoked | Reject the save or invocation explicitly; never silently enable/fallback or widen authority | SKMB-2026-07-18-017 |
 
 ## Statistical Defaults Allowed Temporarily
 

@@ -27,6 +27,7 @@ accepted and contains explicit approval evidence.
 | SKMB-2026-07-18-017 | accepted | knowledge/capability catalog and local Tool/Skill policy | B, C, D, E, F | decisions/2026-07-18-017-capability-settings-policy.md | e7acf43, 507d628; implemented through 771cc94 |
 | SKMB-2026-07-18-018 | accepted | semantic messages, controlled components, and windowed history | A, B, C, D, E, F | decisions/2026-07-18-018-semantic-history-windowing.md | 9655dd2; implemented through 11a6ace |
 | SKMB-2026-07-19-019 | accepted | manual-acceptance input, credential, Tool/source, Skill, and pre-release history corrections | B, C, D, E, F, G | decisions/2026-07-19-019-manual-acceptance-corrections.md | pending |
+| SKMB-2026-07-19-020 | accepted | request observability, stable native interaction, Tool guidance, and unified player-observable game state | A, B, C, D, E, F | decisions/2026-07-19-020-observable-game-state-and-request-visibility.md | pending |
 
 SKMB-2026-07-18-006 is implemented by `a0eaeff`, `19ab90f`, and `c6ca6bc`.
 Its deterministic clean-build and packaged-driver evidence is recorded in the
@@ -76,6 +77,12 @@ full-mod walkthrough. Its implementation and corrected graphical acceptance
 must be verified separately; earlier Phase 4 reports are supporting evidence,
 not completion evidence for this decision.
 
+SKMB-2026-07-19-020 is the accepted contract for the second manual walkthrough:
+visible request progress and full-stream timeout, stable streaming/list/input
+behavior, aligned Tool guidance/cards, and one sectioned read-only Tool for all
+player-observable outer game state. Deep Recipes/Guides remain independent and
+interactive/spatial world inspection remains deferred.
+
 ## Named States
 
 | state | meaning | owner | notes | source |
@@ -103,6 +110,8 @@ not completion evidence for this decision.
 | tool_config_saving | One complete logical Tool/source candidate is being validated and persisted | Tool settings service | Prior Tool snapshot remains active until atomic replacement succeeds | SKMB-2026-07-19-019 |
 | skill_reloading | A bundled/local Agent Skills package candidate is being validated | SkillRepository | Invalid override retains the previous valid or bundled package | SKMB-2026-07-19-019 |
 | history_schema_rebuilding | A recognized pre-release schema 1, 2, or 3 is being transactionally recreated as the current schema | GuideHistoryStore | Rollback preserves the older database if rebuild fails | SKMB-2026-07-19-019 |
+| response_streaming | A model response body is actively producing validated deltas under its dispatch deadline | ModelClient | Cancellable; last-progress is observable and late bytes are generation-fenced | SKMB-2026-07-19-020 |
+| observable_snapshot_ready | Player-observable game state has been detached into immutable registered sections | ClientContextCapture | Contains no live Minecraft objects, secrets, raw command strings, or spatial scans | SKMB-2026-07-19-020 |
 
 ## Transition Decisions
 
@@ -159,6 +168,10 @@ not completion evidence for this decision.
 | T49 | settings idle | player saves a model candidate with a replacement API key | credential_staged | Validate the complete candidate and insert a new immutable local secret without changing the active profile/runtime | SKMB-2026-07-19-019 |
 | T51 | bundled or local Skill selected | player creates/saves an override | skill_reloading | Validate uppercase `SKILL.md` package confinement and atomically publish the valid local override | SKMB-2026-07-19-019 |
 | T52 | credential_staged | profile replacement succeeds or fails | profile_referenced or unchanged | Publish only a fully resolvable profile/runtime; otherwise retain the prior reference/runtime and leave the staged row unreachable for later collection | SKMB-2026-07-19-019 |
+| T53 | model_wait | response body begins | response_streaming | Record redacted attempt/progress/deadline state and decode under the same cancellable request budget | SKMB-2026-07-19-020 |
+| T54 | response_streaming | tool call, final response, cancellation, protocol failure, or total timeout | tool_wait, completing, cancelled, or failed | Close the stream/watchdog, publish the correlated terminal/next phase, and suppress every late delta | SKMB-2026-07-19-020 |
+| T55 | client context capture | registered observable sections detach successfully | observable_snapshot_ready | Release live game objects and publish the immutable evidence-bearing snapshot to the request context | SKMB-2026-07-19-020 |
+| T56 | observable_snapshot_ready | one valid section query executes | tool_wait then model_wait | Return only the requested typed player-observable data with explicit authority/completeness | SKMB-2026-07-19-020 |
 
 ## Invariants
 
@@ -225,6 +238,12 @@ not completion evidence for this decision.
 | I59 | Every source is owned and strictly validated by one logical Tool; built-in sources cannot be deleted, while registered user source kinds may support full CRUD | SKMB-2026-07-19-019 |
 | I60 | Bundled Skills are read-only Agent Skills packages with uppercase `SKILL.md`; local edits are external overrides and never grant scripts, paths, tools, or Agent write authority | SKMB-2026-07-19-019 |
 | I61 | Only recognized unshipped TomeWisp history schemas 1 through 3 rebuild automatically; future, corrupt, foreign, missing/inconsistent-metadata, or otherwise unrecognized databases remain untouched | SKMB-2026-07-19-019 |
+| I62 | Every active request has a redacted observable phase, elapsed basis, last-progress time and optional retry/deadline; clocks never create transcript or persistence writes | SKMB-2026-07-19-020 |
+| I63 | The configured model request timeout covers complete response-body consumption, and cancel/timeout/disconnect suppress every late stream event | SKMB-2026-07-19-020 |
+| I64 | Rendering never owns scroll mutation; streaming keeps a stable literal tail and preserves manual viewport anchors | SKMB-2026-07-19-020 |
+| I65 | `inspect_game_state` is one strict sectioned read-only Tool for directly player-observable UI/HUD/F3/player-owned/query state; it cannot execute command strings, reflect arbitrary fields, scan spatial world content, inspect external containers, or write | SKMB-2026-07-19-020 |
+| I66 | Recipes and Guides remain independent narrow high-volume deep-content Tool families, while future map/block/container interaction requires a separate decision and authority boundary | SKMB-2026-07-19-020 |
+| I67 | Player-observable state is captured on the owning Minecraft thread into immutable evidence-bearing records; missing sections degrade independently and never become fabricated empty facts | SKMB-2026-07-19-020 |
 
 ## Fail Semantics
 
@@ -270,6 +289,9 @@ not completion evidence for this decision.
 | F38 | A Tool source candidate is malformed, unavailable, or unauthorized | Reject/retain it with a source-scoped diagnostic and leave unrelated Tools/sources unchanged | SKMB-2026-07-19-019 |
 | F39 | A local Skill override is malformed or escapes the supported Agent Skills subset | Retain the prior valid/bundled Skill, expose a source-scoped validation diagnostic, and keep unrelated Skills available | SKMB-2026-07-19-019 |
 | F40 | A recognized older history schema cannot be rebuilt transactionally | Roll back, preserve the prior database, report `history_schema_rebuild_failed`, and make persistence unavailability visible | SKMB-2026-07-19-019 |
+| F41 | A dispatched model response does not complete within its configured total deadline | Close the body, fail `model_timeout`, retain completed chronology, suppress late deltas, and require explicit retry | SKMB-2026-07-19-020 |
+| F42 | A player-observable section/query is unknown, malformed, unsupported, partial, or not authoritative in the current topology | Return strict invalid/unavailable/partial evidence for that section and keep every unrelated section usable; never guess or broaden access | SKMB-2026-07-19-020 |
+| F43 | Resource resolution is ambiguous or a corrected Tool search remains unchanged and empty/partial | Return every deterministic exact match for disambiguation, or stop after one corrected call and explain the missing evidence; never loop or choose arbitrarily | SKMB-2026-07-19-020 |
 
 ## Reviewed Statistical Defaults
 

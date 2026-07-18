@@ -23,8 +23,8 @@ accepted and contains explicit approval evidence.
 | SKMB-2026-07-18-013 | accepted | shared outbound HTTP authority boundaries | D, E, F | decisions/2026-07-18-013-outbound-http-boundaries.md | 7e2a735 |
 | SKMB-2026-07-18-014 | accepted | player history administration | B, C, F, G | decisions/2026-07-18-014-history-administration.md | adaffaf |
 | SKMB-2026-07-18-015 | accepted | settings model administration and live connection testing | A, B, C, D, E, F, G | decisions/2026-07-18-015-settings-model-administration.md | f1ba74b |
-| SKMB-2026-07-18-016 | accepted | native settings coordination and domain config writes | A, B, C, E, F | decisions/2026-07-18-016-native-settings-coordination.md | pending |
-| SKMB-2026-07-18-017 | accepted | knowledge/capability catalog and local Tool/Skill policy | B, C, D, E, F | decisions/2026-07-18-017-capability-settings-policy.md | pending |
+| SKMB-2026-07-18-016 | accepted | native settings coordination and domain config writes | A, B, C, E, F | decisions/2026-07-18-016-native-settings-coordination.md | e7acf43, 507d628 |
+| SKMB-2026-07-18-017 | accepted | knowledge/capability catalog and local Tool/Skill policy | B, C, D, E, F | decisions/2026-07-18-017-capability-settings-policy.md | e7acf43, 507d628 |
 
 SKMB-2026-07-18-006 is implemented by `a0eaeff`, `19ab90f`, and `c6ca6bc`.
 Its deterministic clean-build and packaged-driver evidence is recorded in the
@@ -94,7 +94,7 @@ Delight graphical evidence are recorded in the Phase 4C plan and
 | T34 | any UI state | debug mode changes | unchanged | Rebuild only the local normal/debug projection; do not rewrite history or change active work | SKMB-2026-07-18-010 |
 | T35 | client startup | valid metadata cache loads | unchanged | Apply only missing profile limits asynchronously; do not block startup or override explicit values | SKMB-2026-07-18-012 |
 | T36 | cache miss or manual refresh | trusted metadata succeeds | unchanged | Atomically store the validated credential-free entry and make it available to a later registry reload | SKMB-2026-07-18-012 |
-| T37 | history idle | player confirms current-partition/current-actor deletion | deletion_pending | Serialize after prior writes, transactionally delete only the approved scope, reset matching in-memory sessions, then return idle | SKMB-2026-07-18-014 |
+| T37 | history idle with no pending write | player confirms current-partition/current-actor deletion | deletion_pending | Atomically reserve the idle repository, transactionally delete only the approved scope, reset matching in-memory sessions, then return idle; reject rather than queue behind a pending write | SKMB-2026-07-18-014 |
 | T38 | settings idle | player confirms a valid profile candidate | settings_saving | Prepare a complete replacement, atomically replace `models.json`, then publish the prepared runtime for future requests | SKMB-2026-07-18-015 |
 | T39 | settings idle | player starts connection test after cost notice | connection_testing | Send one isolated cancellable real model probe; discard content and retain only redacted transient status/latency | SKMB-2026-07-18-015 |
 | T40 | settings idle | confirmed typed settings action starts | settings_mutating | Run one domain-owned async mutation; publish one immutable terminal snapshot and never enqueue a hidden second write | SKMB-2026-07-18-016 |

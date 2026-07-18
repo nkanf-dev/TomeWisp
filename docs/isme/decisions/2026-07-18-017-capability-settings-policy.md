@@ -4,7 +4,7 @@
 - decided_by: designer
 - approval_source: designer corrected the top-level “配方” section to a general resource/knowledge layer that manages all tools and Skills, with recipe sources and JEI/REI/EMI-style options owned by the recipe tool's specific settings page; Phase 4 decisions are delegated to best technical judgment
 - date: 2026-07-18
-- commit: pending
+- commit: e7acf43, 507d628
 - patterns:
   - B_state_persistence
   - C_concurrent_operations

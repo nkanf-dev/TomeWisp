@@ -552,14 +552,14 @@ git commit -m "feat: render Knowledge and Capabilities settings"
 - Modify: `docs/isme/SKMB.md`
 - Modify: `docs/superpowers/plans/2026-07-18-phase-4h-knowledge-capability-settings.md`
 
-- [ ] **Step 1: Prove both loaders supply the same policy/recipe paths and descriptors**
+- [x] **Step 1: Prove both loaders supply the same policy/recipe paths and descriptors**
 
 Extend architecture tests to assert `capabilities.json` and `recipes.json` are
 passed to the common service in both entrypoints and loader integrations only
 register stable source/navigator descriptors. Common code must still import no
 loader APIs.
 
-- [ ] **Step 2: Run the complete deterministic gate**
+- [x] **Step 2: Run the complete deterministic gate**
 
 ```bash
 ./gradlew clean :common:test :fabric:build :neoforge:build
@@ -570,7 +570,7 @@ Also run tracked shell/Python/JSON syntax checks, production-JAR credential
 scans, and source-boundary assertions. Record actual common test totals and
 both loader artifact SHA-256 values.
 
-- [ ] **Step 3: Update truthful docs/status and commit**
+- [x] **Step 3: Update truthful docs/status and commit**
 
 Document the Knowledge & Capabilities hierarchy, deny-only local policy,
 future-request capture, recipe child schema 2, unavailable-viewer behavior,
@@ -585,6 +585,23 @@ git add fabric/src/main/java/dev/tomewisp/fabric/TomeWispFabricClient.java \
   docs/superpowers/plans/2026-07-18-phase-4h-knowledge-capability-settings.md
 git commit -m "docs: verify Knowledge and Capabilities settings"
 ```
+
+Verification completed on 2026-07-18 with
+`./gradlew clean :common:test :fabric:build :neoforge:build`: 338 common tests,
+zero failures, zero errors, and two opt-in skips; both loader builds succeeded.
+Tracked shell, Python, and JSON syntax checks, `git diff --check`, the common
+loader-boundary assertions, tracked long-token scan, and both production-JAR
+credential-pattern scans passed. Production artifact SHA-256 values were:
+
+```text
+5ce6883b9df4c2758702da8ba97a9405f82691fa892797ef7b2e65d6d03b8570  fabric/build/libs/tomewisp-fabric-26.2-0.1.0-SNAPSHOT.jar
+f7005f8a37bc450e3bab7289c2291759bd707a4f71b18400ad6007829dd442c3  neoforge/build/libs/tomewisp-neoforge-26.2-0.1.0-SNAPSHOT.jar
+```
+
+The build emitted existing Gradle/Javadoc/SQLite/Unsafe and NeoForge annotation
+warnings but no failure. No graphical client or live-provider request was run
+for this package; the claim is deterministic UI projection and both-loader
+build parity, not manual screen appearance or input acceptance.
 
 ## Completion boundary
 

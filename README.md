@@ -85,7 +85,12 @@ JDK asynchronous HTTP foundation are now implemented; the profile editor and
 manual-refresh settings UI are now available on both loaders with atomic
 profile CRUD, environment-only credentials, isolated billable-request warning,
 redacted connection probes, and generation-safe metadata reconciliation.
-Knowledge/Tool/Skill policy, capability-owned recipe settings, history
+The same native screen now has a registered Knowledge & Capabilities page for
+knowledge sources, Tools, and Skills. Its deny-only local policy is atomically
+persisted and captured per future request, while active requests retain their
+original Tool/Skill snapshot. Recipes are one Tool card whose child page owns
+all-known/unlocked visibility, stable source enablement, and preferred-viewer
+selection; they are not a top-level mod configuration domain. History
 administration, model-authored rich messages, and the remaining controlled
 dynamic components remain Phase 4 work. Dynamic
 Ponder generation is deferred beyond Phase 4 because Ponder/Ponderer do not yet

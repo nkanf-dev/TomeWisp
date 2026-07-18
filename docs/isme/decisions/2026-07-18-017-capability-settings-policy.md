@@ -4,7 +4,7 @@
 - decided_by: designer
 - approval_source: designer corrected the top-level “配方” section to a general resource/knowledge layer that manages all tools and Skills, with recipe sources and JEI/REI/EMI-style options owned by the recipe tool's specific settings page; Phase 4 decisions are delegated to best technical judgment
 - date: 2026-07-18
-- commit: e7acf43, 507d628
+- commit: e7acf43, 507d628; implemented through 771cc94
 - patterns:
   - B_state_persistence
   - C_concurrent_operations
@@ -137,3 +137,13 @@ navigation, or source-generation decisions in SKMB-2026-07-18-005/007.
 ## Superseded By
 
 None.
+
+## Implementation Status
+
+Implemented through `771cc94`: strict capability and recipe codecs/stores,
+immutable Tool/Skill catalogs, per-request client capability capture,
+dependency validation, registered settings descriptors, common async settings
+actions, friendly native parent/child pages, and shared Fabric/NeoForge recipe
+runtime wiring are covered by deterministic tests. Current recipe-viewer
+registrations are JEI (`viewer:jei`) and REI (`viewer:rei`); no EMI row or
+runtime support is claimed.

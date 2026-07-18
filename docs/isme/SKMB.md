@@ -24,7 +24,7 @@ accepted and contains explicit approval evidence.
 | SKMB-2026-07-18-014 | accepted | player history administration | B, C, F, G | decisions/2026-07-18-014-history-administration.md | adaffaf |
 | SKMB-2026-07-18-015 | accepted | settings model administration and live connection testing | A, B, C, D, E, F, G | decisions/2026-07-18-015-settings-model-administration.md | f1ba74b; implemented through 6498516 |
 | SKMB-2026-07-18-016 | accepted | native settings coordination and domain config writes | A, B, C, E, F | decisions/2026-07-18-016-native-settings-coordination.md | e7acf43, 507d628; model settings implemented through 6498516 |
-| SKMB-2026-07-18-017 | accepted | knowledge/capability catalog and local Tool/Skill policy | B, C, D, E, F | decisions/2026-07-18-017-capability-settings-policy.md | e7acf43, 507d628 |
+| SKMB-2026-07-18-017 | accepted | knowledge/capability catalog and local Tool/Skill policy | B, C, D, E, F | decisions/2026-07-18-017-capability-settings-policy.md | e7acf43, 507d628; implemented through 771cc94 |
 
 SKMB-2026-07-18-006 is implemented by `a0eaeff`, `19ab90f`, and `c6ca6bc`.
 Its deterministic clean-build and packaged-driver evidence is recorded in the
@@ -41,6 +41,13 @@ atomicity, redaction, generation-race, responsive UI, localization, and
 both-loader evidence is recorded in the Phase 4G plan and
 `docs/verification/phase-4g-native-model-settings/`. The opt-in live probe was
 not run when no credential was exported to the verification process.
+
+SKMB-2026-07-18-017 is implemented through `771cc94`. The common catalog,
+deny-only local policy, dependency validation, future-request capability
+capture, recipe Tool child settings, friendly normal-mode projection, and
+shared Fabric/NeoForge runtime wiring have deterministic coverage. JEI and REI
+are registered; EMI remains unimplemented and is not shown as an available
+source.
 
 ## Named States
 

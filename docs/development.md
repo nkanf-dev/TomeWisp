@@ -101,6 +101,30 @@ candidate, atomically replaces `models.json`, and only then publishes the
 already-prepared runtime for future requests. Active requests retain the
 runtime they captured at submission.
 
+The top-level Knowledge & Capabilities page enumerates the trusted registered
+knowledge-source, Tool, and Skill catalog. Cards use localized player-facing
+names, type/status text, friendly descriptions, text/type filters, and no raw
+IDs in normal mode. Local Tool and Skill switches edit a complete deny-only
+draft. Saving validates Skill dependencies, atomically replaces
+`config/tomewisp/capabilities.json`, and publishes one immutable capability
+snapshot for future client-model requests. An active request keeps the Tool
+definitions, executable map, Skill documents, and required context it captured
+at submission. A missing capability file means no local Tools or Skills are
+disabled:
+
+```json
+{
+  "schemaVersion": 1,
+  "disabledTools": [],
+  "disabledSkills": []
+}
+```
+
+Unknown valid disabled identities are retained for optional content that may
+return later. This policy can only narrow registered local capability; it
+cannot register a Tool, grant network/evidence authority, or change server
+authorization. Server-owned capabilities remain read-only advertised state.
+
 The connection test displays a cost warning and requires a second confirmation.
 It sends one non-streaming, non-retrying request capped at 64 output tokens with
 no Guide history, Tools, Skills, game state, evidence, or trace. Assistant text
@@ -122,24 +146,24 @@ not an access boundary.
 
 ```json
 {
-  "schemaVersion": 1,
-  "visibility": "all_known",
+  "schemaVersion": 2,
+  "visibility": "ALL_KNOWN",
   "preferredViewer": "auto",
-  "sources": {
-    "vanilla": true,
-    "jei": true,
-    "rei": true
-  }
+  "disabledSources": []
 }
 ```
 
-`visibility` may be `all_known` or `unlocked_only`; the latter deliberately
+`visibility` may be `ALL_KNOWN` or `UNLOCKED_ONLY`; the latter deliberately
 excludes viewer records whose vanilla unlock state is unknown. A preferred
-viewer may be `auto`, `jei`, or `rei`. Invalid edits retain the last valid
-in-memory settings and surface an explicit screen diagnostic. Recipe
-configuration reload/editing remains owned by the recipe Tool's future child
+viewer is `auto` or a stable registered source ID such as `viewer:jei` or
+`viewer:rei`. `disabledSources` contains stable IDs such as
+`minecraft:client_recipe_book`; newly registered sources are enabled by
+default, while absent explicitly disabled IDs are retained. Invalid edits
+retain the last valid file/runtime and surface an explicit screen diagnostic.
+Recipe configuration reload/editing is implemented in the recipe Tool's child
 page under Knowledge & Capabilities; Recipes is not a top-level mod settings
-section.
+section. JEI and REI adapters are currently implemented. EMI has no implemented
+or verified Minecraft 26.2 adapter and is not fabricated in the settings list.
 
 Player-facing tool details are controlled separately by
 `config/tomewisp/display.json` on both loaders. A missing file uses the safe

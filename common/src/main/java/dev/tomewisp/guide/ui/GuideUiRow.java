@@ -32,7 +32,13 @@ public sealed interface GuideUiRow
     record Tool(
             UUID requestId,
             int ordinal,
-            GuideToolActivity activity) implements GuideUiRow {}
+            GuideToolActivity activity,
+            GuideToolDetailView detail) implements GuideUiRow {
+        public Tool {
+            java.util.Objects.requireNonNull(activity, "activity");
+            java.util.Objects.requireNonNull(detail, "detail");
+        }
+    }
 
     record Status(
             UUID requestId,

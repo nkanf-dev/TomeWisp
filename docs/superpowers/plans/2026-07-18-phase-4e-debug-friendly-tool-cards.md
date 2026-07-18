@@ -269,7 +269,7 @@ projection.
 - Test: `common/src/test/java/dev/tomewisp/guide/ui/GuideUiViewTest.java`
 - Test: `common/src/test/java/dev/tomewisp/client/gui/TomeWispScreenProjectionTest.java`
 
-- [ ] **Step 1: Add red view tests proving technical data is absent by default**
+- [x] **Step 1: Add red view tests proving technical data is absent by default**
 
 ```java
 GuideUiView normal = GuideUiView.from(snapshot, GuideDisplayConfig.defaults());
@@ -281,7 +281,7 @@ GuideUiView debug = GuideUiView.from(snapshot, new GuideDisplayConfig(1, true));
 assertTrue(((GuideUiRow.Tool) debug.rows().get(1)).detail().debug().isPresent());
 ```
 
-- [ ] **Step 2: Put the common detail projection in each tool row**
+- [x] **Step 2: Put the common detail projection in each tool row**
 
 `GuideUiRow.Tool` carries both the immutable activity identity needed for
 in-place refresh and `GuideToolDetailView detail`. `GuideUiView.from(snapshot,
@@ -289,7 +289,7 @@ displayConfig)` creates the player/debug projection. The existing one-argument
 factory delegates to `GuideDisplayConfig.defaults()` so tests and non-screen
 consumers remain normal-mode safe.
 
-- [ ] **Step 3: Render typed cards**
+- [x] **Step 3: Render typed cards**
 
 In `TomeWispScreen`:
 
@@ -306,14 +306,14 @@ In `TomeWispScreen`:
 - in normal transcript source rows show only `来源 · <friendly source>`;
 - preserve scissor boundaries, keyboard/mouse actions, and text narration.
 
-- [ ] **Step 4: Add English and Simplified Chinese keys**
+- [x] **Step 4: Add English and Simplified Chinese keys**
 
 Add keys for Debug Mode, details, source, ingredients, outputs, workstation,
 inventory, craftable/not-craftable/inconclusive, required/available/missing,
 debug information, unknown tool, and friendly failure messages. Remove new
 hard-coded player strings from the touched detail renderer.
 
-- [ ] **Step 5: Run screen/view tests and commit**
+- [x] **Step 5: Run screen/view tests and commit**
 
 ```bash
 ./gradlew :common:test \
@@ -323,6 +323,14 @@ git add common/src/main/java/dev/tomewisp/client/gui common/src/main/java/dev/to
   common/src/main/resources/assets/tomewisp/lang common/src/test/java/dev/tomewisp
 git commit -m "feat: render debug-gated tool cards"
 ```
+
+The view tests failed first on the absent debug-aware row factory and screen
+source-label projection. The focused tests and full common suite now pass.
+Tool rows carry their immutable detail view, the detail pane independently
+scrolls every card, native item icons/tooltips cover recipe inputs, outputs,
+inventory, allocations, and missing materials, and normal evidence links do
+not contain source IDs or authority/completeness enums. Both language files
+also pass strict JSON parsing.
 
 ### Task 5: Wire Display Config on Both Loaders
 

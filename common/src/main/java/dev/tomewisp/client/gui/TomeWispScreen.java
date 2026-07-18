@@ -12,9 +12,11 @@ import dev.tomewisp.guide.ui.GuideUiLayout;
 import dev.tomewisp.guide.ui.GuideUiRow;
 import dev.tomewisp.guide.ui.GuideUiSession;
 import dev.tomewisp.guide.ui.GuideUiView;
-import dev.tomewisp.guide.ui.GuideToolPresenter;
+import dev.tomewisp.guide.ui.GuideDetailCard;
+import dev.tomewisp.guide.ui.GuideDisplayConfig;
+import dev.tomewisp.guide.ui.GuideItemView;
 import dev.tomewisp.guide.ui.GuideRecipeCard;
-import dev.tomewisp.guide.ui.GuideRecipePresenter;
+import dev.tomewisp.guide.ui.GuideToolDetailView;
 import dev.tomewisp.guide.ui.GuideUiClickRoute;
 import dev.tomewisp.recipe.RecipeNavigationResult;
 import dev.tomewisp.recipe.config.RecipeClientRuntime;
@@ -47,6 +49,7 @@ public final class TomeWispScreen extends Screen {
     private static final int ERROR = 0xFFFF7D7D;
     private final GuideService service;
     private final RecipeClientRuntime recipeClient;
+    private final GuideDisplayConfig displayConfig;
     private volatile GuideUiView view;
     private GuideSubscription subscription;
     private GuideUiLayout layout;
@@ -59,20 +62,30 @@ public final class TomeWispScreen extends Screen {
     private String notice = "";
     private int scroll;
     private int contentHeight;
+    private int detailScroll;
+    private int detailContentHeight;
     private boolean sessionOverlay;
-    private GuideToolActivity selectedTool;
+    private GuideUiRow.Tool selectedTool;
     private GuideSource selectedSource;
     private final List<Hit> hits = new ArrayList<>();
 
     public TomeWispScreen(GuideService service) {
-        this(service, RecipeClientRuntime.defaults());
+        this(service, RecipeClientRuntime.defaults(), GuideDisplayConfig.defaults());
     }
 
     public TomeWispScreen(GuideService service, RecipeClientRuntime recipeClient) {
+        this(service, recipeClient, GuideDisplayConfig.defaults());
+    }
+
+    public TomeWispScreen(
+            GuideService service,
+            RecipeClientRuntime recipeClient,
+            GuideDisplayConfig displayConfig) {
         super(Component.translatable("screen.tomewisp.guide"));
         this.service = java.util.Objects.requireNonNull(service, "service");
         this.recipeClient = java.util.Objects.requireNonNull(recipeClient, "recipeClient");
-        this.view = GuideUiView.from(service.snapshot());
+        this.displayConfig = java.util.Objects.requireNonNull(displayConfig, "displayConfig");
+        this.view = GuideUiView.from(service.snapshot(), displayConfig);
         recipeClient.failure().ifPresent(failure -> notice = Component.translatable(
                 "screen.tomewisp.recipe.invalid_config", failure.code()).getString());
     }
@@ -117,7 +130,7 @@ public final class TomeWispScreen extends Screen {
     @Override
     public void added() {
         subscription = service.subscribe(snapshot -> {
-            GuideUiView next = GuideUiView.from(snapshot);
+            GuideUiView next = GuideUiView.from(snapshot, displayConfig);
             boolean changedSession = !view.selectedSession().equals(next.selectedSession());
             boolean closedDetail = refreshDetail(next);
             view = next;
@@ -163,6 +176,11 @@ public final class TomeWispScreen extends Screen {
 
     @Override
     public boolean mouseScrolled(double x, double y, double scrollX, double scrollY) {
+        if (detailOpen() && layout.detail().contains(x, y)) {
+            int maximum = Math.max(0, detailContentHeight - layout.detail().height() + 34);
+            detailScroll = Mth.clamp(detailScroll - (int) Math.round(scrollY * 24), 0, maximum);
+            return true;
+        }
         if (layout.transcript().contains(x, y)) {
             int maximum = Math.max(0, contentHeight - layout.transcript().height() + 12);
             scroll = Mth.clamp(scroll - (int) Math.round(scrollY * 24), 0, maximum);
@@ -190,6 +208,7 @@ public final class TomeWispScreen extends Screen {
                 if (route.kind() == GuideUiClickRoute.Kind.DISMISS_DETAIL) {
                     selectedTool = null;
                     selectedSource = null;
+                    detailScroll = 0;
                     rebuildForDetail();
                     return true;
                 }
@@ -296,8 +315,7 @@ public final class TomeWispScreen extends Screen {
             }
             for (GuideSource source : assistant.sources()) {
                 int sourceY = y;
-                String label = "来源 · " + source.evidence().sourceId() + " · "
-                        + source.evidence().authority() + "/" + source.evidence().completeness();
+                String label = sourceLabel(source, displayConfig.debugMode());
                 graphics.text(font, label, x + 6, sourceY, ACCENT, false);
                 hits.add(new Hit(new GuideUiLayout.Rect(x + 4, sourceY - 2, width - 8, 12),
                         HitKind.CONTENT, () -> open(source)));
@@ -316,7 +334,7 @@ public final class TomeWispScreen extends Screen {
             graphics.fill(x + 2, y - 2, x + width - 2, y + 15, PANEL_ALT);
             graphics.text(font, icon + " " + friendlyTool(activity.toolId()), x + 7, y + 2, color, false);
             hits.add(new Hit(new GuideUiLayout.Rect(x + 2, y - 2, width - 4, 17),
-                    HitKind.CONTENT, () -> open(activity)));
+                    HitKind.CONTENT, () -> open(tool)));
             return y + 21;
         }
         if (row instanceof GuideUiRow.Persistence persistence) {
@@ -358,33 +376,171 @@ public final class TomeWispScreen extends Screen {
 
     private void renderDetail(GuiGraphicsExtractor graphics, int mouseX, int mouseY) {
         if (!detailOpen()) return;
+        hits.removeIf(hit -> hit.kind() == HitKind.DETAIL);
         GuideUiLayout.Rect detail = layout.detail();
         graphics.fill(detail.x(), detail.y(), detail.x() + detail.width(), detail.y() + detail.height(), 0xF02A303A);
         graphics.outline(detail.x(), detail.y(), detail.width(), detail.height(), ACCENT);
-        graphics.text(font, "详情（点击面板关闭）", detail.x() + 8, detail.y() + 8, ACCENT, false);
-        int y = detail.y() + 24;
+        graphics.text(font, Component.translatable("screen.tomewisp.detail.title"),
+                detail.x() + 8, detail.y() + 8, ACCENT, false);
+        graphics.enableScissor(
+                detail.x() + 1,
+                detail.y() + 21,
+                detail.x() + detail.width() - 1,
+                detail.y() + detail.height() - 1);
+        int y = detail.y() + 26 - detailScroll;
         if (selectedTool != null) {
-            y = detailLine(graphics, "工具: " + selectedTool.toolId(), detail, y);
-            y = detailLine(graphics, "状态: " + selectedTool.status(), detail, y);
-            // Keep validated, actionable recipe references reachable even when the diagnostic
-            // presentation is longer than the panel. The diagnostics remain unbounded below it.
-            for (GuideRecipeCard card : GuideRecipePresenter.cards(
-                    selectedTool.toolId(), selectedTool.normalized())) {
-                y = recipeCard(graphics, card, detail, y, mouseX, mouseY);
+            GuideToolDetailView toolDetail = selectedTool.detail();
+            graphics.text(font, Component.translatable(toolDetail.titleKey()),
+                    detail.x() + 8, y, TEXT, false);
+            y += 16;
+            for (GuideDetailCard card : toolDetail.cards()) {
+                y = detailCard(graphics, card, detail, y, mouseX, mouseY);
             }
-            List<String> presentation = selectedTool.presentationLines().isEmpty()
-                    && selectedTool.normalized() != null
-                    ? GuideToolPresenter.lines(selectedTool.toolId(), selectedTool.normalized())
-                    : selectedTool.presentationLines();
-            for (String line : presentation) {
-                y = detailLine(graphics, line, detail, y);
+            if (toolDetail.cards().isEmpty()) {
+                for (String line : toolDetail.narration()) {
+                    y = detailLine(graphics, line, detail, y);
+                }
             }
-            for (GuideSource source : selectedTool.sources()) {
-                y = evidence(graphics, source, detail, y);
+            if (toolDetail.debug().isPresent()) {
+                GuideToolDetailView.Debug debug = toolDetail.debug().orElseThrow();
+                y = detailLine(graphics,
+                        Component.translatable("screen.tomewisp.debug.section").getString(), detail, y + 4);
+                y = detailLine(graphics, "invocationId: " + debug.invocationId(), detail, y);
+                y = detailLine(graphics, "toolId: " + debug.toolId(), detail, y);
+                if (!debug.validationDiagnostic().isBlank()) {
+                    y = detailLine(graphics,
+                            "validation: " + debug.validationDiagnostic(), detail, y);
+                }
+                for (GuideSource source : debug.sources()) {
+                    y = evidence(graphics, source, detail, y);
+                }
+                if (debug.normalized() != null) {
+                    y = detailLine(graphics, "normalized: " + debug.normalized(), detail, y);
+                }
             }
         } else if (selectedSource != null) {
-            y = evidence(graphics, selectedSource, detail, y);
+            if (displayConfig.debugMode()) {
+                y = evidence(graphics, selectedSource, detail, y);
+            } else {
+                y = detailLine(graphics,
+                        Component.translatable("screen.tomewisp.detail.source_friendly").getString(),
+                        detail,
+                        y);
+            }
         }
+        detailContentHeight = Math.max(0, y + detailScroll - detail.y());
+        graphics.disableScissor();
+    }
+
+    private int detailCard(
+            GuiGraphicsExtractor graphics,
+            GuideDetailCard card,
+            GuideUiLayout.Rect detail,
+            int y,
+            int mouseX,
+            int mouseY) {
+        return switch (card) {
+            case GuideDetailCard.Recipe recipe ->
+                    recipeCard(graphics, recipe.recipe(), detail, y, mouseX, mouseY);
+            case GuideDetailCard.ItemGrid grid ->
+                    itemGridCard(graphics, grid, detail, y, mouseX, mouseY);
+            case GuideDetailCard.Requirements requirements ->
+                    requirementsCard(graphics, requirements, detail, y, mouseX, mouseY);
+            case GuideDetailCard.Text text -> textCard(graphics, text, detail, y);
+            case GuideDetailCard.Error error -> errorCard(graphics, error, detail, y);
+        };
+    }
+
+    private int itemGridCard(
+            GuiGraphicsExtractor graphics,
+            GuideDetailCard.ItemGrid card,
+            GuideUiLayout.Rect detail,
+            int y,
+            int mouseX,
+            int mouseY) {
+        int columns = Math.max(1, (detail.width() - 24) / 22);
+        int rows = (card.items().size() + columns - 1) / columns;
+        int height = 22 + rows * 22;
+        int left = detail.x() + 6;
+        if (visibleDetail(y, height, detail)) {
+            graphics.fill(left, y, detail.x() + detail.width() - 6, y + height, PANEL_ALT);
+            graphics.text(font, Component.translatable(card.titleKey()), left + 7, y + 6, TEXT, false);
+            for (int index = 0; index < card.items().size(); index++) {
+                int itemX = left + 7 + (index % columns) * 22;
+                int itemY = y + 19 + (index / columns) * 22;
+                renderItem(graphics, card.items().get(index), itemX, itemY, mouseX, mouseY);
+            }
+        }
+        return y + height + 5;
+    }
+
+    private int requirementsCard(
+            GuiGraphicsExtractor graphics,
+            GuideDetailCard.Requirements card,
+            GuideUiLayout.Rect detail,
+            int y,
+            int mouseX,
+            int mouseY) {
+        int height = 31 + Math.max(1, card.requirements().size()) * 31;
+        int left = detail.x() + 6;
+        if (visibleDetail(y, height, detail)) {
+            graphics.fill(left, y, detail.x() + detail.width() - 6, y + height, PANEL_ALT);
+            String state = card.craftable()
+                    ? Component.translatable("screen.tomewisp.craftability.ready").getString()
+                    : Component.translatable("screen.tomewisp.craftability.missing").getString();
+            graphics.text(font, state, left + 7, y + 6, card.craftable() ? 0xFF7FC8A9 : 0xFFFFD479, false);
+            graphics.text(font,
+                    Component.translatable(
+                            "screen.tomewisp.craftability.maximum", card.maximumCrafts()),
+                    left + 7,
+                    y + 17,
+                    MUTED,
+                    false);
+            int rowY = y + 31;
+            for (GuideDetailCard.Requirement requirement : card.requirements()) {
+                graphics.text(font,
+                        requirement.key() + "  " + requirement.allocated() + "/" + requirement.required(),
+                        left + 7,
+                        rowY + 2,
+                        requirement.missing() == 0 ? TEXT : 0xFFFFD479,
+                        false);
+                int itemX = left + 7;
+                for (GuideItemView item : requirement.allocatedItems()) {
+                    renderItem(graphics, item, itemX, rowY + 12, mouseX, mouseY);
+                    itemX += 20;
+                }
+                if (requirement.missing() > 0) {
+                    graphics.text(font,
+                            Component.translatable(
+                                    "screen.tomewisp.craftability.need", requirement.missing()),
+                            Math.max(itemX + 3, left + 98),
+                            rowY + 17,
+                            ERROR,
+                            false);
+                }
+                rowY += 31;
+            }
+        }
+        return y + height + 5;
+    }
+
+    private int textCard(
+            GuiGraphicsExtractor graphics,
+            GuideDetailCard.Text card,
+            GuideUiLayout.Rect detail,
+            int y) {
+        int start = y;
+        y = detailLine(graphics, Component.translatable(card.titleKey()).getString(), detail, y);
+        for (String line : card.lines()) y = detailLine(graphics, line, detail, y);
+        return Math.max(y, start + 25);
+    }
+
+    private int errorCard(
+            GuiGraphicsExtractor graphics,
+            GuideDetailCard.Error card,
+            GuideUiLayout.Rect detail,
+            int y) {
+        return detailLine(graphics, card.message(), detail, y);
     }
 
     private int recipeCard(
@@ -395,8 +551,11 @@ public final class TomeWispScreen extends Screen {
             int mouseX,
             int mouseY) {
         boolean canBrowse = recipeClient.canBrowse();
-        int height = canBrowse ? 62 : 74;
-        if (y + height <= detail.y() + detail.height()) {
+        int ingredientCount = card.ingredients().size() + card.catalysts().size();
+        int materialRows = ingredientCount == 0 ? 0 : (ingredientCount + 7) / 8;
+        int byproductRows = card.byproducts().isEmpty() ? 0 : (card.byproducts().size() + 7) / 8;
+        int height = (canBrowse ? 62 : 74) + materialRows * 23 + byproductRows * 23;
+        if (visibleDetail(y, height, detail)) {
             int left = detail.x() + 6;
             int right = detail.x() + detail.width() - 6;
             graphics.fill(left, y, right, y + height, PANEL_ALT);
@@ -412,10 +571,39 @@ public final class TomeWispScreen extends Screen {
                 }
             }
             graphics.text(font, output.displayName(), left + 29, y + 7, TEXT, false);
-            graphics.text(font, card.type(), left + 29, y + 18, MUTED, false);
-            String station = card.workstation().isBlank() ? card.id() : card.workstation();
-            graphics.text(font, station, left + 29, y + 29, MUTED, false);
-            int actionY = y + 44;
+            if (!card.workstation().isBlank()) {
+                graphics.text(font,
+                        Component.translatable("screen.tomewisp.recipe.workstation", card.workstation()),
+                        left + 29,
+                        y + 20,
+                        MUTED,
+                        false);
+            }
+            int rowY = y + 34;
+            int materialIndex = 0;
+            for (GuideRecipeCard.Ingredient ingredient : card.ingredients()) {
+                GuideItemView item = ingredientItem(ingredient);
+                renderItem(graphics, item, left + 7 + (materialIndex % 8) * 22,
+                        rowY + (materialIndex / 8) * 23, mouseX, mouseY);
+                materialIndex++;
+            }
+            for (GuideRecipeCard.Ingredient catalyst : card.catalysts()) {
+                GuideItemView item = ingredientItem(catalyst);
+                renderItem(graphics, item, left + 7 + (materialIndex % 8) * 22,
+                        rowY + (materialIndex / 8) * 23, mouseX, mouseY);
+                materialIndex++;
+            }
+            rowY += materialRows * 23;
+            for (int index = 0; index < card.byproducts().size(); index++) {
+                GuideRecipeCard.Output outputView = card.byproducts().get(index);
+                renderItem(graphics,
+                        new GuideItemView(outputView.itemId(), outputView.displayName(), outputView.count()),
+                        left + 7 + (index % 8) * 22,
+                        rowY + (index / 8) * 23,
+                        mouseX,
+                        mouseY);
+            }
+            int actionY = y + 44 + materialRows * 23 + byproductRows * 23;
             int actionX = left + 7;
             actionX = recipeAction(
                     graphics,
@@ -446,7 +634,7 @@ public final class TomeWispScreen extends Screen {
                         font,
                         Component.translatable("screen.tomewisp.recipe.viewer_unavailable"),
                         left + 7,
-                        y + 58,
+                        actionY + 14,
                         0xFFFFD479,
                         false);
             }
@@ -475,11 +663,47 @@ public final class TomeWispScreen extends Screen {
     }
 
     private static ItemStack itemStack(GuideRecipeCard.Output output) {
-        Identifier id = Identifier.tryParse(output.itemId());
+        return itemStack(output.itemId(), output.count());
+    }
+
+    private static ItemStack itemStack(String itemId, long count) {
+        Identifier id = Identifier.tryParse(itemId);
         if (id == null || !BuiltInRegistries.ITEM.containsKey(id)) {
             return ItemStack.EMPTY;
         }
-        return new ItemStack(BuiltInRegistries.ITEM.getValue(id), output.count());
+        return new ItemStack(BuiltInRegistries.ITEM.getValue(id),
+                (int) Math.min(Integer.MAX_VALUE, Math.max(1, count)));
+    }
+
+    private static GuideItemView ingredientItem(GuideRecipeCard.Ingredient ingredient) {
+        GuideRecipeCard.Alternative alternative = ingredient.alternatives().getFirst();
+        String itemId = alternative.resolvedItems().isEmpty()
+                ? alternative.id()
+                : alternative.resolvedItems().getFirst();
+        return new GuideItemView(itemId, itemId, ingredient.count());
+    }
+
+    private void renderItem(
+            GuiGraphicsExtractor graphics,
+            GuideItemView item,
+            int x,
+            int y,
+            int mouseX,
+            int mouseY) {
+        ItemStack stack = itemStack(item.itemId(), item.count());
+        if (stack.isEmpty()) {
+            graphics.text(font, "?", x + 5, y + 4, MUTED, false);
+            return;
+        }
+        graphics.item(stack, x, y);
+        graphics.itemDecorations(font, stack, x, y);
+        if (mouseX >= x && mouseX < x + 16 && mouseY >= y && mouseY < y + 16) {
+            graphics.setTooltipForNextFrame(font, stack, mouseX, mouseY);
+        }
+    }
+
+    private static boolean visibleDetail(int y, int height, GuideUiLayout.Rect detail) {
+        return y + height >= detail.y() + 21 && y <= detail.y() + detail.height();
     }
 
     private void navigate(RecipeNavigationResult result) {
@@ -516,21 +740,25 @@ public final class TomeWispScreen extends Screen {
 
     private int detailLine(GuiGraphicsExtractor graphics, String text, GuideUiLayout.Rect detail, int y) {
         for (FormattedCharSequence line : font.split(Component.literal(text), detail.width() - 16)) {
-            if (y < detail.y() + detail.height() - 10) graphics.text(font, line, detail.x() + 8, y, TEXT, false);
+            if (y >= detail.y() + 21 && y < detail.y() + detail.height() - 10) {
+                graphics.text(font, line, detail.x() + 8, y, TEXT, false);
+            }
             y += 10;
         }
         return y + 2;
     }
 
-    private void open(GuideToolActivity activity) {
-        selectedTool = activity;
+    private void open(GuideUiRow.Tool tool) {
+        selectedTool = tool;
         selectedSource = null;
+        detailScroll = 0;
         rebuildForDetail();
     }
 
     private void open(GuideSource source) {
         selectedSource = source;
         selectedTool = null;
+        detailScroll = 0;
         rebuildForDetail();
     }
 
@@ -546,11 +774,11 @@ public final class TomeWispScreen extends Screen {
     private boolean refreshDetail(GuideUiView next) {
         boolean wasOpen = detailOpen();
         if (selectedTool != null) {
-            GuideToolActivity replacement = next.rows().stream()
+            GuideUiRow.Tool replacement = next.rows().stream()
                     .filter(GuideUiRow.Tool.class::isInstance)
                     .map(GuideUiRow.Tool.class::cast)
-                    .map(GuideUiRow.Tool::activity)
-                    .filter(value -> value.invocationId().equals(selectedTool.invocationId()))
+                    .filter(value -> value.activity().invocationId()
+                            .equals(selectedTool.activity().invocationId()))
                     .findFirst().orElse(null);
             selectedTool = replacement;
         }
@@ -567,6 +795,7 @@ public final class TomeWispScreen extends Screen {
         if (!next.selectedSession().equals(view.selectedSession())) {
             selectedTool = null;
             selectedSource = null;
+            detailScroll = 0;
             return true;
         }
         return false;
@@ -655,6 +884,14 @@ public final class TomeWispScreen extends Screen {
 
     private Component modeLabel() {
         return Component.literal(view.modelMode() == GuideModelMode.CLIENT ? "本地" : "服务");
+    }
+
+    static String sourceLabel(GuideSource source, boolean debugMode) {
+        if (!debugMode) {
+            return Component.translatable("screen.tomewisp.detail.source_link").getString();
+        }
+        return "source · " + source.evidence().sourceId() + " · "
+                + source.evidence().authority() + "/" + source.evidence().completeness();
     }
 
     private static String friendlyTool(String id) {

@@ -27,6 +27,11 @@ public record GuideUiView(
     }
 
     public static GuideUiView from(GuideSnapshot snapshot) {
+        return from(snapshot, GuideDisplayConfig.defaults());
+    }
+
+    public static GuideUiView from(GuideSnapshot snapshot, GuideDisplayConfig displayConfig) {
+        java.util.Objects.requireNonNull(displayConfig, "displayConfig");
         GuideSessionSnapshot selected = snapshot.sessions().stream()
                 .filter(value -> value.sessionId().equals(snapshot.selectedSession()))
                 .findFirst().orElseThrow();
@@ -78,7 +83,9 @@ public record GuideUiView(
                             new GuideUiRow.Tool(
                                     request.requestId(),
                                     tool.ordinal(),
-                                    tool.activity()));
+                                    tool.activity(),
+                                    GuideToolDetailPresenter.project(
+                                            tool.activity(), displayConfig.debugMode())));
                 }
             }
             if (request.status() == GuideRequestStatus.RATE_LIMITED) {

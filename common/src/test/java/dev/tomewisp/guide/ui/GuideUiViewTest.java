@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import com.google.gson.JsonParser;
 import dev.tomewisp.guide.GuideFailure;
 import dev.tomewisp.guide.GuideMessage;
 import dev.tomewisp.guide.GuideModelMode;
@@ -110,6 +111,42 @@ final class GuideUiViewTest {
                     case GuideUiRow.User ignored -> -1;
                 })
                 .toList());
+    }
+
+    @Test
+    void toolRowsKeepDiagnosticsOutOfDefaultViewAndGateThemInDebugMode() {
+        GuideToolActivity tool = new GuideToolActivity(
+                "call-private",
+                0,
+                "tomewisp:inspect_inventory",
+                GuideToolStatus.SUCCEEDED,
+                JsonParser.parseString("""
+                        {"status":"success","value":{"counts":{"minecraft:apple":3}}}
+                        """).getAsJsonObject(),
+                List.of("3 apples"),
+                List.of());
+        GuideRequestSnapshot request = new GuideRequestSnapshot(
+                REQUEST,
+                "main",
+                GuideTopology.CLIENT_LOCAL,
+                "question",
+                List.of(new GuideTimelineEntry.Tool(0, tool)),
+                GuideRequestStatus.COMPLETED,
+                List.of(),
+                ModelUsage.empty(),
+                null,
+                null,
+                Instant.EPOCH,
+                Instant.EPOCH.plusSeconds(1),
+                Instant.EPOCH.plusSeconds(1));
+
+        GuideUiRow.Tool normal = (GuideUiRow.Tool) GuideUiView.from(snapshot(request))
+                .rows().get(1);
+        assertTrue(normal.detail().debug().isEmpty());
+
+        GuideUiRow.Tool debug = (GuideUiRow.Tool) GuideUiView.from(
+                snapshot(request), new GuideDisplayConfig(1, true)).rows().get(1);
+        assertEquals("call-private", debug.detail().debug().orElseThrow().invocationId());
     }
 
     @Test

@@ -190,6 +190,7 @@ and strict. The common envelope is:
       "displayName": "Minecraft Notes",
       "enabled": true,
       "config": {
+        "directory": "minecraft-notes",
         "locale": "zh_cn"
       }
     }

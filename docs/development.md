@@ -32,15 +32,33 @@ Dedicated validation is headless. Fabric accepts `--args nogui`; NeoForge's
 development launcher is already headless and must be run without Gradle
 `--args`, because that option replaces its launch main class.
 
+The accepted Fabric 26.2 full-mod development profile uses Architectury Fabric
+21.0.4. Versions through 21.0.2 are declared incompatible when the optional mod
+is present because their screen-input delegate breaks character entry.
+TomeWisp does not require Architectury, and the NeoForge profile is unaffected
+by this Fabric-only compatibility boundary.
+
 ## Client model configuration
 
-The main mode is pure client-side. The current format is
-`config/tomewisp/models.json`; `model.json` remains an import path only when the
-new file is absent. Keep every credential in an environment variable:
+The main mode is pure client-side. The current player-managed format is
+`config/tomewisp/models.json` schema 2. It contains no secret: each profile
+retains only a qualified `credentialRef`. `model.json` remains an import path
+only when the new file is absent.
+
+Ordinary players enter an API key through the native masked password field.
+TomeWisp stores it under an immutable `local:<uuid>` reference in
+`config/tomewisp/credentials.sqlite3`; a saved key is never filled back into
+the widget or exposed through copy/cut, settings snapshots, diagnostics, logs,
+packets, prompts, or history. On POSIX systems the credential database receives
+owner-only permissions on a best-effort basis. This is local restrictive
+storage, not an OS-native vault.
+
+Externally authored development or headless configurations may instead name an
+environment reference. This form is not requested by the normal player UI:
 
 ```json
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "defaultProfileId": "openrouter-main",
   "profiles": [
     {
@@ -50,7 +68,7 @@ new file is absent. Keep every credential in an environment variable:
       "protocol": "openai_chat",
       "baseUrl": "https://openrouter.ai/api/v1/",
       "model": "provider/model-id",
-      "apiKeyEnv": "OPENROUTER_API_KEY",
+      "credentialRef": "env:OPENROUTER_API_KEY",
       "contextWindowTokens": 256000,
       "maxOutputTokens": 8192,
       "connectTimeoutSeconds": 30,
@@ -61,8 +79,9 @@ new file is absent. Keep every credential in an environment variable:
 ```
 
 `anthropic_messages` is the other protocol. Remote endpoints require HTTPS;
-HTTP is accepted only for loopback development. Inline `apiKey` is invalid in
-the multi-profile format. `contextWindowTokens` is required unless trusted
+HTTP is accepted only for loopback development. Inline `apiKey` and legacy
+player-facing `apiKeyEnv` are invalid in schema 2. `contextWindowTokens` is
+required unless trusted
 provider metadata or its local cache resolves it; an explicit value always
 wins. The `256000` value above is an example, not a fallback.
 
@@ -97,33 +116,23 @@ The Guide screen's gear button opens the common native settings screen on both
 Fabric and NeoForge. Its Models page can create, edit, enable/disable, delete,
 select the default profile, reload external edits, manually refresh trusted
 metadata, and run one explicit connection test. Saving validates the whole
-candidate, atomically replaces `models.json`, and only then publishes the
-already-prepared runtime for future requests. Active requests retain the
-runtime they captured at submission.
+candidate and stages a new immutable local credential where needed, atomically
+replaces `models.json`, and only then publishes the already-prepared runtime for
+future requests. Active requests retain the runtime they captured at
+submission. Replacing a key never overwrites the credential used by an active
+profile; unreachable rows are collected only after successful publication.
 
-The top-level Knowledge & Capabilities page enumerates the trusted registered
-knowledge-source, Tool, and Skill catalog. Cards use localized player-facing
-names, type/status text, friendly descriptions, text/type filters, and no raw
-IDs in normal mode. Local Tool and Skill switches edit a complete deny-only
-draft. Saving validates Skill dependencies, atomically replaces
-`config/tomewisp/capabilities.json`, and publishes one immutable capability
-snapshot for future client-model requests. An active request keeps the Tool
-definitions, executable map, Skill documents, and required context it captured
-at submission. A missing capability file means no local Tools or Skills are
-disabled:
-
-```json
-{
-  "schemaVersion": 1,
-  "disabledTools": [],
-  "disabledSkills": []
-}
-```
-
-Unknown valid disabled identities are retained for optional content that may
-return later. This policy can only narrow registered local capability; it
-cannot register a Tool, grant network/evidence authority, or change server
-authorization. Server-owned capabilities remain read-only advertised state.
+The top-level settings sections are General, Models, Tools, Skills, History,
+and Diagnostics. Tools and Skills are separate master-detail pages. Selecting a
+Tool in the left pane shows its description, explicit enable control, settings,
+and source editor on the right; selection never implicitly toggles the Tool.
+Local Tool enablement remains a deny-only restriction over registered code and
+cannot register a Tool or widen its authority. Tool enablement and its sources
+are saved together in the Tool-owned file described below, so there is no
+second generic Tool/Skill toggle document. Server-owned capabilities remain
+read-only advertised state. Skills are documents rather than Tool-style
+toggles; their filesystem packages, validation, provenance, and override rules
+are described below.
 
 The connection test displays a cost warning and requires a second confirmation.
 It sends one non-streaming, non-retrying request capped at 64 output tokens with
@@ -137,33 +146,56 @@ an already-confirmed atomic save continues to its terminal result.
 If neither model file exists, TomeWisp presents one disabled in-memory draft and
 does not create a file until the player explicitly saves. Invalid startup files
 remain untouched and produce a redacted settings notice. The screen receives
-only environment-variable names and presence flags; it cannot render values.
+only credential presence and transient password-input state; it cannot read or
+render a stored value.
 
-Client recipe visibility and optional viewer preference live separately at
-`config/tomewisp/recipes.json`. A missing file uses the same defaults shown
-below: every known enabled source is queried, and recipe-book unlock state is
-not an access boundary.
+Every knowledge or recipe source belongs to exactly one logical Tool. Strict,
+independently versioned files live at
+`config/tomewisp/tools/<tool-family-id>.json`. The common envelope is:
 
 ```json
 {
-  "schemaVersion": 2,
-  "visibility": "ALL_KNOWN",
-  "preferredViewer": "auto",
-  "disabledSources": []
+  "schemaVersion": 1,
+  "toolId": "tomewisp:guides",
+  "enabled": true,
+  "sources": [
+    {
+      "sourceId": "user:minecraft-notes",
+      "sourceKind": "local_markdown",
+      "displayName": "Minecraft Notes",
+      "enabled": true,
+      "config": {
+        "directory": "minecraft-notes",
+        "locale": "zh_cn"
+      }
+    }
+  ]
 }
 ```
 
-`visibility` may be `ALL_KNOWN` or `UNLOCKED_ONLY`; the latter deliberately
-excludes viewer records whose vanilla unlock state is unknown. A preferred
-viewer is `auto` or a stable registered source ID such as `viewer:jei` or
-`viewer:rei`. `disabledSources` contains stable IDs such as
-`minecraft:client_recipe_book`; newly registered sources are enabled by
-default, while absent explicitly disabled IDs are retained. Invalid edits
-retain the last valid file/runtime and surface an explicit screen diagnostic.
-Recipe configuration reload/editing is implemented in the recipe Tool's child
-page under Knowledge & Capabilities; Recipes is not a top-level mod settings
-section. JEI and REI adapters are currently implemented. EMI has no implemented
-or verified Minecraft 26.2 adapter and is not fabricated in the settings list.
+The common envelope accepts no arbitrary source-kind fields. A trusted
+`ToolSourceKind` registry supplies the strict config codec, localized controls,
+lifecycle capabilities, capture/refresh implementation, evidence contract, and
+optional credential-reference support for each owning Tool and `sourceKind`.
+Built-in/discovered sources can be inspected, enabled/disabled, refreshed where
+meaningful, and restored, but cannot be deleted or have their identity/kind
+edited. Registered user-source kinds may support add, edit, delete, test, and
+refresh. The initial user-creatable Guides kind is `local_markdown`, confined
+below TomeWisp's managed configuration root. It does not grant arbitrary path or
+network authority.
+
+Recipes owns recipe search, exact lookup, item usage, all-known/unlocked
+visibility, recipe sources, and preferred viewer selection. Inventory and
+Craftability remain separate Tools. Guides owns knowledge search, exact
+document loading, and Patchouli/FTB/local-document sources. JEI and REI adapters
+are available where compatible; EMI is not fabricated when no verified 26.2
+adapter exists. Web Fetch is a future Tool, not a source.
+
+The Recipes family envelope at `tools/recipes.json` owns Tool enablement and
+source enablement. Its typed behavior options (all-known/unlocked visibility and
+preferred viewer) remain independently strict at
+`tools/recipes-options.json`; both files belong only to the Recipes detail page
+and neither creates a top-level settings domain.
 
 Player-facing tool details are controlled separately by
 `config/tomewisp/display.json` on both loaders. A missing file uses the safe
@@ -198,15 +230,6 @@ only count-based window cursors, loaded/total counts, semantic cache hits and
 misses, fallback counts, and context-token estimates; they never include raw
 cursor/request payloads, transcripts, paths, provider bodies, actors, or scope
 identifiers.
-
-The top-level settings sections are General, Models, Knowledge & Capabilities,
-History, and Diagnostics. Knowledge & Capabilities is the catalog for all
-registered knowledge sources, local read-only Tools, and bundled Skills. It is
-not a recipe-source page. Recipes appear as one Tool card, and only that card's
-typed child page owns recipe visibility, registered recipe sources, preferred
-JEI/REI/EMI-style viewers, and exact-navigation preferences. Adding a future
-knowledge source or online Tool does not add another top-level mod field and
-does not grant the model network or permission authority.
 
 The History page projects only friendly connection kind, persistence health,
 active-request state, and pending-write/deletion status. It can delete the
@@ -278,10 +301,15 @@ SHA-256-checked 24 KiB transport chunks so long histories do not depend on one
 Minecraft custom-payload string.
 
 Normal-mode guide history is stored at `config/tomewisp/history.sqlite3` in the
-single current pre-release SQLite schema. Earlier development schemas are not
-migrated because TomeWisp has not shipped; delete the ignored database to reset
-test history. Unsupported schemas fail closed without mutation. Each partition
-key is a SHA-256 digest of the player
+single current pre-release SQLite schema, currently schema 4. Because TomeWisp
+has not shipped, recognized TomeWisp schemas 1, 2, and 3 are not migrated: on
+startup their application tables are transactionally rebuilt as schema 4.
+Rollback preserves the recognized older database if rebuild fails and reports
+`history_schema_rebuild_failed`. A future schema, corrupt database, missing or
+inconsistent metadata, unrecognized tables, or foreign file still fails closed
+without deletion. This automatic rebuild policy must be removed or replaced by
+an explicit shipped-schema compatibility decision before formal release. Each
+partition key is a SHA-256 digest of the player
 UUID, connection kind, and normalized integrated-world path or multiplayer
 address; the raw path/address is not stored. Database work runs on one ordered
 background worker and never blocks the client or render thread.
@@ -342,11 +370,12 @@ isolated loopback profile and restores the exact prior file on exit.
 
 The harness is intentionally opt-in because it opens a graphical client. CI
 validates the controller, both loader hooks, shell syntax, and fixture syntax,
-but does not claim a real-client run. The reviewed Phase 4C Fabric report,
-redacted log, exact JEI navigation screenshots, artifact URLs, and hashes are
-retained under `docs/verification/phase-4c-all-known-recipes/`. Consolidated
+but does not claim a real-client run. Earlier Phase 4C Fabric reports, redacted
+logs, exact JEI navigation screenshots, artifact URLs, and hashes are retained
+under `docs/verification/phase-4c-all-known-recipes/`. Earlier consolidated
 Fabric/NeoForge semantic-history reports and compatibility boundaries are under
-`docs/verification/phase-4-final-acceptance/`.
+`docs/verification/phase-4-final-acceptance/`; those artifacts predate the
+manual-acceptance correction set and do not close it.
 
 ## Player GUI
 
@@ -370,9 +399,10 @@ only representable when the local default-off Debug Mode is enabled. No browser
 is launched. Session switches and disconnect cleanup remove stale detail state.
 
 If the selected model is unavailable, the screen still opens and shows the
-configuration/capability state. Client configuration remains at
-`config/tomewisp/model.json`; credentials are never displayed. Model-mode
-changes affect future requests only and never trigger silent fallback.
+configuration/capability state. Client profiles remain at
+`config/tomewisp/models.json`; the Models page accepts a transient masked API
+key but never displays a stored secret. Model-mode changes affect future
+requests only and never trigger silent fallback.
 
 ## Grounded built-in tools
 
@@ -415,9 +445,32 @@ API reports visible for the current team enter the snapshot. On 26.2, where no
 compatible FTB Quests release is currently available, the source reports an
 explicit integration diagnostic and the rest of the Agent continues normally.
 
-Bundled Skills use metadata-first progressive disclosure. The runtime supports
-declared read-only references, but does not execute `scripts/`, fetch URLs, read
-arbitrary paths, or let Skills register tools or permissions.
+Skills follow a constrained Agent Skills filesystem format:
+
+```text
+skills/<skill-name>/
+├── SKILL.md
+├── references/     # optional read-only Markdown/text
+└── assets/         # optional non-executable resources
+```
+
+`SKILL.md` contains YAML frontmatter and Markdown instructions. `name` and
+`description` are required and the directory name matches `name`; optional
+Agent Skills fields and TomeWisp namespaced string metadata remain strictly
+validated. `allowed-tools` expresses a dependency only and never grants a
+permission. Scripts, URL references, root escape, unsafe symlinks, arbitrary
+paths, and unsupported files are rejected.
+
+Bundled packages under the mod resources are read-only and use uppercase
+`SKILL.md`. Local packages live under `config/tomewisp/skills/`; a valid local
+package with the same name overrides its bundled package. Editing a bundled
+Skill first creates an atomic local copy. An invalid override leaves the prior
+valid or bundled Skill active and reports only a source-scoped diagnostic. The
+Skills settings page shows installed documents, provenance, instructions,
+references, and explicit override/edit actions; it has no generic Tool-style
+enable toggle. Player editing does not authorize the Agent to create or modify
+Skills, and Skills cannot execute scripts, fetch URLs, register tools, or grant
+permissions.
 
 ## Live provider acceptance
 
@@ -435,9 +488,10 @@ TOMEWISP_MODEL_PROTOCOL=ANTHROPIC_MESSAGES \
 
 Never commit a model JSON containing `apiKey`.
 
-To exercise exactly the native settings connection-probe contract, place a
-strict `models.json`-format file in an ignored path such as
-`run/tomewisp/settings-probe.json`. The file names an `apiKeyEnv`; export that
+To exercise exactly the native settings connection-probe contract from a
+headless script, place a strict schema-2 `models.json`-format file in an ignored
+path such as `run/tomewisp/settings-probe.json`. The externally authored file
+uses `"credentialRef": "env:PROVIDER_KEY_NAMED_BY_THE_FILE"`; export that
 environment variable in the shell, then run:
 
 ```bash
@@ -446,11 +500,13 @@ export PROVIDER_KEY_NAMED_BY_THE_FILE='...'
 ./scripts/live-model-smoke.sh settings-probe
 ```
 
-The script never accepts a credential on argv. It rejects inline `apiKey`, URL
-credentials/query/fragment, and non-HTTPS remote endpoints through the strict
-production loader. Retained output contains only the terminal code and, on
-success, profile ID, protocol, redacted authority, and latency; it never prints
-assistant output or raw provider bodies.
+The script never accepts a credential on argv. It rejects inline `apiKey`,
+legacy `apiKeyEnv`, URL credentials/query/fragment, and non-HTTPS remote
+endpoints through the strict production loader. This environment-reference path
+is for external/headless operation and is not a player settings workflow.
+Retained output contains only the terminal code and, on success, profile ID,
+protocol, redacted authority, and latency; it never prints assistant output or
+raw provider bodies.
 
 ## Development commands
 

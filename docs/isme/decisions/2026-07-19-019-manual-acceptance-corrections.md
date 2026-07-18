@@ -34,24 +34,25 @@ Markdown packages rather than hard-coded option cards.
    the accepted full-mod profile uses Architectury 21.0.4. TomeWisp does not
    add a hard Architectury dependency.
 2. The normal client model editor accepts a masked API key. Secrets are stored
-   in a dedicated local SQLite credential store; credential-free model profiles
-   retain only opaque references. Environment references remain an external
-   development/headless mechanism and are not player-facing.
-3. Settings has separate Tools and Skills sections. Clicking a Tool selects it;
-   an explicit control changes enablement. Skills have document/provenance/edit
-   presentation rather than Tool toggles.
+   in the dedicated local `credentials.sqlite3` store; `models.json` schema 2
+   retains only a qualified `credentialRef` such as `local:<uuid>`.
+   `env:<name>` references remain an externally authored development/headless
+   mechanism and are not player-facing.
+3. Settings sections are General, Models, Tools, Skills, History, and
+   Diagnostics. Clicking a Tool selects it; an explicit control changes
+   enablement. Skills have document/provenance/edit presentation rather than
+   Tool toggles.
 4. Every source belongs to exactly one logical Tool and uses a common versioned
    envelope plus a trusted kind-specific strict schema. Built-in sources can be
    disabled/restored but not deleted. User-created sources support add, edit,
    delete, test, and refresh where the registered kind implements them.
 5. Bundled Skills use uppercase `SKILL.md` and are read-only. Local Agent Skills
-   live under the TomeWisp configuration directory; editing a bundled Skill
-   creates a local override. Scripts and Skill-granted permissions remain
-   unsupported.
-6. During the unshipped period, recognized older TomeWisp history schemas are
-   transactionally rebuilt to the single current schema. Future, corrupt, or
-   unrecognized databases still fail closed without mutation. No migration
-   branch is added.
+   live under `config/tomewisp/skills/`; editing a bundled Skill creates a local
+   override. Scripts and Skill-granted permissions remain unsupported.
+6. During the unshipped period, recognized TomeWisp history schemas 1, 2, and 3
+   are transactionally rebuilt to the single current schema 4. Future, corrupt,
+   missing/inconsistent-metadata, foreign, or otherwise unrecognized databases
+   still fail closed without mutation. No migration branch is added.
 
 ## States and Transitions
 
@@ -73,8 +74,10 @@ Markdown packages rather than hard-coded option cards.
 
 ## Invariants
 
-1. API keys never appear in model JSON, history, settings snapshots, diagnostics,
-   logs, packets, prompts, screenshots, traces, or retained reports.
+1. API keys never appear in model JSON, history, settings snapshots,
+   diagnostics, logs, packets, prompts, screenshots, traces, or retained
+   reports. A stored key is never pre-filled into or exposed through copy/cut
+   from the masked widget.
 2. Profile publication never references a missing secret; a failed replacement
    retains the prior runtime and credential.
 3. One source has one owning Tool, and a source definition cannot register a
@@ -86,8 +89,9 @@ Markdown packages rather than hard-coded option cards.
    authority.
 6. Active requests retain captured Tool/source/Skill/model state while later
    settings changes affect future requests only.
-7. Automatic history rebuild applies only to explicitly recognized older
-   unshipped TomeWisp schemas and never to a future, corrupt, or foreign file.
+7. Automatic history rebuild applies only to explicitly recognized unshipped
+   TomeWisp schemas 1 through 3 and never to a future, corrupt, missing- or
+   inconsistent-metadata, foreign, or otherwise unrecognized file.
 8. Fabric and NeoForge share the credential, Tool/source, Skill, history, and UI
    semantics in common code.
 

@@ -60,61 +60,42 @@ loaders through one shared GuideService and an opt-in real-client probe:
 - a default-off Fabric/NeoForge real-client E2E controller plus deterministic
   loopback model fixture and redacted report contract.
 
-A server mod is not required for the main client model mode. Phase 4 is now
-implemented and accepted for the pre-release 26.2 main line. It has a
-versioned SQLite history foundation: normal-mode conversation projections are
-partitioned by player and world/server, interrupted work restores without an
-automatic provider retry, and persistence health is visible in the screen.
-All-known recipe capture now merges vanilla, server, JEI, and REI provider
-snapshots with generation-bearing references, persisted visibility/source
-preferences, source diagnostics, native item cards, and typed viewer actions.
-The retained Fabric acceptance profile proves JEI/REI coexistence,
-viewer-only Farmer's Delight discovery, generation-safe exact lookup, and
-TomeWisp-to-JEI navigation; EMI and Patchouli still have no verified 26.2
-runtime artifact. The final NeoForge profile proves JEI plus Cooking for
-Blockheads on NeoForge 26.2.0.25-beta. REI is intentionally excluded from that
-profile because its current NeoForge artifact raises an upstream `@OnlyIn`
-compatibility warning during loading; it is not claimed as a working NeoForge
-integration. Phase 4 context management uses an explicit per-model
-window, provider-neutral structural reduction, source-hashed derived summaries,
-privacy-safe checkpoint persistence in the single current pre-release schema,
-and local/server recovery. A
-session is not bound to one model: validated history/checkpoints survive
-provider or model changes and every future request is rebuilt against its
-selected model budget. Tool details now use scrollable Minecraft-native recipe,
-inventory, and material cards; technical identifiers, evidence internals, and
-normalized data are absent by default and appear only in the local, default-off
-Debug Mode. Multiple named model profiles, per-session runtime switching from
-the native screen or commands, OpenRouter capability caching, and the shared
-JDK asynchronous HTTP foundation are now implemented; the profile editor and
-manual-refresh settings UI are now available on both loaders with atomic
-profile CRUD, environment-only credentials, isolated billable-request warning,
-redacted connection probes, and generation-safe metadata reconciliation.
-The same native screen now has a registered Knowledge & Capabilities page for
-knowledge sources, Tools, and Skills. Its deny-only local policy is atomically
-persisted and captured per future request, while active requests retain their
-original Tool/Skill snapshot. Recipes are one Tool card whose child page owns
-all-known/unlocked visibility, stable source enablement, and preferred-viewer
-selection; they are not a top-level mod configuration domain. History
-administration, live Debug Mode editing, and friendly normal/debug diagnostics
-are now wired through the same common settings service on both loaders. The
-History page owns current-partition/current-player deletion and the separately
-confirmed Debug Mode database reset; it never performs SQL directly.
-Model-authored safe Markdown, validated Minecraft references, controlled
-dynamic components, metadata-only history startup, independently budgeted
-model context, viewport paging, variable-height virtualization, stable scroll
-anchors, and optional presentation animation are now implemented in the common
-runtime and shared by both loaders. Final graphical runs completed on Fabric
-and NeoForge through the deterministic loopback provider, and a NeoForge
-restart retained 51 requests while hydrating only the current one and exposing
-the earlier-history cursor. The redacted reports, artifact provenance,
-compatibility boundaries, and claim-by-claim evidence matrix are retained under
-`docs/verification/phase-4-final-acceptance/`. Dynamic
-Ponder generation is deferred beyond Phase 4 because Ponder/Ponderer do not yet
-provide a verified 26.2 runtime target. Phase 3C now provides the native player
-GUI; graphical E2E remains explicit opt-in and is never inferred from
-compilation. The knowledge layer already retains Patchouli multiblock
-coordinates and structure references for a later visual-tutorial workflow.
+A server mod is not required for the main client model mode. Phase 4 remains
+the active pre-release phase. Durable partitioned history, all-known recipe
+capture, JEI/REI integration, context compaction, semantic rich messages,
+long-history virtualization, model switching, settings, and diagnostics have
+deterministic coverage, but a normal full-mod Fabric walkthrough exposed
+manual-acceptance corrections that must be completed before Phase 4 can be
+called accepted.
+
+The approved correction contract gives the settings screen six sections:
+General, Models, Tools, Skills, History, and Diagnostics. Ordinary players enter
+an API key in a masked password field; `models.json` schema 2 retains only a
+`credentialRef`, while the secret is held in the dedicated local
+`credentials.sqlite3` store. Environment references remain available for
+externally authored development and headless configuration, not as a field in
+the player UI. Sources are not a top-level domain: every recipe, guide, or
+future source is a strictly typed child of the logical Tool that consumes it.
+Built-in sources can be enabled, disabled, inspected, refreshed where
+meaningful, and restored, but not deleted; registered user-source kinds may
+support full CRUD.
+
+Tools and Skills are separate master-detail pages. Skills follow TomeWisp's
+non-executable Agent Skills subset: packages use uppercase `SKILL.md`, bundled
+packages are read-only, and player edits create local filesystem overrides.
+Skills cannot grant tools, scripts, arbitrary paths, network access, or Agent
+write authority. Recognized pre-release history schemas 1 through 3 are rebuilt
+transactionally into the single current schema; future, corrupt, foreign, or
+otherwise unrecognized databases still fail closed without mutation.
+
+The accepted Fabric full-mod profile uses Architectury 21.0.4. Architectury
+Fabric versions through 21.0.2 are incompatible because their screen-input
+delegate breaks TomeWisp text entry; TomeWisp does not add a hard Architectury
+dependency. Earlier redacted reports and artifact provenance remain under
+`docs/verification/`, but they do not prove the correction set or close final
+manual acceptance. Dynamic Ponder generation remains deferred beyond Phase 4.
+The knowledge layer already retains Patchouli multiblock coordinates and
+structure references for a later visual-tutorial workflow.
 
 Press the configurable `K` mapping or run bare `/guide` in-world to open the
 non-pausing screen. It streams the current GuideService transcript, displays

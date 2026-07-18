@@ -30,9 +30,10 @@ accepted and contains explicit approval evidence.
 
 SKMB-2026-07-18-006 is implemented by `a0eaeff`, `19ab90f`, and `c6ca6bc`.
 Its deterministic clean-build and packaged-driver evidence is recorded in the
-Phase 4B durable-history plan. The final graphical restart review is closed by
-the retained 50-request seed and 51-request windowed-restart reports under
-`docs/verification/phase-4-final-acceptance/`.
+Phase 4B durable-history plan. Earlier 50-request seed and 51-request
+windowed-restart reports remain under
+`docs/verification/phase-4-final-acceptance/`; they predate SKMB-019 and do not
+close its manual-acceptance corrections.
 
 SKMB-2026-07-18-007 is implemented through `5af5b4e`. Its deterministic
 provider/catalog/navigation coverage and retained Fabric JEI/REI/Farmer's
@@ -48,20 +49,20 @@ both-loader evidence is recorded in the Phase 4G plan and
 `docs/verification/phase-4g-native-model-settings/`. The opt-in live probe was
 not run when no credential was exported to the verification process.
 
-SKMB-2026-07-18-017 is implemented through `771cc94`. The common catalog,
-deny-only local policy, dependency validation, future-request capability
-capture, recipe Tool child settings, friendly normal-mode projection, and
-shared Fabric/NeoForge runtime wiring have deterministic coverage. JEI and REI
-are registered; EMI remains unimplemented and is not shown as an available
-source.
+SKMB-2026-07-18-017 was implemented through `771cc94`. Its earlier combined
+catalog and generic Skill-toggle presentation are superseded by SKMB-019's
+separate Tool/source and Skill-document contracts. Dependency validation,
+future-request capture, friendly normal-mode projection, and shared
+Fabric/NeoForge runtime wiring remain applicable. JEI and REI are registered;
+EMI remains unimplemented and is not shown as an available source.
 
 SKMB-2026-07-18-014 and the remaining native settings/diagnostics scope of
 SKMB-2026-07-18-016 are implemented through `a3ae197`. The service-owned,
 one-use history confirmations, actor-scoped deletion gates, live shared display
 runtime, privacy-separated diagnostics, and Fabric/NeoForge lifecycle parity
-have deterministic coverage. Final retained graphical acceptance is recorded
-as part of the consolidated Phase 4 audit under
-`docs/verification/phase-4-final-acceptance/`.
+have deterministic coverage. Retained graphical evidence for those earlier
+slices is recorded under `docs/verification/phase-4-final-acceptance/`, but it
+does not prove the SKMB-019 correction set.
 
 SKMB-2026-07-18-010/016/018 now use display schema 2 with Debug Mode off and
 presentation animation on by default. Animation is presentation-only, while
@@ -69,6 +70,11 @@ normal history diagnostics expose friendly on-demand/page state and Debug Mode
 adds only redacted performance counts. The final presentation implementation
 is recorded in `11a6ace`; deterministic scale/package evidence is retained in
 the Phase 4J verification report.
+
+SKMB-2026-07-19-019 is the accepted correction contract after the first normal
+full-mod walkthrough. Its implementation and corrected graphical acceptance
+must be verified separately; earlier Phase 4 reports are supporting evidence,
+not completion evidence for this decision.
 
 ## Named States
 
@@ -92,6 +98,11 @@ the Phase 4J verification report.
 | semantic_tail_validated | Completed assistant blocks have a strict immutable semantic projection | SemanticMessageParser | Cached by content hash with fallback text | SKMB-2026-07-18-018 |
 | history_page_loading | One viewport neighborhood is loading for the current actor/session generation | GuideHistoryRepository | Does not block unrelated sessions or context reads | SKMB-2026-07-18-018 |
 | context_loading | A model-budgeted durable context seed is loading before provider dispatch | GuideService | Cancellable; no provider request has started | SKMB-2026-07-18-018 |
+| credential_staged | A new immutable local secret exists but no persisted profile references it yet | LocalCredentialStore | Safe to ignore/collect until atomic profile replacement succeeds | SKMB-2026-07-19-019 |
+| profile_referenced | A credential-free schema-2 model profile atomically references a resolvable local or external credential | ModelProfileSettingsStore | Raw secret remains outside model JSON and observable settings state | SKMB-2026-07-19-019 |
+| tool_config_saving | One complete logical Tool/source candidate is being validated and persisted | Tool settings service | Prior Tool snapshot remains active until atomic replacement succeeds | SKMB-2026-07-19-019 |
+| skill_reloading | A bundled/local Agent Skills package candidate is being validated | SkillRepository | Invalid override retains the previous valid or bundled package | SKMB-2026-07-19-019 |
+| history_schema_rebuilding | A recognized pre-release schema 1, 2, or 3 is being transactionally recreated as the current schema | GuideHistoryStore | Rollback preserves the older database if rebuild fails | SKMB-2026-07-19-019 |
 
 ## Transition Decisions
 
@@ -127,7 +138,7 @@ the Phase 4J verification report.
 | T28 | preparing | deterministic context estimate exceeds configured input budget | compacting | Protect the current request and structural tool pairs, then reduce old tool results | SKMB-2026-07-18-008 |
 | T29 | compacting | deterministic projection still exceeds budget | compacting | Use the same selected model topology to create a source-hashed structured summary checkpoint | SKMB-2026-07-18-008 |
 | T30 | compacting | cancel arrives | cancelled | Cancel summary work, store no successful checkpoint, and suppress primary dispatch | SKMB-2026-07-18-008 |
-| T31 | history_loading | unsupported pre-release schema opens | persistence_unavailable | Reject it without mutation; development state must be deleted and recreated explicitly | SKMB-2026-07-18-011 |
+| T31 | history_loading | recognized TomeWisp schema 1, 2, or 3 opens | history_schema_rebuilding | Transactionally drop only TomeWisp application tables and recreate the single current schema without migration | SKMB-2026-07-19-019 |
 | T32 | any non-active session state | selected model/provider changes | unchanged | Keep the provider-neutral transcript/checkpoints; assemble the next request with the new model and its budget | SKMB-2026-07-18-008 |
 | T33 | any session state | session model selection changes | unchanged | Store the preference for that session's future requests; an active request retains its captured runtime | SKMB-2026-07-18-009 |
 | T34 | any UI state | debug mode changes | unchanged | Rebuild only the local normal/debug projection; do not rewrite history or change active work | SKMB-2026-07-18-010 |
@@ -137,12 +148,17 @@ the Phase 4J verification report.
 | T38 | settings idle | player confirms a valid profile candidate | settings_saving | Prepare a complete replacement, atomically replace `models.json`, then publish the prepared runtime for future requests | SKMB-2026-07-18-015 |
 | T39 | settings idle | player starts connection test after cost notice | connection_testing | Send one isolated cancellable real model probe; discard content and retain only redacted transient status/latency | SKMB-2026-07-18-015 |
 | T40 | settings idle | confirmed typed settings action starts | settings_mutating | Run one domain-owned async mutation; publish one immutable terminal snapshot and never enqueue a hidden second write | SKMB-2026-07-18-016 |
-| T41 | capability policy current | player confirms valid Tool/Skill policy | capability policy saving | Atomically persist disabled identities and publish one prepared immutable capability snapshot for future client requests | SKMB-2026-07-18-017 |
+| T41 | Tool configuration current | player confirms valid Tool enablement/source candidate | tool_config_saving | Atomically replace only the owning Tool file and publish one prepared immutable Tool/source snapshot for future client requests | SKMB-2026-07-19-019 |
 | T42 | semantic_tail_literal | syntax closes and validates | semantic_tail_validated | Replace only the mutable tail with immutable safe Markdown/reference/component nodes | SKMB-2026-07-18-018 |
 | T43 | history window idle | viewport requests another neighborhood | history_page_loading | Start or coalesce one generation-bound page read; retain the current anchor/window | SKMB-2026-07-18-018 |
 | T44 | history_page_loading | page succeeds or fails | history window idle | Merge the matching page and preserve the anchor, or retain the prior window with a retryable diagnostic | SKMB-2026-07-18-018 |
 | T45 | preparing | selected topology requires durable context | context_loading | Stream a provider-neutral seed under the actual selected model budget before dispatch | SKMB-2026-07-18-018 |
 | T46 | context_loading | seed validates or fails | model_wait or failed | Dispatch exactly once with valid context, or fail before provider I/O and preserve history | SKMB-2026-07-18-018 |
+| T47 | history_schema_rebuilding | rebuild succeeds or fails | idle or persistence_unavailable | Publish the fresh current schema, or roll back and report `history_schema_rebuild_failed` | SKMB-2026-07-19-019 |
+| T48 | history_loading | future, corrupt, foreign, missing-metadata, or unrecognized database opens | persistence_unavailable | Fail closed without deleting or rewriting the file | SKMB-2026-07-19-019 |
+| T49 | settings idle | player saves a model candidate with a replacement API key | credential_staged | Validate the complete candidate and insert a new immutable local secret without changing the active profile/runtime | SKMB-2026-07-19-019 |
+| T51 | bundled or local Skill selected | player creates/saves an override | skill_reloading | Validate uppercase `SKILL.md` package confinement and atomically publish the valid local override | SKMB-2026-07-19-019 |
+| T52 | credential_staged | profile replacement succeeds or fails | profile_referenced or unchanged | Publish only a fully resolvable profile/runtime; otherwise retain the prior reference/runtime and leave the staged row unreachable for later collection | SKMB-2026-07-19-019 |
 
 ## Invariants
 
@@ -192,12 +208,12 @@ the Phase 4J verification report.
 | I42 | Before the first formal release, durable storage has one current schema and no migration-only compatibility surface | SKMB-2026-07-18-011 |
 | I43 | Metadata cache/load/refresh is asynchronous, credential-free, source/model keyed, and subordinate to explicit limits | SKMB-2026-07-18-012 |
 | I44 | Shared HTTP transport grants no model tool, endpoint, credential, or evidence authority; each domain adapter must provide its own | SKMB-2026-07-18-013 |
-| I45 | Normal history management is actor-scoped; whole-database reset is Debug Mode-only, separately confirmed, and never automatic | SKMB-2026-07-18-014 |
+| I45 | Player-initiated normal history management is actor-scoped and whole-database reset is Debug Mode-only and separately confirmed; the only automatic destructive policy is SKMB-019's transactionally scoped rebuild of recognized unshipped schemas 1 through 3 | SKMB-2026-07-18-014, SKMB-2026-07-19-019 |
 | I46 | Profile replacement is candidate-validated, atomically persisted, and published as one prepared runtime state; failure retains the prior file/runtime | SKMB-2026-07-18-015 |
 | I47 | Connection testing is an explicit isolated real request with no Guide context/tools/history, no retry/fallback, and no retained secret/body/output | SKMB-2026-07-18-015 |
-| I48 | Native settings use one common operation/snapshot service while model, capability, capability-owned, display, metadata, and history persistence remain independently versioned | SKMB-2026-07-18-016 |
+| I48 | Native settings use one common operation/snapshot service while model/credential, Tool/source, Skill, display, metadata, and history persistence remain independently versioned | SKMB-2026-07-18-016, SKMB-2026-07-19-019 |
 | I49 | Settings file/provider/SQLite work never runs on a Minecraft-owned thread, and screen detach never owns or rolls back a confirmed durable mutation | SKMB-2026-07-18-016 |
-| I50 | Knowledge/capability settings can only narrow registered local Tool/Skill access; every active request retains one captured immutable capability snapshot | SKMB-2026-07-18-017 |
+| I50 | Tool settings can only narrow registered local Tool access, while Skill documents and `allowed-tools` dependencies grant no authority; every active request retains one captured immutable Tool/source/Skill snapshot | SKMB-2026-07-19-019 |
 | I51 | Tool-specific source settings use stable registered IDs under that tool's child page; adding JEI/REI/EMI/future adapters does not add top-level mod settings fields | SKMB-2026-07-18-017 |
 | I52 | Semantic output is a versioned closed AST; HTML, URLs, embeds, arbitrary UI trees, code, callbacks, commands, and mutations are unrepresentable | SKMB-2026-07-18-018 |
 | I53 | Raw resource existence is presentation-only; actionable stable handles must originate in the same authorized request context | SKMB-2026-07-18-018 |
@@ -205,10 +221,10 @@ the Phase 4J verification report.
 | I55 | GUI viewport paging and model-context selection are independent and neither loads a complete durable partition into memory | SKMB-2026-07-18-018 |
 | I56 | Incremental history writes and page/context reads remain ordered off Minecraft-owned threads and generation-check every completion | SKMB-2026-07-18-018 |
 | I57 | Auto-scroll follows only while already at the bottom; earlier-page insertion preserves the player's anchor row and pixel offset | SKMB-2026-07-18-018 |
-| I58 | Client model profiles and all observable settings state retain only credential references/presence; raw API keys exist only in the transient password input, SecretValue, provider header boundary, and dedicated local credential store | SKMB-2026-07-19-019 |
+| I58 | Client model schema 2 and all observable settings state retain only qualified credential references/presence; raw API keys exist only in the transient masked input, SecretValue, provider header boundary, and local `credentials.sqlite3`, while `env:<name>` remains external/headless-only | SKMB-2026-07-19-019 |
 | I59 | Every source is owned and strictly validated by one logical Tool; built-in sources cannot be deleted, while registered user source kinds may support full CRUD | SKMB-2026-07-19-019 |
-| I60 | Bundled Skills are read-only Agent Skills packages; local edits are external SKILL.md overrides and never grant scripts, paths, tools, or Agent write authority | SKMB-2026-07-19-019 |
-| I61 | Only recognized older unshipped TomeWisp history schemas rebuild automatically; future, corrupt, or unrecognized databases remain untouched | SKMB-2026-07-19-019 |
+| I60 | Bundled Skills are read-only Agent Skills packages with uppercase `SKILL.md`; local edits are external overrides and never grant scripts, paths, tools, or Agent write authority | SKMB-2026-07-19-019 |
+| I61 | Only recognized unshipped TomeWisp history schemas 1 through 3 rebuild automatically; future, corrupt, foreign, missing/inconsistent-metadata, or otherwise unrecognized databases remain untouched | SKMB-2026-07-19-019 |
 
 ## Fail Semantics
 
@@ -239,13 +255,13 @@ the Phase 4J verification report.
 | F23 | A remembered model profile is missing, disabled, or invalid | Fail the future request explicitly; retain the selection for repair and never silently fall back | SKMB-2026-07-18-009 |
 | F24 | Native/advisory model metadata is unavailable or malformed | Keep explicit configuration usable, expose a redacted diagnostic, and do not invent a context limit | SKMB-2026-07-18-009 |
 | F25 | Known card data is malformed or a tool type is unknown | Render a friendly textual fallback; expose only a redacted validation diagnostic in debug mode | SKMB-2026-07-18-010 |
-| F26 | An unsupported pre-release history schema is opened | Fail `history_schema_unsupported` without mutation; require explicit deletion/recreation of development data | SKMB-2026-07-18-011 |
+| F26 | A future, corrupt, foreign, missing-metadata, or otherwise unrecognized history database is opened | Fail `history_schema_unsupported` or `history_corrupt` without mutation; never guess that destructive rebuild is safe | SKMB-2026-07-19-019 |
 | F27 | Metadata cache is absent/invalid or refresh fails | Preserve explicit configuration and the last valid cache, publish a redacted diagnostic, and never block startup | SKMB-2026-07-18-012 |
 | F28 | History deletion overlaps an active request/pending write or its transaction fails | Reject or roll back without deleting/resurrecting data; require an explicit later retry | SKMB-2026-07-18-014 |
 | F29 | Profile validation/preparation/write fails | Report `invalid_model_config` or `settings_write_failed`; retain the previous file and runtime without partial publication | SKMB-2026-07-18-015 |
 | F30 | Connection probe is busy, cancelled, rejected, rate-limited, times out, or returns malformed/empty output | Classify it into a stable redacted `connection_*` failure, send no retry, and leave settings/history unchanged | SKMB-2026-07-18-015 |
 | F31 | A settings mutation conflicts, strict validation fails, or atomic persistence/reload fails | Reject as `settings_busy` or a stable domain/write failure; retain every unaffected prior file/runtime and never partially apply another domain | SKMB-2026-07-18-016 |
-| F32 | Capability policy has a Skill/tool dependency conflict or a disabled/unavailable capability is invoked | Reject the save or invocation explicitly; never silently enable/fallback or widen authority | SKMB-2026-07-18-017 |
+| F32 | A Tool policy or Skill dependency conflicts, or a disabled/unavailable capability is invoked | Reject the save or invocation explicitly; never silently enable/fallback or widen authority | SKMB-2026-07-18-017, SKMB-2026-07-19-019 |
 | F33 | Markdown, semantic reference, or controlled component is incomplete, malformed, unknown, or unauthorized | Keep readable fallback text, expose no action, and optionally report only a redacted debug diagnostic | SKMB-2026-07-18-018 |
 | F34 | A viewport page read fails or completes for a stale generation | Retain the current window/anchor, suppress stale publication, and allow explicit retry | SKMB-2026-07-18-018 |
 | F35 | A durable model-context seed cannot be read or structurally validated | Fail `history_context_failed` before provider dispatch and preserve every durable row | SKMB-2026-07-18-018 |
@@ -259,9 +275,9 @@ the Phase 4J verification report.
 
 | id | pattern | context | default | reason_allowed | review_by | file |
 | --- | --- | --- | --- | --- | --- | --- |
-| SKMB-2026-07-18-006 | A, B, C, E, F | durable history execution details | hashed connection discriminator, async single writer, explicit loading rejection; full-partition persistence superseded by SKMB-018 incremental/windowed execution | designer delegated best implementation path; product invariants already accepted | reviewed in final Phase 4 real-client acceptance | decisions/2026-07-18-006-durable-history-execution.md |
-| SKMB-2026-07-18-007 | A, B, D, E, F | recipe provider execution details | client-thread capture, generation-bearing references, public optional viewer APIs, partial omission diagnostics | designer delegated best implementation path; recipe authority and visibility already accepted | reviewed in final Phase 4 real-client acceptance | decisions/2026-07-18-007-recipe-provider-execution.md |
-| SKMB-2026-07-18-008 | A, B, C, D, E, F | context compaction execution details | explicit per-model window, conservative UTF-8 estimator, structural prefix summaries, source-hash checkpoint reuse | designer delegated best implementation path; compaction authority and failure semantics already accepted | reviewed in final Phase 4 real-client acceptance | decisions/2026-07-18-008-context-compaction-execution.md |
+| SKMB-2026-07-18-006 | A, B, C, E, F | durable history execution details | hashed connection discriminator, async single writer, explicit loading rejection; full-partition persistence superseded by SKMB-018 incremental/windowed execution | designer delegated best implementation path; product invariants already accepted | reviewed in retained pre-SKMB-019 evidence; correction acceptance remains open | decisions/2026-07-18-006-durable-history-execution.md |
+| SKMB-2026-07-18-007 | A, B, D, E, F | recipe provider execution details | client-thread capture, generation-bearing references, public optional viewer APIs, partial omission diagnostics | designer delegated best implementation path; recipe authority and visibility already accepted | reviewed in retained pre-SKMB-019 evidence; correction acceptance remains open | decisions/2026-07-18-007-recipe-provider-execution.md |
+| SKMB-2026-07-18-008 | A, B, C, D, E, F | context compaction execution details | explicit per-model window, conservative UTF-8 estimator, structural prefix summaries, source-hash checkpoint reuse | designer delegated best implementation path; compaction authority and failure semantics already accepted | reviewed in retained pre-SKMB-019 evidence; correction acceptance remains open | decisions/2026-07-18-008-context-compaction-execution.md |
 
 ## Open Decisions
 

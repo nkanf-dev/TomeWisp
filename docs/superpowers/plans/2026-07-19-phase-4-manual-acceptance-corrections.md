@@ -19,7 +19,7 @@
 - Modify: `common/src/test/java/dev/tomewisp/guide/history/SqliteGuideHistoryStoreTest.java`
 - Modify: `common/src/test/java/dev/tomewisp/integration/RecipeViewerApiCompatibilityTest.java`
 
-- [ ] **Step 1: Write failing history and metadata tests**
+- [x] **Step 1: Write failing history and metadata tests**
 
 Replace the old schema-1 rejection test with parameterized schema 1/2/3 rebuild coverage, retain the schema-99 fail-closed test, and assert the packaged Fabric metadata contains:
 
@@ -29,7 +29,7 @@ Replace the old schema-1 rejection test with parameterized schema 1/2/3 rebuild 
 }
 ```
 
-- [ ] **Step 2: Run the focused tests and confirm they fail**
+- [x] **Step 2: Run the focused tests and confirm they fail**
 
 Run:
 
@@ -39,7 +39,7 @@ Run:
 
 Expected: old schema still reports `history_schema_unsupported`, and Fabric metadata lacks the conflict.
 
-- [ ] **Step 3: Implement transactional recognized-schema rebuild**
+- [x] **Step 3: Implement transactional recognized-schema rebuild**
 
 Change `ensureSchema` from static validation to an instance method so it can call one shared reset transaction. Only versions 1, 2, and 3 enter the rebuild branch:
 
@@ -57,11 +57,11 @@ if (version != SCHEMA_VERSION) {
 
 The helper disables foreign keys before the transaction, drops only names returned by `applicationTables`, recreates schema 4, injects `Mutation.RESET`, commits, and maps rollback failure to `history_schema_rebuild_failed`. Missing/inconsistent metadata, foreign tables, corruption, and future versions remain untouched.
 
-- [ ] **Step 4: Upgrade the accepted optional dependency and add the loader conflict**
+- [x] **Step 4: Upgrade the accepted optional dependency and add the loader conflict**
 
 Set `architectury_version=21.0.4` and add the Fabric `breaks` entry without adding a `depends` entry.
 
-- [ ] **Step 5: Run focused tests and commit**
+- [x] **Step 5: Run focused tests and commit**
 
 Run the command from Step 2. Expected: PASS.
 
@@ -87,7 +87,7 @@ git commit -m "fix: recover pre-release history and reject broken input dependen
 - Modify: `common/src/main/java/dev/tomewisp/settings/ClientSettingsRuntime.java`
 - Modify: adjacent model/settings tests
 
-- [ ] **Step 1: Write failing credential-store tests**
+- [x] **Step 1: Write failing credential-store tests**
 
 Cover schema creation, insertion/resolution, deletion, shared-reference retention, unavailable/corrupt store failures, and the absence of raw secrets from `toString`. The API is:
 
@@ -98,11 +98,11 @@ try (LocalCredentialStore credentials = new LocalCredentialStore(path, clock)) {
 }
 ```
 
-- [ ] **Step 2: Implement qualified references and the SQLite store**
+- [x] **Step 2: Implement qualified references and the SQLite store**
 
 `CredentialReference.parse` accepts only `local:<uuid>` and `env:<valid-name>`. `LocalCredentialStore` owns schema 1, stores UTF-8 secret bytes as a BLOB, configures `WAL` and `synchronous=full`, attempts owner-only POSIX permissions, returns stable `credential_store_unavailable` failures at its public boundary, and never formats a secret.
 
-- [ ] **Step 3: Change the credential-free profile contract**
+- [x] **Step 3: Change the credential-free profile contract**
 
 Rename `apiKeyEnv` to `credentialRef`, bump `ModelProfilesConfig.SCHEMA_VERSION` to 2, encode only `credentialRef`, and resolve through `CredentialResolver`:
 
@@ -112,7 +112,7 @@ SecretValue secret = credentials.resolve(CredentialReference.parse(definition.cr
 
 Retain an explicit schema-1 external import path that converts `apiKeyEnv` to `env:<name>` in memory; every normal save emits schema 2. Inline `apiKey` remains rejected.
 
-- [ ] **Step 4: Make profile replacement credential-aware**
+- [x] **Step 4: Make profile replacement credential-aware**
 
 Add a save candidate carrying an optional transient replacement key:
 
@@ -125,11 +125,11 @@ public record ModelProfileSave(
 
 Insert a new immutable local row before writing JSON, replace only the selected profile reference in the prepared candidate, publish runtime only after the JSON replacement, then garbage-collect unreferenced local IDs. A failed JSON replacement leaves the previous file/runtime/reference active.
 
-- [ ] **Step 5: Wire lifecycle and redacted projections**
+- [x] **Step 5: Wire lifecycle and redacted projections**
 
 Create `credentials.sqlite3` beside `models.json`, pass a composite local/environment resolver through initial load, metadata refresh, save, reload, resolve, and probe, expose only `credentialPresent`, and close the store after ordered settings work drains.
 
-- [ ] **Step 6: Run model/settings tests and commit**
+- [x] **Step 6: Run model/settings tests and commit**
 
 Run:
 
@@ -155,11 +155,11 @@ git commit -m "feat: store client model credentials locally"
 - Modify: `common/src/test/java/dev/tomewisp/client/gui/TomeWispSettingsScreenProjectionTest.java`
 - Modify: `common/src/test/java/dev/tomewisp/client/gui/SettingsLocalizationTest.java`
 
-- [ ] **Step 1: Write failing draft/projection/localization tests**
+- [x] **Step 1: Write failing draft/projection/localization tests**
 
 Assert the draft retains only `credentialRef` plus a boolean replacement state, the projection never contains an environment name or raw key, and both locales contain labels for “API key”, “not set”, “saved”, and “replace on save”.
 
-- [ ] **Step 2: Add a password EditBox**
+- [x] **Step 2: Add a password EditBox**
 
 Replace `apiKeyEnv` with `apiKey`. Never prefill a saved key. Apply a formatter that draws bullets without changing the widget value:
 
@@ -170,11 +170,11 @@ apiKey.addFormatter((text, offset) ->
 
 Set a bounded key length, clear it after save, and show saved/pending state outside the widget. The settings snapshot and `ModelProfileDraft.toString()` must never contain the transient key.
 
-- [ ] **Step 3: Pass transient secret only to the save boundary**
+- [x] **Step 3: Pass transient secret only to the save boundary**
 
 Validate ordinary model fields into a definition retaining the current credential reference, convert a nonblank widget value directly to `SecretValue`, call the credential-aware service save overload, and immediately clear the local field/widget after handoff.
 
-- [ ] **Step 4: Run GUI/settings tests and commit**
+- [x] **Step 4: Run GUI/settings tests and commit**
 
 Run:
 
@@ -209,11 +209,11 @@ git commit -m "feat: add masked player API key editor"
 - Modify: `common/src/main/java/dev/tomewisp/settings/capability/RecipeSettingsBackend.java`
 - Modify: `common/src/main/java/dev/tomewisp/TomeWispBootstrap.java`
 
-- [ ] **Step 1: Write failing strict-codec and lifecycle tests**
+- [x] **Step 1: Write failing strict-codec and lifecycle tests**
 
 Test the common envelope from the accepted design, unknown-field rejection, one owning Tool, source-kind registration constrained by owner, built-in delete rejection, user CRUD, atomic rollback, and managed-root confinement for `local_markdown`.
 
-- [ ] **Step 2: Implement immutable Tool/source records and strict registry**
+- [x] **Step 2: Implement immutable Tool/source records and strict registry**
 
 The common source shape is:
 
@@ -231,19 +231,19 @@ public record ToolSourceDefinition(
 
 Defensively deep-copy JSON. `ToolSourceKindRegistry` binds each kind to one owning logical Tool, a strict validator, localized editor fields, lifecycle capability, and optional runtime factory.
 
-- [ ] **Step 3: Build Tool-family configuration stores**
+- [x] **Step 3: Build Tool-family configuration stores**
 
 Use `config/tomewisp/tools/<family>.json`, one `AtomicSettingsFile` replacement per family, schema 1, complete-candidate validation, and future-request publication. Recipes owns vanilla/JEI/REI source definitions and Guides owns Patchouli/FTB/local Markdown definitions. Inventory and Craftability remain separate families.
 
-- [ ] **Step 4: Add managed local Markdown loading**
+- [x] **Step 4: Add managed local Markdown loading**
 
 Allow only a source-owned directory below `config/tomewisp/knowledge/`. Parse direct `.md` files into immutable `KnowledgeDocument` values with `RESOURCE_ASSET` evidence, reject symlink/root escape, and reload the KnowledgeRegistry from the full enabled provider set.
 
-- [ ] **Step 5: Integrate settings/runtime without duplicating callable IDs**
+- [x] **Step 5: Integrate settings/runtime without duplicating callable IDs**
 
 `ToolSettingsView` exposes logical family title, description, explicit enabled state, member callable IDs, and source rows. Enabling/disabling updates the existing deny policy for every member ID; source changes update only the owning family file. Move the recipe file path to `tools/recipes.json` for new unshipped state.
 
-- [ ] **Step 6: Run Tool/source tests and commit**
+- [x] **Step 6: Run Tool/source tests and commit**
 
 Run:
 
@@ -275,23 +275,23 @@ git commit -m "feat: make sources children of logical tools"
 - Modify: `ClientSettingsRuntime`, `ClientSettingsService`, and `ClientSettingsSnapshot`
 - Modify/create adjacent Skill tests
 
-- [ ] **Step 1: Write failing Agent Skills subset tests**
+- [x] **Step 1: Write failing Agent Skills subset tests**
 
 Cover uppercase entry enforcement, required `name`/`description`, name-directory match, length constraints, optional `license`/`compatibility`/string `metadata`, `allowed-tools` as dependency only, scripts rejection, symlink/path confinement, local-over-bundled precedence, invalid-local isolation, and atomic create/edit/delete override.
 
-- [ ] **Step 2: Implement filesystem discovery and subset parsing**
+- [x] **Step 2: Implement filesystem discovery and subset parsing**
 
 `FilesystemSkillLoader` scans only direct skill directories, requires `SKILL.md`, reads supported `references/` and `assets/`, rejects unsupported executable files and escaped symlinks, and returns source-scoped diagnostics instead of aborting unrelated Skills.
 
-- [ ] **Step 3: Implement precedence and last-valid behavior**
+- [x] **Step 3: Implement precedence and last-valid behavior**
 
 Reload bundled sources first and valid local sources second. A valid local name replaces its bundled package. Invalid local content retains the previous valid/bundled document while recording `skill_validation_failed` against that local path.
 
-- [ ] **Step 4: Add atomic player-driven override storage**
+- [x] **Step 4: Add atomic player-driven override storage**
 
 The backend creates a complete local copy before editing a bundled Skill and atomically replaces `SKILL.md`. It never exposes an Agent write Tool. Deleting an override reveals the bundled Skill again; bundled packages cannot be deleted.
 
-- [ ] **Step 5: Run Skill tests and commit**
+- [x] **Step 5: Run Skill tests and commit**
 
 Run:
 
@@ -317,19 +317,19 @@ git commit -m "feat: support external Agent Skills overrides"
 - Modify: `common/src/main/resources/assets/tomewisp/lang/zh_cn.json`
 - Modify/create adjacent projection, layout, localization, and screen tests
 
-- [ ] **Step 1: Write failing page-projection tests**
+- [x] **Step 1: Write failing page-projection tests**
 
 Assert top-level sections are General, Models, Tools, Skills, History, Diagnostics; Tools group callable IDs and sources; selecting never toggles; the explicit toggle changes only the selected logical Tool; Skills expose provenance/content and no generic enabled switch; ordinary mode omits internal IDs, confidence, and raw diagnostics.
 
-- [ ] **Step 2: Replace combined-page state with two master-detail states**
+- [x] **Step 2: Replace combined-page state with two master-detail states**
 
 Track `selectedToolId`, `selectedSourceId`, and `selectedSkillName` separately. Wide layout uses the existing left list/right editor geometry; narrow layout uses list-to-detail routing with Back. Remove the capability kind filter and mixed card wall.
 
-- [ ] **Step 3: Implement Tools page actions**
+- [x] **Step 3: Implement Tools page actions**
 
 The left list selects a logical Tool. The right pane renders friendly description, readiness, an explicit enable button, and source cards. Recipes keeps visibility/preferred-viewer controls. Guides supports add/edit/delete `local_markdown`; built-ins show enable/disable/restore but no delete.
 
-- [ ] **Step 4: Implement Skills page view/editor**
+- [x] **Step 4: Implement Skills page view/editor**
 
 Use `MultiLineEditBox` for a local override's `SKILL.md`. Bundled Skills default to read-only content with “Create local override”. Local overrides show Save and Delete Override. Do not display Tool-like toggles.
 
@@ -337,7 +337,7 @@ Use `MultiLineEditBox` for a local override's `SKILL.md`. Bundled Skills default
 
 Ensure Tab traversal, Escape/back routing, Ctrl+Enter where applicable, IME/preedit delegation, scissor bounds, and focus restoration work without screen-owned orchestration state. Keep raw Skill and API-key values out of narration/diagnostic projections where required.
 
-- [ ] **Step 6: Run GUI tests and commit**
+- [x] **Step 6: Run GUI tests and commit**
 
 Run:
 
@@ -362,11 +362,11 @@ git commit -m "feat: separate Tools and Skills settings pages"
 - Modify: `docs/verification/phase-4-final-acceptance/README.md`
 - Create: retained redacted reports/screenshots only from actual normal-client acceptance
 
-- [ ] **Step 1: Update documentation to match actual behavior**
+- [x] **Step 1: Update documentation to match actual behavior**
 
 Replace environment-variable player instructions, the combined Knowledge & Capabilities page, lowercase bundled Skill format, schema rejection behavior, and Architectury 21.0.2 evidence. Keep environment references documented only for external/headless configuration and explicitly state local credential storage is not an OS vault.
 
-- [ ] **Step 2: Run the clean deterministic gate**
+- [x] **Step 2: Run the clean deterministic gate**
 
 Run:
 

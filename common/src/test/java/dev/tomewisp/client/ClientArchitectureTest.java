@@ -67,6 +67,14 @@ final class ClientArchitectureTest {
             assertTrue(source.contains("ClientModelRuntimeRegistry"), entrypoint::toString);
             assertTrue(source.contains("models.json"), entrypoint::toString);
             assertTrue(source.contains("model-metadata.json"), entrypoint::toString);
+            assertTrue(source.contains("configDirectory.resolve(\"capabilities.json\")"),
+                    entrypoint::toString);
+            assertTrue(source.contains("configDirectory.resolve(\"recipes.json\")"),
+                    entrypoint::toString);
+            assertEquals(1, occurrences(source, "new RecipeClientRuntime("),
+                    entrypoint::toString);
+            assertTrue(source.contains("recipeClient,\n                System.getenv()"),
+                    entrypoint::toString);
             assertTrue(source.contains("ClientSettingsRuntime"), entrypoint::toString);
             assertTrue(source.contains("TomeWispSettingsScreen"), entrypoint::toString);
             assertTrue(source.contains("settings.closeAsync()"), entrypoint::toString);
@@ -97,6 +105,27 @@ final class ClientArchitectureTest {
         }
     }
 
+    @Test
+    void optionalRecipeViewerBridgesRegisterStableSourceAndNavigatorDescriptors()
+            throws Exception {
+        Path root = repositoryRoot();
+        assertViewerBridge(
+                root.resolve("common/src/main/java/dev/tomewisp/integration/jei/"
+                        + "TomeWispJeiBridge.java"),
+                "viewer:jei");
+        assertViewerBridge(
+                root.resolve("common/src/main/java/dev/tomewisp/integration/rei/"
+                        + "TomeWispReiClientPlugin.java"),
+                "viewer:rei");
+    }
+
+    private static void assertViewerBridge(Path path, String sourceId) throws Exception {
+        String source = Files.readString(path);
+        assertTrue(source.contains("RecipeViewerProviderRegistry.register("), path::toString);
+        assertTrue(source.contains("\"" + sourceId + "\""), path::toString);
+        assertTrue(source.contains("RecipeViewerNavigatorRegistry.register("), path::toString);
+    }
+
     private static Path repositoryRoot() {
         Path current = Path.of("").toAbsolutePath().normalize();
         if (Files.isDirectory(current.resolve("common"))
@@ -107,6 +136,10 @@ final class ClientArchitectureTest {
             return current.getParent();
         }
         throw new IllegalStateException("Unable to locate repository root from " + current);
+    }
+
+    private static int occurrences(String source, String needle) {
+        return source.split(java.util.regex.Pattern.quote(needle), -1).length - 1;
     }
 
     private static final class FakePlatform implements PlatformService {

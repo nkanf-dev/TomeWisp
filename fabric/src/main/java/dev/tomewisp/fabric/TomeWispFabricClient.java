@@ -46,11 +46,16 @@ public final class TomeWispFabricClient implements ClientModInitializer {
                 FabricLoader.getInstance().getConfigDir().resolve("tomewisp");
         var display = new GuideDisplayConfigLoader().load(
                 configDirectory.resolve("display.json"));
+        RecipeClientRuntime recipeClient = new RecipeClientRuntime(
+                configDirectory.resolve("recipes.json"));
         ToolResult<ClientSettingsRuntime> settingsResult = ClientSettingsRuntime.create(
                 runtime,
                 configDirectory.resolve("models.json"),
                 configDirectory.resolve("model.json"),
                 configDirectory.resolve("model-metadata.json"),
+                configDirectory.resolve("capabilities.json"),
+                configDirectory.resolve("recipes.json"),
+                recipeClient,
                 System.getenv(),
                 dispatcher,
                 bridge.remoteTools(),
@@ -63,8 +68,6 @@ public final class TomeWispFabricClient implements ClientModInitializer {
         ClientModelRuntimeRegistry modelRegistry =
                 settings == null ? null : settings.models();
         GuideLocalEndpoint local = modelRegistry;
-        RecipeClientRuntime recipeClient = new RecipeClientRuntime(
-                FabricLoader.getInstance().getConfigDir().resolve("tomewisp/recipes.json"));
         MinecraftGuideContextProvider contexts = new MinecraftGuideContextProvider(
                 runtime,
                 Minecraft.getInstance(),

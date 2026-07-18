@@ -4,7 +4,7 @@
 - decided_by: statistical_default
 - approval_source: designer explicitly delegated implementation details with "按照你的最佳路径去走就可以了" after accepting SKMB-2026-07-18-005
 - date: 2026-07-18
-- commit: pending
+- commits: 1cd1c69, 1d7a665, 56f0a26, 3d80eef, 96b71ba, 00cc905, 3f4e435
 - patterns:
   - A_async_wait
   - B_state_persistence
@@ -130,6 +130,26 @@ Review the UTF-8 estimator conservatism and double-output reserve against
 retained provider usage during final Phase 4 acceptance. A
 provider-specific optimization requires deterministic cross-adapter tests and
 must not alter protected-content semantics.
+
+## Implementation Evidence
+
+The implementation commits listed above cover budget/structure, old tool-result
+reduction, structured summaries, Agent integration, explicit selected-model
+windows, schema-v2 checkpoint persistence, protocol-v4 server recovery, and
+provider/model-neutral session reuse. Deterministic tests cover malformed and
+failed summaries, cancellation before and during compaction, source/version
+staleness, schema migration, partition isolation, privacy exclusions,
+same-session races, cross-model history reuse, Unicode request chunking, and
+both loader bridge paths.
+
+The 2026-07-18 clean gate completed 217 common tests with zero failures/errors
+and one opt-in skip, then built Fabric and NeoForge successfully. Production
+artifact SHA-256 values are
+`a7b0a7c5227d19ccb426dc40e298af742bbd0ae97e610417be81572d491b472e`
+and `fc50311e7b0ffc62da07d102618a3a7cb8af7c00e7d3c64bd41441d34760557d`
+respectively. Syntax and credential scans passed. No graphical client or live
+provider request was run for Phase 4D; those remain part of final consolidated
+Phase 4 acceptance.
 
 ## Supersedes
 

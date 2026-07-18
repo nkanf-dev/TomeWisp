@@ -55,7 +55,7 @@ loaders through one shared GuideService and an opt-in real-client probe:
 - a long recipe-to-inventory craftability replay, while `find_recipes` remains
   only as a deprecated compatibility projection.
 - immutable shared command/GUI request state with cancellation, retry,
-  multi-session isolation, strict protocol-v2 server events, and disconnect
+  multi-session isolation, strict protocol-v4 server context/events, and disconnect
   cleanup;
 - a default-off Fabric/NeoForge real-client E2E controller plus deterministic
   loopback model fixture and redacted report contract.
@@ -70,8 +70,14 @@ preferences, source diagnostics, native item cards, and typed viewer actions.
 The retained Fabric acceptance profile now proves JEI/REI coexistence,
 viewer-only Farmer's Delight discovery, generation-safe exact lookup, and
 TomeWisp-to-JEI navigation; EMI and Patchouli still have no verified 26.2
-runtime artifact. Context compaction, history management, developer diagnostics,
-and the complete Minecraft-native rich-message layer remain Phase 4 work. Dynamic
+runtime artifact. Phase 4 context management now uses an explicit per-model
+window, provider-neutral structural reduction, source-hashed derived summaries,
+schema-v2 privacy-safe checkpoint persistence, and local/server recovery. A
+session is not bound to one model: validated history/checkpoints survive
+provider or model changes and every future request is rebuilt against its
+selected model budget. Multiple named model profiles and their settings UI,
+history management, developer diagnostics, and the complete Minecraft-native
+rich-message layer remain Phase 4 work. Dynamic
 Ponder generation is deferred beyond Phase 4 because Ponder/Ponderer do not yet
 provide a verified 26.2 runtime target. Phase 3C now provides the native player
 GUI; graphical E2E remains explicit opt-in and is never inferred from

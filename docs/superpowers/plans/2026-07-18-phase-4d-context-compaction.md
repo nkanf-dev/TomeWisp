@@ -111,10 +111,6 @@ reflection over `Instant`.
 - Modify: `common/src/main/java/dev/tomewisp/model/config/ModelConfig.java`
 - Modify: `common/src/main/java/dev/tomewisp/model/config/ModelConfigLoader.java`
 - Modify: `common/src/main/java/dev/tomewisp/client/ClientGuideRuntime.java`
-- Create: `common/src/main/java/dev/tomewisp/bridge/protocol/ServerAgentHistoryMessage.java`
-- Create: `common/src/main/java/dev/tomewisp/bridge/protocol/ServerAgentRequestChunkPayload.java`
-- Create: `common/src/main/java/dev/tomewisp/bridge/protocol/ServerAgentRequestChunker.java`
-- Modify: Fabric and NeoForge client/server bridge adapters
 - Modify: `common/src/main/java/dev/tomewisp/server/ServerGuideRuntime.java`
 - Modify: `common/src/test/java/dev/tomewisp/model/config/ModelConfigLoaderTest.java`
 - Modify direct `ModelConfig` fixtures under `common/src/test/java/dev/tomewisp/model/`
@@ -144,6 +140,10 @@ metadata adapter resolves it with provenance.
 - Modify: `common/src/main/java/dev/tomewisp/guide/GuideLocalEndpoint.java`
 - Modify: `common/src/main/java/dev/tomewisp/guide/GuideService.java`
 - Modify: `common/src/main/java/dev/tomewisp/client/ClientGuideRuntime.java`
+- Create: `common/src/main/java/dev/tomewisp/bridge/protocol/ServerAgentHistoryMessage.java`
+- Create: `common/src/main/java/dev/tomewisp/bridge/protocol/ServerAgentRequestChunkPayload.java`
+- Create: `common/src/main/java/dev/tomewisp/bridge/protocol/ServerAgentRequestChunker.java`
+- Modify: Fabric and NeoForge client/server bridge adapters
 - Test: `common/src/test/java/dev/tomewisp/guide/history/GuideHistoryCodecTest.java`
 - Test: `common/src/test/java/dev/tomewisp/guide/history/SqliteGuideHistoryStoreTest.java`
 - Test: `common/src/test/java/dev/tomewisp/guide/GuideServiceHistoryTest.java`
@@ -180,11 +180,30 @@ request is re-estimated against the selected model's own budget.
 - Modify: `docs/isme/decisions/2026-07-18-008-context-compaction-execution.md`
 - Modify: this plan
 
-- [ ] Run `./gradlew :common:test --tests 'dev.tomewisp.agent.context.*' --tests 'dev.tomewisp.agent.*' --tests 'dev.tomewisp.guide.*' --tests 'dev.tomewisp.bridge.protocol.*'`.
-- [ ] Run `./gradlew clean :common:test :fabric:build :neoforge:build`.
-- [ ] Run `git diff --check`, shell/Python/JSON syntax checks, production-JAR credential scans, and verify no reasoning/full normalized history was added to SQLite fixtures.
-- [ ] Record test counts, artifact hashes, warnings, and commit references in this plan and SKMB-008.
-- [ ] Commit `docs: verify context compaction`.
+- [x] Run `./gradlew :common:test --tests 'dev.tomewisp.agent.context.*' --tests 'dev.tomewisp.agent.*' --tests 'dev.tomewisp.guide.*' --tests 'dev.tomewisp.bridge.protocol.*'`.
+- [x] Run `./gradlew clean :common:test :fabric:build :neoforge:build`.
+- [x] Run `git diff --check`, shell/Python/JSON syntax checks, production-JAR credential scans, and verify no reasoning/full normalized history was added to SQLite fixtures.
+- [x] Record test counts, artifact hashes, warnings, and commit references in this plan and SKMB-008.
+- [x] Commit `docs: verify context compaction`.
+
+Final verification on 2026-07-18 passed the clean gate with 217 common tests,
+zero failures/errors, and one opt-in skip, followed by successful Fabric and
+NeoForge production builds. The production artifact SHA-256 values were:
+
+- Fabric: `a7b0a7c5227d19ccb426dc40e298af742bbd0ae97e610417be81572d491b472e`
+- NeoForge: `fc50311e7b0ffc62da07d102618a3a7cb8af7c00e7d3c64bd41441d34760557d`
+
+Tracked shell, Python, and JSON syntax checks passed. Production-JAR scans found
+none of the test credentials, literal bearer values, or inline API-key JSON
+patterns. SQLite fixtures prove normal history/checkpoints cannot represent
+reasoning, authorization data, or full normalized tool results. Non-fatal build
+warnings remain for SQLite native access, JOML `Unsafe`, missing Javadocs,
+NeoForge's absent Fabric annotation type during Javadoc, and SQLite's four-part
+version not being semver.
+
+Implementation commits are `1cd1c69`, `1d7a665`, `56f0a26`, `3d80eef`,
+`96b71ba`, the explicit-window correction `00cc905`, and durable recovery/
+model-neutral session commit `3f4e435`.
 
 ## Completion Boundary
 

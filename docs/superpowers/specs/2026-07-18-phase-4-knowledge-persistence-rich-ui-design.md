@@ -125,13 +125,14 @@ navigation is a disabled action with a diagnostic, not a fabricated success.
 
 ## 4. Durable history
 
-Implementation status on 2026-07-18: the schema-v1 normal-mode projection,
+Implementation status on 2026-07-18: the schema-v2 normal-mode projection,
 hashed player/connection partitions, ordered asynchronous SQLite repository,
 interruption recovery, GuideService lifecycle integration, Fabric/NeoForge
 packaging and lifecycle hooks, and player-visible persistence health are
-implemented. Developer-mode payloads, explicit partition/all-history management,
-compaction records, paging, and retained graphical restart acceptance remain
-open Phase 4 work.
+implemented. Transactional v1 migration and privacy-safe compaction checkpoints
+are also complete. Developer-mode payloads, explicit partition/all-history
+management, paging, and retained graphical restart acceptance remain open
+Phase 4 work.
 
 ### 4.1 Ownership and partitioning
 

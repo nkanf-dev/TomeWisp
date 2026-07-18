@@ -157,4 +157,7 @@ authority boundaries.
 
 ## Superseded By
 
-None.
+SKMB-2026-07-19-019 supersedes the environment-only client credential policy
+with a masked player input and dedicated local credential store. Probe
+isolation, redaction, atomic runtime publication, and active-request capture
+remain authoritative.

@@ -67,4 +67,6 @@ recovery, context authority, or per-session model-selection semantics.
 
 ## Superseded By
 
-None.
+SKMB-2026-07-19-019 supersedes only the manual-deletion requirement for
+recognized older unshipped TomeWisp schemas. Future, corrupt, or unrecognized
+databases still fail closed without mutation.

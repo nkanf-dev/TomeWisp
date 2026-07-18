@@ -26,6 +26,7 @@ accepted and contains explicit approval evidence.
 | SKMB-2026-07-18-016 | accepted | native settings coordination and domain config writes | A, B, C, E, F | decisions/2026-07-18-016-native-settings-coordination.md | e7acf43, 507d628; implemented through a3ae197 |
 | SKMB-2026-07-18-017 | accepted | knowledge/capability catalog and local Tool/Skill policy | B, C, D, E, F | decisions/2026-07-18-017-capability-settings-policy.md | e7acf43, 507d628; implemented through 771cc94 |
 | SKMB-2026-07-18-018 | accepted | semantic messages, controlled components, and windowed history | A, B, C, D, E, F | decisions/2026-07-18-018-semantic-history-windowing.md | 9655dd2; implemented through 11a6ace |
+| SKMB-2026-07-19-019 | accepted | manual-acceptance input, credential, Tool/source, Skill, and pre-release history corrections | B, C, D, E, F, G | decisions/2026-07-19-019-manual-acceptance-corrections.md | pending |
 
 SKMB-2026-07-18-006 is implemented by `a0eaeff`, `19ab90f`, and `c6ca6bc`.
 Its deterministic clean-build and packaged-driver evidence is recorded in the
@@ -204,6 +205,10 @@ the Phase 4J verification report.
 | I55 | GUI viewport paging and model-context selection are independent and neither loads a complete durable partition into memory | SKMB-2026-07-18-018 |
 | I56 | Incremental history writes and page/context reads remain ordered off Minecraft-owned threads and generation-check every completion | SKMB-2026-07-18-018 |
 | I57 | Auto-scroll follows only while already at the bottom; earlier-page insertion preserves the player's anchor row and pixel offset | SKMB-2026-07-18-018 |
+| I58 | Client model profiles and all observable settings state retain only credential references/presence; raw API keys exist only in the transient password input, SecretValue, provider header boundary, and dedicated local credential store | SKMB-2026-07-19-019 |
+| I59 | Every source is owned and strictly validated by one logical Tool; built-in sources cannot be deleted, while registered user source kinds may support full CRUD | SKMB-2026-07-19-019 |
+| I60 | Bundled Skills are read-only Agent Skills packages; local edits are external SKILL.md overrides and never grant scripts, paths, tools, or Agent write authority | SKMB-2026-07-19-019 |
+| I61 | Only recognized older unshipped TomeWisp history schemas rebuild automatically; future, corrupt, or unrecognized databases remain untouched | SKMB-2026-07-19-019 |
 
 ## Fail Semantics
 
@@ -245,6 +250,10 @@ the Phase 4J verification report.
 | F34 | A viewport page read fails or completes for a stale generation | Retain the current window/anchor, suppress stale publication, and allow explicit retry | SKMB-2026-07-18-018 |
 | F35 | A durable model-context seed cannot be read or structurally validated | Fail `history_context_failed` before provider dispatch and preserve every durable row | SKMB-2026-07-18-018 |
 | F36 | Native semantic rendering fails for one node | Render its text/narration fallback and keep the screen usable; never fabricate a component success | SKMB-2026-07-18-018 |
+| F37 | Stored credential resolution or persistence fails | Keep prior profile/runtime where possible, expose a stable redacted failure, and send no provider request with a missing or guessed credential | SKMB-2026-07-19-019 |
+| F38 | A Tool source candidate is malformed, unavailable, or unauthorized | Reject/retain it with a source-scoped diagnostic and leave unrelated Tools/sources unchanged | SKMB-2026-07-19-019 |
+| F39 | A local Skill override is malformed or escapes the supported Agent Skills subset | Retain the prior valid/bundled Skill, expose a source-scoped validation diagnostic, and keep unrelated Skills available | SKMB-2026-07-19-019 |
+| F40 | A recognized older history schema cannot be rebuilt transactionally | Roll back, preserve the prior database, report `history_schema_rebuild_failed`, and make persistence unavailability visible | SKMB-2026-07-19-019 |
 
 ## Reviewed Statistical Defaults
 

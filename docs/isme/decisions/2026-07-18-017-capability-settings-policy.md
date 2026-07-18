@@ -136,7 +136,10 @@ navigation, or source-generation decisions in SKMB-2026-07-18-005/007.
 
 ## Superseded By
 
-None.
+SKMB-2026-07-19-019 replaces the combined top-level Knowledge & Capabilities
+page and generic Skill toggles with separate Tools and Skills master-detail
+pages. Sources remain children of their owning Tool; capability authority and
+active-request capture invariants remain authoritative.
 
 ## Implementation Status
 

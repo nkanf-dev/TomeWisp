@@ -79,6 +79,8 @@ Delight graphical evidence are recorded in the Phase 4C plan and
 | T28 | preparing | deterministic context estimate exceeds configured input budget | compacting | Protect the current request and structural tool pairs, then reduce old tool results | SKMB-2026-07-18-008 |
 | T29 | compacting | deterministic projection still exceeds budget | compacting | Use the same selected model topology to create a source-hashed structured summary checkpoint | SKMB-2026-07-18-008 |
 | T30 | compacting | cancel arrives | cancelled | Cancel summary work, store no successful checkpoint, and suppress primary dispatch | SKMB-2026-07-18-008 |
+| T31 | history_loading | schema-v1 partition opens | history_loading | Transactionally add session-owned checkpoint storage, preserve messages/timeline, then hydrate schema v2 | SKMB-2026-07-18-008 |
+| T32 | any non-active session state | selected model/provider changes | unchanged | Keep the provider-neutral transcript/checkpoints; assemble the next request with the new model and its budget | SKMB-2026-07-18-008 |
 
 ## Invariants
 
@@ -121,6 +123,7 @@ Delight graphical evidence are recorded in the Phase 4C plan and
 | I35 | The current request boundary and its tool-use/result pairs are unchanged in every context projection | SKMB-2026-07-18-008 |
 | I36 | Summary generation uses the active request endpoint, credentials, scheduling key, and cancellation signal | SKMB-2026-07-18-008 |
 | I37 | Reasoning is excluded from summary prompts and durable compaction checkpoints | SKMB-2026-07-18-008 |
+| I38 | Sessions and valid derived checkpoints are provider/model-neutral; every request is re-estimated against its selected model budget | SKMB-2026-07-18-008 |
 
 ## Fail Semantics
 
@@ -147,6 +150,7 @@ Delight graphical evidence are recorded in the Phase 4C plan and
 | F19 | A viewer recipe contains unsupported or malformed ingredients | Omit that record, mark only that provider partial, and retain other provider records | SKMB-2026-07-18-007 |
 | F20 | A summary is malformed, fails, or produces an over-budget projection | Use deterministic reduction only if it fits; otherwise fail `context_compaction_failed` and preserve original history | SKMB-2026-07-18-008 |
 | F21 | A durable checkpoint source hash does not match current same-partition messages | Treat it as stale derived memory and rebuild; never insert it into model context | SKMB-2026-07-18-008 |
+| F22 | A durable checkpoint uses an unsupported summary prompt/schema version | Retain it for diagnosis and rebuild; never insert it into model context | SKMB-2026-07-18-008 |
 
 ## Statistical Defaults Allowed Temporarily
 

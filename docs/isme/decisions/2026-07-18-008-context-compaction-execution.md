@@ -59,12 +59,32 @@ input is itself budgeted and may cover only a structural prefix; unsummarized
 recent messages remain verbatim. The checkpoint records the source range,
 SHA-256 hash, configured model identifier, prompt/schema versions, creation
 time, summary or structured failure, and the estimated projection size.
+The recorded model identifier is diagnostic provenance, not session ownership
+and not a reuse gate.
 
 A completed checkpoint is reusable only when its source hash exactly matches
-the durable source messages in the same player/world/server partition. A
+the durable source messages in the same player/world/server partition and its
+prompt and schema versions are supported. It may be reused after changing
+provider or model because it is validated derived text rather than a provider
+cache. The projection is always re-estimated against the newly selected
+model's budget; if it does not fit, compaction runs again. A
 failed or stale checkpoint is retained for diagnosis but never inserted into a
 model request. Summary text is prefixed as derived memory and explicitly says
 that it is not factual evidence.
+
+Durable schema v2 stores checkpoints in a session-owned table and migrates v1
+transactionally without replacing message or timeline rows. Normal recovery
+reconstructs only visible user and completed-assistant messages. Client-local
+mode may reuse a validated checkpoint; server-model mode sends that same
+privacy-safe visible history over strict bridge protocol v4 and recomputes a
+summary when needed. It never restores live capabilities, authoritative game
+snapshots, reasoning, or full normalized tool payloads.
+
+A guide session owns the provider-neutral transcript and checkpoints, not a
+model binding. Changing the selected model affects future requests only. Each
+adapter serializes the same common `ModelMessage` history for its protocol;
+provider-side prompt/KV caches may be lost on a switch without losing semantic
+conversation context.
 
 Compaction is cancellable through the request's existing cancellation signal.
 Cancellation produces `agent_cancelled`, stores no successful checkpoint, and
@@ -88,7 +108,8 @@ history remains unchanged.
 2. Current-request tool-use/result pairs are byte-for-byte preserved.
 3. Reasoning cannot enter summary input, summary output records, or durable checkpoints.
 4. A summary checkpoint never supplies factual evidence.
-5. A checkpoint is reusable only after same-partition source-hash validation.
+5. A checkpoint is reusable only after same-partition source-hash and supported
+   prompt/schema validation; generating model and endpoint are provenance only.
 6. The summary call uses the same selected endpoint, credentials, scheduling key, and cancellation signal as the primary request.
 7. No fixed message-count, history-length, or database-size cap is introduced.
 
@@ -100,6 +121,8 @@ history remains unchanged.
 - Projection still over budget: fail `context_compaction_failed`; do not dispatch the primary request or modify history.
 - Cancellation during compaction: fail `agent_cancelled`; suppress late summary completion and primary dispatch.
 - Durable checkpoint hash mismatch: treat the checkpoint as stale and rebuild; never guess equivalence.
+- Durable checkpoint prompt/schema mismatch: retain it for diagnosis and
+  rebuild; never insert it into model context.
 
 ## Review Debt
 

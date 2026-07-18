@@ -45,7 +45,7 @@ in an environment variable:
   "baseUrl": "https://provider.example/v1/",
   "model": "model-id",
   "apiKeyEnv": "TOMEWISP_API_KEY",
-  "contextWindowTokens": 128000,
+  "contextWindowTokens": 256000,
   "maxOutputTokens": 8192,
   "connectTimeoutSeconds": 30,
   "requestTimeoutSeconds": 300
@@ -57,7 +57,9 @@ accepted only for loopback development. The API key is redacted from model
 configuration diagnostics and live traces. `contextWindowTokens` is required
 for the selected provider/model unless a trusted metadata adapter resolves it;
 TomeWisp never assumes one universal model window. Its environment override is
-`TOMEWISP_CONTEXT_WINDOW_TOKENS`.
+`TOMEWISP_CONTEXT_WINDOW_TOKENS`. The `256000` value above is an example preset,
+not a fallback; use the selected provider/model's documented or discovered
+value.
 
 Client recipe visibility and optional viewer preference live separately at
 `config/tomewisp/recipes.json`. A missing file uses the same defaults shown
@@ -121,12 +123,18 @@ tool location are independent.
 Commands, the Phase 3C screen, and development probes consume one
 connection-scoped `GuideService`. It owns immutable request/session snapshots,
 model mode, topology, cancellation, retry, sources, and disconnect cleanup.
-The server Agent event protocol is version 3 and is decoded once in common
+The server Agent protocol is version 4 and is decoded once in common
 code. Unknown or malformed events fail only their correlated request; there is
-no silent client/server fallback.
+no silent client/server fallback. Server-model requests carry only the
+partition's visible user/completed-assistant history; they never carry restored
+capabilities, live evidence, reasoning, credentials, or full normalized tool
+results. Protocol v4 splits the encoded request into independently strict,
+SHA-256-checked 24 KiB transport chunks so long histories do not depend on one
+Minecraft custom-payload string.
 
 Normal-mode guide history is stored at `config/tomewisp/history.sqlite3` in one
-schema-v1 SQLite database. Each partition key is a SHA-256 digest of the player
+schema-v2 SQLite database. Schema v1 migrates transactionally without replacing
+message or timeline rows. Each partition key is a SHA-256 digest of the player
 UUID, connection kind, and normalized integrated-world path or multiplayer
 address; the raw path/address is not stored. Database work runs on one ordered
 background worker and never blocks the client or render thread.
@@ -138,9 +146,13 @@ raw provider bodies, full inventory snapshots, and full normalized tool
 results. Loading temporarily disables submission. A load or write failure keeps
 the in-memory Agent usable and shows that new messages are not durable. Work
 left active by process loss restores as `INTERRUPTED`; continuing it always
-requires an explicit retry with a new request ID. Developer-mode payloads,
-partition management, compaction checkpoints, and history paging are later
-Phase 4 work.
+requires an explicit retry with a new request ID. Versioned compaction
+checkpoints are retained separately as derived, non-evidence memory and reused
+only when their source hash and prompt/schema versions match. The generating
+model ID is provenance, not a reuse lock: changing provider or model keeps the
+session transcript and a valid checkpoint, then re-estimates the projection
+against the newly selected model's own budget. Developer-mode payloads,
+partition management, and history paging are later Phase 4 work.
 
 The real-client probe is disabled unless `tomewisp.e2e.enabled=true`. When
 enabled, it waits for a real client player, submits through the same

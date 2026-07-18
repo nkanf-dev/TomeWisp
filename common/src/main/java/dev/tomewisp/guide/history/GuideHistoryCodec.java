@@ -4,6 +4,8 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
+import dev.tomewisp.agent.context.ContextCheckpoint;
+import dev.tomewisp.agent.context.ContextCheckpointCodec;
 import dev.tomewisp.context.DataAuthority;
 import dev.tomewisp.context.DataCompleteness;
 import dev.tomewisp.context.EvidenceMetadata;
@@ -18,8 +20,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
-/** Strict schema-v1 codecs for player-visible durable projections. */
+/** Strict codecs for player-visible durable projections and derived checkpoints. */
 public final class GuideHistoryCodec {
+    private final ContextCheckpointCodec checkpoints = new ContextCheckpointCodec();
     private static final Set<String> ASSISTANT_FIELDS =
             Set.of("type", "ordinal", "text", "streaming", "sources");
     private static final Set<String> TOOL_FIELDS = Set.of(
@@ -29,6 +32,14 @@ public final class GuideHistoryCodec {
     private static final Set<String> EVIDENCE_FIELDS = Set.of(
             "authority", "completeness", "capturedAt", "sourceId", "provenance",
             "gameVersion", "loader", "details");
+
+    public String encodeCheckpoint(ContextCheckpoint checkpoint) {
+        return checkpoints.encode(checkpoint);
+    }
+
+    public ContextCheckpoint decodeCheckpoint(String json) {
+        return checkpoints.decode(json);
+    }
 
     public String encodeTimeline(List<GuideTimelineEntry> timeline) {
         JsonArray encoded = new JsonArray();

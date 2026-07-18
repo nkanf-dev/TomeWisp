@@ -18,6 +18,7 @@ import java.util.ArrayList;
 import java.util.HexFormat;
 import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
@@ -187,6 +188,34 @@ public final class ContextCompactor {
             List<ModelMessage> messages,
             List<ModelToolDefinition> tools) {
         return estimator.estimate(systemPrompt, messages, tools) > budget.inputTokens();
+    }
+
+    public Optional<ContextProjection> reuse(
+            ContextCheckpoint checkpoint,
+            String systemPrompt,
+            List<ModelMessage> messages,
+            int protectedFromIndex,
+            List<ModelToolDefinition> tools) {
+        Objects.requireNonNull(checkpoint, "checkpoint");
+        messages = List.copyOf(messages);
+        if (checkpoint.status() != ContextCheckpoint.Status.SUCCEEDED
+                || checkpoint.promptVersion() != PROMPT_VERSION
+                || checkpoint.schemaVersion() != SCHEMA_VERSION
+                || checkpoint.sourceFromIndex() != 0
+                || checkpoint.sourceToIndexExclusive() > protectedFromIndex
+                || !matches(checkpoint, messages.subList(0, protectedFromIndex))) {
+            return Optional.empty();
+        }
+        ArrayList<ModelMessage> projected = new ArrayList<>();
+        projected.add(ModelMessage.userText(DERIVED_PREFIX + checkpoint.summary()));
+        projected.addAll(messages.subList(
+                checkpoint.sourceToIndexExclusive(), messages.size()));
+        int estimate = estimator.estimate(systemPrompt, projected, tools);
+        if (estimate > budget.inputTokens()) {
+            return Optional.empty();
+        }
+        return Optional.of(new ContextProjection(
+                projected, ContextProjection.Kind.SUMMARIZED, estimate));
     }
 
     private Prefix summaryPrefix(

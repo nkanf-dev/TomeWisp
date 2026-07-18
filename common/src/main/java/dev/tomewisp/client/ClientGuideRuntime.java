@@ -7,18 +7,23 @@ import dev.tomewisp.agent.AgentRequest;
 import dev.tomewisp.agent.AgentResult;
 import dev.tomewisp.agent.GameGuideAgent;
 import dev.tomewisp.agent.context.ContextBudget;
+import dev.tomewisp.agent.context.ContextCheckpoint;
 import dev.tomewisp.agent.context.ContextCompactor;
 import dev.tomewisp.agent.context.ToolResultContextReducer;
 import dev.tomewisp.agent.context.Utf8ContextTokenEstimator;
 import dev.tomewisp.agent.session.AgentSessionKey;
 import dev.tomewisp.agent.session.AgentSessionStore;
 import dev.tomewisp.agent.trace.LiveTraceStore;
-import dev.tomewisp.agent.tool.LocalAgentToolExecutor;
 import dev.tomewisp.agent.tool.AgentToolExecutor;
 import dev.tomewisp.agent.tool.CompositeAgentToolExecutor;
+import dev.tomewisp.agent.tool.LocalAgentToolExecutor;
 import dev.tomewisp.context.ToolInvocationContext;
 import dev.tomewisp.guide.GuideLocalEndpoint;
+import dev.tomewisp.guide.GuideMessage;
 import dev.tomewisp.model.ModelClient;
+import dev.tomewisp.model.ModelContent;
+import dev.tomewisp.model.ModelMessage;
+import dev.tomewisp.model.ModelRole;
 import dev.tomewisp.model.anthropic.AnthropicMessagesClient;
 import dev.tomewisp.model.config.ModelConfig;
 import dev.tomewisp.model.config.ModelConfigLoader;
@@ -26,6 +31,7 @@ import dev.tomewisp.model.openai.OpenAiChatClient;
 import dev.tomewisp.model.scheduling.ModelRequestScheduler;
 import dev.tomewisp.tool.ToolResult;
 import java.nio.file.Path;
+import java.time.Clock;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -33,7 +39,6 @@ import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Consumer;
-import java.time.Clock;
 
 public final class ClientGuideRuntime implements GuideLocalEndpoint {
     private final TomeWispRuntime runtime;
@@ -177,6 +182,22 @@ public final class ClientGuideRuntime implements GuideLocalEndpoint {
     public void selectSession(UUID actor, String sessionId) {
         new AgentSessionKey(actor, sessionId);
         selectedSessions.put(actor, sessionId);
+    }
+
+    @Override
+    public void hydrateSession(
+            UUID actor,
+            String sessionId,
+            List<GuideMessage> messages,
+            List<ContextCheckpoint> checkpoints) {
+        List<ModelMessage> history = messages.stream()
+                .map(message -> new ModelMessage(
+                        message.role() == GuideMessage.Role.USER
+                                ? ModelRole.USER
+                                : ModelRole.ASSISTANT,
+                        List.of(new ModelContent.Text(message.text()))))
+                .toList();
+        sessions.hydrate(new AgentSessionKey(actor, sessionId), history, checkpoints);
     }
 
     public List<String> sessions(UUID actor) {

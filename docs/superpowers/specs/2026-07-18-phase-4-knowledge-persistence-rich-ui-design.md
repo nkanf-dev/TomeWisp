@@ -257,6 +257,15 @@ prompt/schema version, creation time, result, and failure state. Older
 checkpoints may be summarized into a higher-level checkpoint while original
 messages remain intact.
 
+The model identifier is generation provenance, not ownership. Sessions retain
+a provider-neutral transcript and are never bound to one provider or model.
+Changing the selected model affects future requests only: TomeWisp serializes
+the same common history through the newly selected adapter, validates any
+checkpoint by source hash and summary version, and re-estimates it against the
+new model's context budget. Provider-side prompt/KV cache reuse may be lost,
+but semantic conversation context is preserved. A valid derived checkpoint may
+therefore cross both provider and model boundaries.
+
 A summary is derived conversation memory, never factual game evidence. Current
 inventory, recipes, quest state, position, capabilities, and knowledge must be
 validated through current evidence or a fresh tool call.
@@ -400,11 +409,14 @@ disabled.
 
 ## 7. Configuration and diagnostics
 
-The native settings flow covers model protocol, base URL, model ID, API-key
-environment-variable name, timeouts, output tokens, recipe visibility, enabled
-sources, preferred viewer, database health, history management, compaction
-state, developer mode, animation, accessibility, reload, and a redacted
-connection test.
+The native settings flow manages multiple named model profiles. Each profile
+covers protocol, base URL, model ID, API-key environment-variable name,
+context/output limits, timeouts, and a redacted connection test. Players select
+the profile used by future requests without rebinding or clearing the current
+session; an active request retains the profile selected when it started.
+Settings also cover recipe visibility, enabled sources, preferred viewer,
+database health, history management, compaction state, developer mode,
+animation, accessibility, and reload.
 
 The GUI may report whether a named environment variable is present but never
 read out or persist its value.

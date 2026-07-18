@@ -13,10 +13,24 @@ final class BridgeJsonCodecTest {
     void roundTripsUnicodeAndRejectsUnknownFieldsAndVersions() {
         BridgeJsonCodec codec = new BridgeJsonCodec();
         ServerAgentRequestPayload payload = new ServerAgentRequestPayload(
-                BridgeProtocol.VERSION, UUID.randomUUID(), "machine", "压印机怎么搭？", true);
+                BridgeProtocol.VERSION,
+                UUID.randomUUID(),
+                "machine",
+                "压印机怎么搭？",
+                true,
+                List.of(
+                        new ServerAgentHistoryMessage(
+                                ServerAgentHistoryMessage.Role.USER, "先前问题"),
+                        new ServerAgentHistoryMessage(
+                                ServerAgentHistoryMessage.Role.ASSISTANT, "先前回答")));
         assertEquals(payload, codec.decode(codec.encode(payload), ServerAgentRequestPayload.class));
         assertThrows(IllegalArgumentException.class, () -> codec.decode(
                 codec.encode(payload).replaceFirst("\\{", "{\"extra\":1,"),
+                ServerAgentRequestPayload.class));
+        assertThrows(IllegalArgumentException.class, () -> codec.decode(
+                codec.encode(payload).replace(
+                        "\"text\":\"先前问题\"",
+                        "\"text\":\"先前问题\",\"extra\":true"),
                 ServerAgentRequestPayload.class));
         assertThrows(IllegalArgumentException.class, () -> new RemoteCancelPayload(99, UUID.randomUUID()));
     }
@@ -46,5 +60,34 @@ final class BridgeJsonCodecTest {
         assertFalse(reassembler.accept(chunks.getFirst()).isPresent());
         assertFalse(reassembler.accept(chunks.get(1)).isPresent());
         assertEquals("abcdef", reassembler.accept(chunks.getLast()).orElseThrow());
+    }
+
+    @Test
+    void serverAgentRequestsChunkUnicodeAndRemainIsolatedByActor() {
+        UUID requestId = UUID.randomUUID();
+        UUID firstActor = UUID.randomUUID();
+        UUID secondActor = UUID.randomUUID();
+        String content = "跨供应商模型上下文 ⚙".repeat(40);
+        ServerAgentRequestChunker chunker = new ServerAgentRequestChunker();
+        List<ServerAgentRequestChunkPayload> chunks = chunker.split(requestId, content, 11);
+        ServerAgentRequestChunker.Reassembler reassembler =
+                new ServerAgentRequestChunker.Reassembler();
+        BridgeJsonCodec codec = new BridgeJsonCodec();
+
+        assertEquals(
+                chunks.getFirst(),
+                codec.decode(
+                        codec.encode(chunks.getFirst()),
+                        ServerAgentRequestChunkPayload.class));
+        assertFalse(reassembler.accept(secondActor, chunks.getFirst()).isPresent());
+        reassembler.clearActor(secondActor);
+        java.util.Optional<String> restored = java.util.Optional.empty();
+        for (ServerAgentRequestChunkPayload chunk : chunks.reversed()) {
+            java.util.Optional<String> accepted = reassembler.accept(firstActor, chunk);
+            if (accepted.isPresent()) {
+                restored = accepted;
+            }
+        }
+        assertEquals(content, restored.orElseThrow());
     }
 }

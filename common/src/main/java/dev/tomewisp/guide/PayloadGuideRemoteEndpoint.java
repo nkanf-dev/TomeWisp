@@ -7,6 +7,8 @@ import dev.tomewisp.bridge.protocol.CapabilityPayload;
 import dev.tomewisp.bridge.protocol.ServerAgentEventCodec;
 import dev.tomewisp.bridge.protocol.ServerAgentEventPayload;
 import dev.tomewisp.bridge.protocol.ServerAgentRequestPayload;
+import dev.tomewisp.bridge.protocol.ServerAgentHistoryMessage;
+import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
 import java.util.function.Consumer;
@@ -50,6 +52,31 @@ public final class PayloadGuideRemoteEndpoint implements GuideRemoteEndpoint {
             Consumer<AgentEvent> consumer) {
         ServerAgentRequestPayload request = new ServerAgentRequestPayload(
                 BridgeProtocol.VERSION, requestId, sessionId, question, true);
+        return send(request, consumer);
+    }
+
+    @Override
+    public boolean ask(
+            UUID requestId,
+            String sessionId,
+            String question,
+            List<GuideMessage> history,
+            Consumer<AgentEvent> consumer) {
+        List<ServerAgentHistoryMessage> detached = history.stream()
+                .map(message -> new ServerAgentHistoryMessage(
+                        message.role() == GuideMessage.Role.USER
+                                ? ServerAgentHistoryMessage.Role.USER
+                                : ServerAgentHistoryMessage.Role.ASSISTANT,
+                        message.text()))
+                .toList();
+        ServerAgentRequestPayload request = new ServerAgentRequestPayload(
+                BridgeProtocol.VERSION, requestId, sessionId, question, true, detached);
+        return send(request, consumer);
+    }
+
+    private boolean send(
+            ServerAgentRequestPayload request, Consumer<AgentEvent> consumer) {
+        UUID requestId = request.requestId();
         return port.ask(request, payload -> {
             try {
                 consumer.accept(events.decode(payload, requestId));

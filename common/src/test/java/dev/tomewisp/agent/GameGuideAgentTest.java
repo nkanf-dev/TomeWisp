@@ -118,6 +118,30 @@ final class GameGuideAgentTest {
     }
 
     @Test
+    void aSessionTranscriptSurvivesSwitchingModelClients() {
+        QueueModelClient firstModel = new QueueModelClient();
+        firstModel.enqueue(CompletableFuture.completedFuture(textTurn("first answer")));
+        QueueModelClient secondModel = new QueueModelClient();
+        secondModel.enqueue(CompletableFuture.completedFuture(textTurn("second answer")));
+        AgentSessionStore sessions = new AgentSessionStore();
+        UUID actor = UUID.randomUUID();
+
+        new GameGuideAgent(firstModel, new FakeTools(), sessions, new Gson())
+                .ask(request(actor), ignored -> {})
+                .join();
+        new GameGuideAgent(secondModel, new FakeTools(), sessions, new Gson())
+                .ask(request(actor), ignored -> {})
+                .join();
+
+        assertEquals(3, secondModel.requests.getFirst().messages().size());
+        assertEquals(
+                "first answer",
+                ((ModelContent.Text) secondModel.requests.getFirst()
+                                .messages().get(1).content().getFirst())
+                        .text());
+    }
+
+    @Test
     void failsAnIdenticalConsecutiveToolCallWithoutInvokingAgain() {
         QueueModelClient model = new QueueModelClient();
         model.enqueue(CompletableFuture.completedFuture(toolTurn("call_1", 42)));

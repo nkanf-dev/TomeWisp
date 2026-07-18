@@ -80,6 +80,44 @@ final class ContextCompactorTest {
         List<ModelMessage> changed = new ArrayList<>(messages);
         changed.set(0, ModelMessage.userText("changed"));
         assertFalse(compactor.matches(checkpoint, changed));
+
+        List<ModelMessage> nextRequest = new ArrayList<>(messages);
+        nextRequest.add(ModelMessage.userText("next"));
+        assertTrue(compactor.reuse(
+                        checkpoint, "system", nextRequest, messages.size(), List.of())
+                .isPresent());
+        ContextCompactor otherModel = new ContextCompactor(
+                model,
+                new Gson(),
+                new Utf8ContextTokenEstimator(),
+                new ToolResultContextReducer(),
+                new ContextBudget(1_200, 100),
+                "other-model",
+                Clock.fixed(Instant.parse("2026-07-18T00:00:00Z"), ZoneOffset.UTC));
+        assertTrue(otherModel.reuse(
+                        checkpoint, "system", nextRequest, messages.size(), List.of())
+                .isPresent());
+        ContextCheckpoint futureSchema = new ContextCheckpoint(
+                checkpoint.checkpointId(),
+                checkpoint.sourceFromIndex(),
+                checkpoint.sourceToIndexExclusive(),
+                checkpoint.sourceHash(),
+                checkpoint.modelIdentifier(),
+                checkpoint.promptVersion(),
+                99,
+                checkpoint.createdAt(),
+                checkpoint.status(),
+                checkpoint.summary(),
+                checkpoint.failureCode(),
+                checkpoint.failureMessage(),
+                checkpoint.estimatedProjectionTokens());
+        assertTrue(compactor.reuse(
+                        futureSchema, "system", nextRequest, messages.size(), List.of())
+                .isEmpty());
+        nextRequest.set(0, ModelMessage.userText("stale"));
+        assertTrue(compactor.reuse(
+                        checkpoint, "system", nextRequest, messages.size(), List.of())
+                .isEmpty());
     }
 
     @Test

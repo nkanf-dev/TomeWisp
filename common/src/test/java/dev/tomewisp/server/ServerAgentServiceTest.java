@@ -10,6 +10,7 @@ import dev.tomewisp.agent.tool.AgentToolExecutor;
 import dev.tomewisp.agent.tool.AgentToolResult;
 import dev.tomewisp.bridge.protocol.BridgeProtocol;
 import dev.tomewisp.bridge.protocol.ServerAgentEventPayload;
+import dev.tomewisp.bridge.protocol.ServerAgentHistoryMessage;
 import dev.tomewisp.bridge.protocol.ServerAgentRequestPayload;
 import dev.tomewisp.context.ContextCapability;
 import dev.tomewisp.context.ToolInvocationContext;
@@ -61,6 +62,44 @@ final class ServerAgentServiceTest {
         assertEquals(0, service.activeRequests());
         assertEquals(3, events.stream().filter(ServerAgentEventPayload::terminal).count());
         assertEquals(1, events.stream().filter(event -> event.eventJson().contains("agent_busy")).count());
+    }
+
+    @Test
+    void atomicallyRestoresVisibleHistoryBeforeTheCurrentQuestion() {
+        PendingModel model = new PendingModel();
+        AgentSessionStore sessions = new AgentSessionStore();
+        AgentToolExecutor tools = new EmptyTools();
+        ServerAgentService service = new ServerAgentService(
+                new GameGuideAgent(model, tools, sessions, new Gson()),
+                tools,
+                sessions,
+                (actor, capabilities, id) -> CompletableFuture.completedFuture(
+                        ToolInvocationContext.developmentConsole(id)),
+                (actor, event) -> {},
+                new Gson(),
+                "system");
+        UUID requestId = UUID.randomUUID();
+        ServerAgentRequestPayload request = new ServerAgentRequestPayload(
+                BridgeProtocol.VERSION,
+                requestId,
+                "restored",
+                "current question",
+                true,
+                List.of(
+                        new ServerAgentHistoryMessage(
+                                ServerAgentHistoryMessage.Role.USER, "old question"),
+                        new ServerAgentHistoryMessage(
+                                ServerAgentHistoryMessage.Role.ASSISTANT, "old answer")));
+
+        service.ask(UUID.randomUUID(), request);
+
+        assertEquals(
+                List.of("USER:old question", "ASSISTANT:old answer", "USER:current question"),
+                model.requests.get("restored").messages().stream()
+                        .map(message -> message.role() + ":" + message.content().stream()
+                                .map(content -> ((ModelContent.Text) content).text())
+                                .reduce("", String::concat))
+                        .toList());
     }
 
     @Test
@@ -151,10 +190,12 @@ final class ServerAgentServiceTest {
 
     private static final class PendingModel implements ModelClient {
         private final Map<String, CompletableFuture<ModelTurn>> pending = new java.util.HashMap<>();
+        private final Map<String, ModelRequest> requests = new java.util.HashMap<>();
         @Override
         public CompletableFuture<ModelTurn> complete(
                 ModelRequest request, Consumer<ModelEvent> events, CancellationSignal cancellation) {
             String session = request.sessionKey().substring(request.sessionKey().lastIndexOf(':') + 1);
+            requests.put(session, request);
             CompletableFuture<ModelTurn> future = new CompletableFuture<>();
             pending.put(session, future);
             cancellation.onCancel(() -> future.completeExceptionally(new dev.tomewisp.model.ModelClientException(

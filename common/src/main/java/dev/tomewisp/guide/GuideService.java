@@ -2,6 +2,7 @@ package dev.tomewisp.guide;
 
 import com.google.gson.Gson;
 import dev.tomewisp.agent.AgentEvent;
+import dev.tomewisp.agent.context.ContextCheckpoint;
 import dev.tomewisp.client.ClientEventDispatcher;
 import dev.tomewisp.context.ToolInvocationContext;
 import dev.tomewisp.guide.history.GuideHistoryAccess;
@@ -357,7 +358,14 @@ public final class GuideService {
         publish();
 
         if (topology == GuideTopology.SERVER) {
-            if (!remote.ask(requestId, sessionId, question, event -> apply(requestId, event))) {
+            List<GuideMessage> previousHistory = List.copyOf(
+                    session.messages.subList(0, session.messages.size() - 1));
+            if (!remote.ask(
+                    requestId,
+                    sessionId,
+                    question,
+                    previousHistory,
+                    event -> apply(requestId, event))) {
                 apply(requestId, new AgentEvent.Failed(
                         "capability_unavailable", "The connected server rejected the model request"));
                 result.complete(new ToolResult.Failure<>(
@@ -399,6 +407,11 @@ public final class GuideService {
         SessionState session = sessions.get(sessionId);
         int index = indexOf(session, requestId);
         if (index < 0) {
+            return;
+        }
+        if (event instanceof AgentEvent.ContextCompacted compacted) {
+            session.checkpoints.add(compacted.checkpoint());
+            publish();
             return;
         }
         GuideRequestSnapshot before = session.requests.get(index);
@@ -474,7 +487,7 @@ public final class GuideService {
     private GuideSnapshot buildSnapshot() {
         List<GuideSessionSnapshot> copies = sessions.values().stream()
                 .map(session -> new GuideSessionSnapshot(
-                        session.id, session.messages, session.requests))
+                        session.id, session.messages, session.requests, session.checkpoints))
                 .toList();
         return new GuideSnapshot(
                 actor,
@@ -557,9 +570,17 @@ public final class GuideService {
             SessionState session = new SessionState(snapshot.sessionId());
             session.messages.addAll(snapshot.messages());
             session.requests.addAll(snapshot.requests());
+            session.checkpoints.addAll(snapshot.checkpoints());
             sessions.put(session.id, session);
             snapshot.requests().forEach(request ->
                     requestSessions.put(request.requestId(), session.id));
+            if (local != null) {
+                local.hydrateSession(
+                        actor,
+                        session.id,
+                        snapshot.messages(),
+                        snapshot.checkpoints());
+            }
         }
         selectedSession = partition.selectedSession();
         modelMode = partition.modelMode();
@@ -608,7 +629,8 @@ public final class GuideService {
                 .map(session -> new GuideSessionSnapshot(
                         session.id,
                         session.messages,
-                        session.requests.stream().map(GuideService::durableRequest).toList()))
+                        session.requests.stream().map(GuideService::durableRequest).toList(),
+                        session.checkpoints))
                 .toList();
         return new GuideHistoryPartition(
                 GuideHistoryPartition.SCHEMA_VERSION,
@@ -706,6 +728,7 @@ public final class GuideService {
         private final String id;
         private final List<GuideMessage> messages = new ArrayList<>();
         private final List<GuideRequestSnapshot> requests = new ArrayList<>();
+        private final List<ContextCheckpoint> checkpoints = new ArrayList<>();
 
         private SessionState(String id) {
             if (!validSession(id)) {

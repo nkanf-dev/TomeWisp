@@ -58,6 +58,24 @@ final class AgentSessionStoreTest {
         assertTrue(store.sessions(actor).isEmpty());
     }
 
+    @Test
+    void restoredHistoryIsInstalledOnlyWhenItsLeaseWins() {
+        AgentSessionStore store = new AgentSessionStore();
+        AgentSessionKey key = new AgentSessionKey(UUID.randomUUID(), "main");
+        List<ModelMessage> firstHistory = List.of(ModelMessage.userText("first"));
+        AgentSessionStore.Lease first = success(
+                store.reserveWithHistory(key, UUID.randomUUID(), firstHistory)).value();
+
+        ToolResult.Failure<AgentSessionStore.Lease> busy = failure(
+                store.reserveWithHistory(
+                        key, UUID.randomUUID(), List.of(ModelMessage.userText("second"))));
+
+        assertEquals("agent_busy", busy.code());
+        assertEquals(firstHistory, first.history());
+        assertTrue(store.finish(first, firstHistory));
+        assertEquals(firstHistory, success(store.reserve(key, UUID.randomUUID())).value().history());
+    }
+
     @SuppressWarnings("unchecked")
     private static ToolResult.Success<AgentSessionStore.Lease> success(
             ToolResult<AgentSessionStore.Lease> result) {

@@ -14,9 +14,11 @@ public final class AgentSessionStore {
             AgentSessionKey key,
             UUID requestId,
             CancellationSignal cancellation,
-            List<ModelMessage> history) {
+            List<ModelMessage> history,
+            List<ContextCheckpoint> checkpoints) {
         public Lease {
             history = List.copyOf(history);
+            checkpoints = List.copyOf(checkpoints);
         }
     }
 
@@ -31,13 +33,30 @@ public final class AgentSessionStore {
     private final Map<AgentSessionKey, Session> sessions = new HashMap<>();
 
     public synchronized ToolResult<Lease> reserve(AgentSessionKey key, UUID requestId) {
+        return reserve(key, requestId, null, null);
+    }
+
+    public synchronized ToolResult<Lease> reserveWithHistory(
+            AgentSessionKey key, UUID requestId, List<ModelMessage> history) {
+        return reserve(key, requestId, history, List.of());
+    }
+
+    private ToolResult<Lease> reserve(
+            AgentSessionKey key,
+            UUID requestId,
+            List<ModelMessage> replacementHistory,
+            List<ContextCheckpoint> replacementCheckpoints) {
         Session session = sessions.computeIfAbsent(key, ignored -> new Session());
         if (session.active != null) {
             return new ToolResult.Failure<>(
                     "agent_busy", "An Agent request is already active in this session");
         }
+        if (replacementHistory != null) {
+            session.history = List.copyOf(replacementHistory);
+            session.checkpoints = List.copyOf(replacementCheckpoints);
+        }
         Lease lease = new Lease(
-                key, requestId, new CancellationSignal(), session.history);
+                key, requestId, new CancellationSignal(), session.history, session.checkpoints);
         session.active = lease;
         return new ToolResult.Success<>(lease);
     }
@@ -71,11 +90,19 @@ public final class AgentSessionStore {
     }
 
     public synchronized void hydrate(AgentSessionKey key, List<ModelMessage> history) {
+        hydrate(key, history, List.of());
+    }
+
+    public synchronized void hydrate(
+            AgentSessionKey key,
+            List<ModelMessage> history,
+            List<ContextCheckpoint> checkpoints) {
         Session session = sessions.computeIfAbsent(key, ignored -> new Session());
         if (session.active != null) {
             throw new IllegalStateException("cannot hydrate an active Agent session");
         }
         session.history = List.copyOf(history);
+        session.checkpoints = List.copyOf(checkpoints);
     }
 
     public synchronized boolean cancel(AgentSessionKey key) {

@@ -12,6 +12,7 @@ import com.google.gson.JsonObject;
 import dev.tomewisp.agent.AgentEvent;
 import dev.tomewisp.agent.AgentResult;
 import dev.tomewisp.agent.AgentState;
+import dev.tomewisp.agent.context.ContextCheckpoint;
 import dev.tomewisp.context.ContextCapability;
 import dev.tomewisp.context.ToolInvocationContext;
 import dev.tomewisp.guide.history.GuideHistoryAccess;
@@ -58,6 +59,8 @@ final class GuideServiceHistoryTest {
                 service.snapshot().persistence().state());
         assertEquals(GuideRequestStatus.INTERRUPTED,
                 service.snapshot().sessions().getFirst().requests().getFirst().status());
+        assertEquals(1, local.hydratedCheckpoints.size());
+        assertEquals(1, local.hydratedMessages.size());
         UUID retry = success(service.retry(interrupted.requestId()).join());
         assertNotEquals(interrupted.requestId(), retry);
         assertTrue(local.pending.containsKey(retry));
@@ -71,6 +74,7 @@ final class GuideServiceHistoryTest {
         history.load.complete(GuideHistoryLoad.empty());
 
         UUID request = success(service.ask("persist me").join());
+        local.compact(request);
         local.tool(request);
 
         assertTrue(history.saved.size() >= 3);
@@ -79,6 +83,7 @@ final class GuideServiceHistoryTest {
                 .tools().getFirst();
         assertNull(persistedTool.normalized());
         assertFalse(persistedTool.presentationLines().isEmpty());
+        assertEquals(List.of(checkpoint()), latest.sessions().getFirst().checkpoints());
 
         int latestIndex = history.saveCompletions.size() - 1;
         history.saveCompletions.get(latestIndex).complete(null);
@@ -143,11 +148,35 @@ final class GuideServiceHistoryTest {
         assertInstanceOf(ToolResult.Success.class, service.ask("memory only").join());
     }
 
+    @Test
+    void sendsRecoveredVisibleHistoryToTheSelectedServerModel() {
+        FakeHistory history = new FakeHistory();
+        FakeRemote remote = new FakeRemote(true);
+        GuideService service = service(new FakeLocal(), history, remote);
+        GuideRequestSnapshot interrupted = interruptedRequest();
+        history.load.complete(new GuideHistoryLoad(
+                java.util.Optional.of(partition(interrupted)), List.of()));
+        successMode(service.setModelMode(GuideModelMode.SERVER).join());
+
+        success(service.ask("continue remotely").join());
+
+        assertEquals(
+                List.of("USER:retry after restart"),
+                remote.history.stream()
+                        .map(message -> message.role() + ":" + message.text())
+                        .toList());
+    }
+
     private static GuideService service(FakeLocal local, FakeHistory history) {
+        return service(local, history, new FakeRemote(false));
+    }
+
+    private static GuideService service(
+            FakeLocal local, FakeHistory history, FakeRemote remote) {
         return new GuideService(
                 ACTOR,
                 local,
-                new FakeRemote(),
+                remote,
                 (capabilities, correlation) -> new ToolResult.Success<>(
                         ToolInvocationContext.developmentConsole(correlation)),
                 Runnable::run,
@@ -168,7 +197,8 @@ final class GuideServiceHistoryTest {
                         List.of(new GuideMessage(
                                 request.requestId(), GuideMessage.Role.USER,
                                 request.userMessage(), request.createdAt())),
-                        List.of(request))),
+                        List.of(request),
+                        List.of(checkpoint()))),
                 request.updatedAt());
     }
 
@@ -190,8 +220,25 @@ final class GuideServiceHistoryTest {
                 terminal);
     }
 
+    private static ContextCheckpoint checkpoint() {
+        return new ContextCheckpoint(
+                UUID.fromString("b68c674f-b7fd-4c37-bf1d-284139216889"),
+                0, 1, "a".repeat(64), "test-model", 1, 1, CLOCK.instant(),
+                ContextCheckpoint.Status.SUCCEEDED,
+                "{\"goals\":[],\"preferences\":[],\"completedTopics\":[],"
+                        + "\"currentTasks\":[],\"decisions\":[],"
+                        + "\"unresolvedQuestions\":[],\"evidenceReferences\":[]}",
+                null, null, 512);
+    }
+
     private static UUID success(ToolResult<UUID> result) {
         return ((ToolResult.Success<UUID>) assertInstanceOf(ToolResult.Success.class, result)).value();
+    }
+
+    private static GuideModelMode successMode(ToolResult<GuideModelMode> result) {
+        return ((ToolResult.Success<GuideModelMode>)
+                        assertInstanceOf(ToolResult.Success.class, result))
+                .value();
     }
 
     private static void assertFailure(ToolResult<?> result, String code) {
@@ -232,6 +279,8 @@ final class GuideServiceHistoryTest {
 
     private static final class FakeLocal implements GuideLocalEndpoint {
         private final java.util.Map<UUID, Consumer<AgentEvent>> pending = new java.util.LinkedHashMap<>();
+        private final List<GuideMessage> hydratedMessages = new ArrayList<>();
+        private final List<ContextCheckpoint> hydratedCheckpoints = new ArrayList<>();
 
         @Override public Set<ContextCapability> requiredContext() { return Set.of(); }
         @Override
@@ -245,6 +294,20 @@ final class GuideServiceHistoryTest {
         @Override public boolean cancel(UUID actor, String sessionId) { return true; }
         @Override public void clearSession(UUID actor, String sessionId) {}
         @Override public void clearActor(UUID actor) {}
+
+        @Override
+        public void hydrateSession(
+                UUID actor,
+                String sessionId,
+                List<GuideMessage> messages,
+                List<ContextCheckpoint> checkpoints) {
+            hydratedMessages.addAll(messages);
+            hydratedCheckpoints.addAll(checkpoints);
+        }
+
+        private void compact(UUID request) {
+            pending.get(request).accept(new AgentEvent.ContextCompacted(checkpoint()));
+        }
 
         private void tool(UUID request) {
             Consumer<AgentEvent> events = pending.get(request);
@@ -260,11 +323,28 @@ final class GuideServiceHistoryTest {
     }
 
     private static final class FakeRemote implements GuideRemoteEndpoint {
-        @Override public boolean serverModelAvailable() { return false; }
+        private final boolean serverModel;
+        private List<GuideMessage> history = List.of();
+
+        private FakeRemote(boolean serverModel) {
+            this.serverModel = serverModel;
+        }
+
+        @Override public boolean serverModelAvailable() { return serverModel; }
         @Override public boolean serverToolsAvailable() { return false; }
         @Override public boolean ask(
                 UUID requestId, String sessionId, String question, Consumer<AgentEvent> events) {
             return false;
+        }
+        @Override
+        public boolean ask(
+                UUID requestId,
+                String sessionId,
+                String question,
+                List<GuideMessage> history,
+                Consumer<AgentEvent> events) {
+            this.history = List.copyOf(history);
+            return true;
         }
         @Override public boolean cancel(UUID requestId) { return false; }
         @Override public void disconnect() {}

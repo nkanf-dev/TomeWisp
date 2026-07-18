@@ -57,8 +57,27 @@ public final class GameGuideAgent {
 
     public CompletableFuture<AgentResult> ask(
             AgentRequest request, Consumer<AgentEvent> events) {
-        ToolResult<AgentSessionStore.Lease> reservation =
-                sessions.reserve(request.sessionKey(), request.requestId());
+        return askReserved(
+                request,
+                events,
+                sessions.reserve(request.sessionKey(), request.requestId()));
+    }
+
+    public CompletableFuture<AgentResult> askWithHistory(
+            AgentRequest request,
+            List<ModelMessage> history,
+            Consumer<AgentEvent> events) {
+        return askReserved(
+                request,
+                events,
+                sessions.reserveWithHistory(
+                        request.sessionKey(), request.requestId(), history));
+    }
+
+    private CompletableFuture<AgentResult> askReserved(
+            AgentRequest request,
+            Consumer<AgentEvent> events,
+            ToolResult<AgentSessionStore.Lease> reservation) {
         if (reservation instanceof ToolResult.Failure<AgentSessionStore.Lease> failure) {
             events.accept(new AgentEvent.Failed(failure.code(), failure.message()));
             return CompletableFuture.completedFuture(new AgentResult(
@@ -72,6 +91,29 @@ public final class GameGuideAgent {
         int protectedFromIndex = messages.size();
         messages.add(ModelMessage.userText(request.userMessage()));
         List<ModelMessage> completeMessages = List.copyOf(messages);
+        if (compactor != null && !lease.checkpoints().isEmpty()) {
+            for (int index = lease.checkpoints().size() - 1; index >= 0; index--) {
+                var reused = compactor.reuse(
+                        lease.checkpoints().get(index),
+                        request.systemPrompt(),
+                        messages,
+                        protectedFromIndex,
+                        tools.definitions());
+                if (reused.isPresent()) {
+                    transition(AgentState.MODEL_WAIT, trace, events);
+                    return loop(
+                                    request,
+                                    lease,
+                                    reused.orElseThrow().messages(),
+                                    completeMessages,
+                                    null,
+                                    trace,
+                                    events)
+                            .exceptionally(throwable ->
+                                    fail(request, lease, trace, events, throwable));
+                }
+            }
+        }
         if (compactor != null
                 && compactor.requiresCompaction(
                         request.systemPrompt(), messages, tools.definitions())) {

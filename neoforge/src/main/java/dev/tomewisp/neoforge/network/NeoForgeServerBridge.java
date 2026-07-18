@@ -10,6 +10,8 @@ import dev.tomewisp.bridge.protocol.CapabilityPayload;
 import dev.tomewisp.bridge.protocol.RemoteCancelPayload;
 import dev.tomewisp.bridge.protocol.RemoteToolCallPayload;
 import dev.tomewisp.bridge.protocol.ServerAgentRequestPayload;
+import dev.tomewisp.bridge.protocol.ServerAgentRequestChunkPayload;
+import dev.tomewisp.bridge.protocol.ServerAgentRequestChunker;
 import dev.tomewisp.bridge.protocol.ServerAgentCancelPayload;
 import dev.tomewisp.bridge.server.ExportedToolPolicy;
 import dev.tomewisp.bridge.server.RemoteToolServer;
@@ -34,6 +36,8 @@ public final class NeoForgeServerBridge {
     private final BridgeJsonCodec codec = new BridgeJsonCodec();
     private final Gson gson = new Gson();
     private final Map<UUID, ServerPlayer> players = new java.util.concurrent.ConcurrentHashMap<>();
+    private final ServerAgentRequestChunker.Reassembler requestChunks =
+            new ServerAgentRequestChunker.Reassembler();
     private RemoteToolServer remoteTools;
     private ToolResult<ServerGuideRuntime> serverGuide =
             new ToolResult.Failure<>("model_not_configured", "Server has not started");
@@ -54,6 +58,7 @@ public final class NeoForgeServerBridge {
             if (event.getEntity() instanceof ServerPlayer player) {
                 UUID actor = player.getUUID();
                 players.remove(actor);
+                requestChunks.clearActor(actor);
                 if (remoteTools != null) remoteTools.disconnect(actor);
                 if (serverGuide instanceof ToolResult.Success<ServerGuideRuntime> success) {
                     success.value().service().disconnect(actor);
@@ -73,18 +78,22 @@ public final class NeoForgeServerBridge {
                         actor, codec.decode(packet.json(), RemoteToolCallPayload.class));
                 case "tool_cancel" -> remoteTools.cancel(
                         actor, codec.decode(packet.json(), RemoteCancelPayload.class));
-                case "agent_request" -> {
+                case "agent_request_chunk" -> {
                     if (serverGuide instanceof ToolResult.Success<ServerGuideRuntime> success) {
-                        success.value().service().ask(
-                                actor, codec.decode(packet.json(), ServerAgentRequestPayload.class));
+                        ServerAgentRequestChunkPayload chunk = codec.decode(
+                                packet.json(), ServerAgentRequestChunkPayload.class);
+                        requestChunks.accept(actor, chunk).ifPresent(json ->
+                                success.value().service().ask(
+                                        actor,
+                                        codec.decode(json, ServerAgentRequestPayload.class)));
                     }
                 }
                 case "agent_cancel" -> {
                     if (serverGuide instanceof ToolResult.Success<ServerGuideRuntime> success) {
-                        success.value().service().cancel(
-                                actor,
-                                codec.decode(packet.json(), ServerAgentCancelPayload.class)
-                                        .requestId());
+                        UUID requestId = codec.decode(
+                                packet.json(), ServerAgentCancelPayload.class).requestId();
+                        requestChunks.cancel(actor, requestId);
+                        success.value().service().cancel(actor, requestId);
                     }
                 }
                 default -> throw new IllegalArgumentException("Unknown bridge packet " + packet.kind());

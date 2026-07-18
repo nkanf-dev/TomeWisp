@@ -1,5 +1,6 @@
 package dev.tomewisp.guide.history;
 
+import dev.tomewisp.agent.context.ContextCheckpoint;
 import dev.tomewisp.guide.GuideFailure;
 import dev.tomewisp.guide.GuideMessage;
 import dev.tomewisp.guide.GuideModelMode;
@@ -31,7 +32,7 @@ import java.util.UUID;
 
 /** JDBC store used only behind the asynchronous history repository. */
 public final class SqliteGuideHistoryStore implements GuideHistoryStore {
-    private static final int SCHEMA_VERSION = 1;
+    private static final int SCHEMA_VERSION = 2;
 
     private final Path database;
     private final Clock clock;
@@ -136,11 +137,29 @@ public final class SqliteGuideHistoryStore implements GuideHistoryStore {
                         "history_schema_unsupported", "Guide history schema metadata is missing");
             }
             int version = result.getInt(1);
-            if (version != SCHEMA_VERSION) {
+            if (version == 1) {
+                migrateV1ToV2(connection);
+            } else if (version != SCHEMA_VERSION) {
                 throw new GuideHistoryException(
                         "history_schema_unsupported",
                         "Unsupported guide history schema version " + version);
             }
+        }
+    }
+
+    private static void migrateV1ToV2(Connection connection) throws SQLException {
+        boolean autoCommit = connection.getAutoCommit();
+        connection.setAutoCommit(false);
+        try (Statement statement = connection.createStatement()) {
+            createCheckpointTable(statement);
+            statement.executeUpdate(
+                    "update schema_metadata set schema_version = 2 where singleton = 1 and schema_version = 1");
+            connection.commit();
+        } catch (SQLException failure) {
+            rollback(connection, failure);
+            throw failure;
+        } finally {
+            connection.setAutoCommit(autoCommit);
         }
     }
 
@@ -250,7 +269,8 @@ public final class SqliteGuideHistoryStore implements GuideHistoryStore {
             statement.execute("create index sessions_updated_lookup on sessions(scope_id, ordinal)");
             statement.execute("create index requests_order_lookup on requests(scope_id, session_id, ordinal)");
             statement.execute("create index timeline_order_lookup on timeline_entries(scope_id, request_id, ordinal)");
-            statement.execute("insert into schema_metadata(singleton, schema_version) values (1, 1)");
+            createCheckpointTable(statement);
+            statement.execute("insert into schema_metadata(singleton, schema_version) values (1, 2)");
             connection.commit();
         } catch (SQLException failure) {
             rollback(connection, failure);
@@ -258,6 +278,26 @@ public final class SqliteGuideHistoryStore implements GuideHistoryStore {
         } finally {
             connection.setAutoCommit(autoCommit);
         }
+    }
+
+    private static void createCheckpointTable(Statement statement) throws SQLException {
+        statement.execute("""
+                create table if not exists compaction_checkpoints(
+                    scope_id text not null,
+                    session_id text not null,
+                    ordinal integer not null check(ordinal >= 0),
+                    checkpoint_id text not null,
+                    payload_json text not null,
+                    primary key(scope_id, session_id, ordinal),
+                    unique(scope_id, checkpoint_id),
+                    foreign key(scope_id, session_id)
+                        references sessions(scope_id, session_id) on delete cascade
+                )
+                """);
+        statement.execute("""
+                create index if not exists checkpoint_order_lookup
+                on compaction_checkpoints(scope_id, session_id, ordinal)
+                """);
     }
 
     private static void deletePartition(Connection connection, String scopeId) throws SQLException {
@@ -303,6 +343,36 @@ public final class SqliteGuideHistoryStore implements GuideHistoryStore {
                         session.messages().get(messageOrdinal),
                         messageOrdinal);
             }
+            for (int checkpointOrdinal = 0;
+                    checkpointOrdinal < session.checkpoints().size();
+                    checkpointOrdinal++) {
+                insertCheckpoint(
+                        connection,
+                        partition.scope().scopeId(),
+                        session.sessionId(),
+                        session.checkpoints().get(checkpointOrdinal),
+                        checkpointOrdinal);
+            }
+        }
+    }
+
+    private void insertCheckpoint(
+            Connection connection,
+            String scopeId,
+            String sessionId,
+            ContextCheckpoint checkpoint,
+            int ordinal) throws SQLException {
+        try (PreparedStatement insert = connection.prepareStatement("""
+                insert into compaction_checkpoints(
+                    scope_id, session_id, ordinal, checkpoint_id, payload_json)
+                values (?, ?, ?, ?, ?)
+                """)) {
+            insert.setString(1, scopeId);
+            insert.setString(2, sessionId);
+            insert.setInt(3, ordinal);
+            insert.setString(4, checkpoint.checkpointId().toString());
+            insert.setString(5, codec.encodeCheckpoint(checkpoint));
+            insert.executeUpdate();
         }
     }
 
@@ -409,6 +479,7 @@ public final class SqliteGuideHistoryStore implements GuideHistoryStore {
         LinkedHashMap<String, SessionBuilder> sessions = readSessions(connection, scope.scopeId());
         readRequests(connection, scope.scopeId(), sessions);
         readMessages(connection, scope.scopeId(), sessions);
+        readCheckpoints(connection, scope.scopeId(), sessions);
         List<GuideSessionSnapshot> snapshots = sessions.values().stream()
                 .map(SessionBuilder::snapshot)
                 .toList();
@@ -591,6 +662,42 @@ public final class SqliteGuideHistoryStore implements GuideHistoryStore {
         }
     }
 
+    private void readCheckpoints(
+            Connection connection,
+            String scopeId,
+            Map<String, SessionBuilder> sessions) throws SQLException {
+        try (PreparedStatement query = connection.prepareStatement("""
+                select session_id, ordinal, checkpoint_id, payload_json
+                from compaction_checkpoints where scope_id = ? order by session_id, ordinal
+                """)) {
+            query.setString(1, scopeId);
+            try (ResultSet result = query.executeQuery()) {
+                Map<String, Integer> expected = new java.util.HashMap<>();
+                while (result.next()) {
+                    String sessionId = result.getString("session_id");
+                    SessionBuilder session = sessions.get(sessionId);
+                    if (session == null) {
+                        throw new IllegalArgumentException("durable checkpoint has no session");
+                    }
+                    int ordinal = result.getInt("ordinal");
+                    if (ordinal != expected.getOrDefault(sessionId, 0)) {
+                        throw new IllegalArgumentException(
+                                "durable checkpoint ordinals are not contiguous");
+                    }
+                    expected.put(sessionId, ordinal + 1);
+                    ContextCheckpoint checkpoint =
+                            codec.decodeCheckpoint(result.getString("payload_json"));
+                    if (!checkpoint.checkpointId().toString().equals(
+                            result.getString("checkpoint_id"))) {
+                        throw new IllegalArgumentException(
+                                "durable checkpoint row identity does not match");
+                    }
+                    session.checkpoints.add(checkpoint);
+                }
+            }
+        }
+    }
+
     private GuideHistoryPartition recoverInterrupted(GuideHistoryPartition partition) {
         Instant recoveredAt = clock.instant();
         boolean changed = false;
@@ -630,7 +737,8 @@ public final class SqliteGuideHistoryStore implements GuideHistoryStore {
                         recoveredAt,
                         recoveredAt));
             }
-            sessions.add(new GuideSessionSnapshot(session.sessionId(), session.messages(), requests));
+            sessions.add(new GuideSessionSnapshot(
+                    session.sessionId(), session.messages(), requests, session.checkpoints()));
         }
         if (!changed) {
             return partition;
@@ -686,13 +794,14 @@ public final class SqliteGuideHistoryStore implements GuideHistoryStore {
         private final String id;
         private final List<GuideMessage> messages = new ArrayList<>();
         private final List<GuideRequestSnapshot> requests = new ArrayList<>();
+        private final List<ContextCheckpoint> checkpoints = new ArrayList<>();
 
         private SessionBuilder(String id) {
             this.id = id;
         }
 
         private GuideSessionSnapshot snapshot() {
-            return new GuideSessionSnapshot(id, messages, requests);
+            return new GuideSessionSnapshot(id, messages, requests, checkpoints);
         }
     }
 }

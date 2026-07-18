@@ -4,7 +4,7 @@
 
 **Goal:** Assemble every model request from a budgeted, provider-neutral context projection that preserves current work and tool structure, reduces old tool results, creates reusable structured summary checkpoints when needed, and fails closed without changing durable history.
 
-**Architecture:** Common code owns immutable budgets, estimates, structural reductions, checkpoint hashes, summary generation, and projections. `GameGuideAgent` invokes this pipeline before the first model turn while keeping the current request boundary protected through all tool continuations. `AgentSessionStore` owns complete in-memory history plus checkpoints; GuideService persists only privacy-safe checkpoint projections and hydrates matching normal-mode message history. Both client and server runtimes derive the same budget from `ModelConfig`; provider adapters remain unchanged.
+**Architecture:** Common code owns immutable budgets, estimates, structural reductions, checkpoint hashes, summary generation, and projections. `GameGuideAgent` invokes this pipeline before the first model turn while keeping the current request boundary protected through all tool continuations. `AgentSessionStore` owns complete in-memory history plus checkpoints; GuideService persists only privacy-safe checkpoint projections and hydrates matching normal-mode message history. Sessions and valid derived checkpoints remain provider/model-neutral; each client or server request derives a fresh budget from its selected `ModelConfig`.
 
 **Tech Stack:** Java 25 records and sealed content, Gson strict JSON, SHA-256 source hashes, existing `ModelClient`/scheduler/cancellation contracts, SQLite schema migration, JUnit 5 deterministic fake models.
 
@@ -111,6 +111,10 @@ reflection over `Instant`.
 - Modify: `common/src/main/java/dev/tomewisp/model/config/ModelConfig.java`
 - Modify: `common/src/main/java/dev/tomewisp/model/config/ModelConfigLoader.java`
 - Modify: `common/src/main/java/dev/tomewisp/client/ClientGuideRuntime.java`
+- Create: `common/src/main/java/dev/tomewisp/bridge/protocol/ServerAgentHistoryMessage.java`
+- Create: `common/src/main/java/dev/tomewisp/bridge/protocol/ServerAgentRequestChunkPayload.java`
+- Create: `common/src/main/java/dev/tomewisp/bridge/protocol/ServerAgentRequestChunker.java`
+- Modify: Fabric and NeoForge client/server bridge adapters
 - Modify: `common/src/main/java/dev/tomewisp/server/ServerGuideRuntime.java`
 - Modify: `common/src/test/java/dev/tomewisp/model/config/ModelConfigLoaderTest.java`
 - Modify direct `ModelConfig` fixtures under `common/src/test/java/dev/tomewisp/model/`
@@ -144,11 +148,28 @@ metadata adapter resolves it with provenance.
 - Test: `common/src/test/java/dev/tomewisp/guide/history/SqliteGuideHistoryStoreTest.java`
 - Test: `common/src/test/java/dev/tomewisp/guide/GuideServiceHistoryTest.java`
 
-- [ ] Write red migration/round-trip tests from schema v1 to v2, exact checkpoint fields, normal-mode privacy exclusions, partition isolation, failed checkpoint retention, and stale-hash non-reuse.
-- [ ] Add a transactional v1-to-v2 migration and `compaction_checkpoints` table; never delete the original messages/timeline rows during migration.
-- [ ] Project checkpoint events into the owning session, persist asynchronously in event order, and hydrate only matching-partition message/checkpoint context after durable load.
-- [ ] Reconstruct normal-mode old context from user/completed-assistant messages plus validated checkpoint summaries; never restore capabilities, live evidence, inventory, recipe generations, or active requests.
-- [ ] Run history/recovery/architecture tests and commit `feat: persist context checkpoints`.
+- [x] Write red migration/round-trip tests from schema v1 to v2, exact checkpoint fields, normal-mode privacy exclusions, partition isolation, failed checkpoint retention, and stale-hash non-reuse.
+- [x] Add a transactional v1-to-v2 migration and `compaction_checkpoints` table; never delete the original messages/timeline rows during migration.
+- [x] Project checkpoint events into the owning session, persist asynchronously in event order, and hydrate only matching-partition message/checkpoint context after durable load.
+- [x] Reconstruct normal-mode old context from user/completed-assistant messages plus validated checkpoint summaries; never restore capabilities, live evidence, inventory, recipe generations, or active requests.
+- [x] Run history/recovery/architecture tests and commit `feat: persist context checkpoints`.
+
+Schema v2 migration and round-trip fixtures preserve the original message and
+timeline row counts, isolate successful and failed checkpoints by partition,
+and prove normal checkpoint payloads cannot represent reasoning, authorization,
+or normalized tool data. Client-local recovery hydrates the shared session
+store; server-model recovery carries only visible user/completed-assistant
+messages through strict protocol v4, split into hash-checked 24 KiB transport
+chunks for both loaders. The session store atomically installs restored history
+with the winning lease, so a concurrent same-session request still terminates
+as `agent_busy`. Focused history, recovery, Agent, context, bridge, server, and
+architecture tests plus Fabric/NeoForge compilation passed on 2026-07-18.
+
+Designer clarification during this task made model neutrality explicit: a
+session is not bound to one model, and a valid derived checkpoint may cross
+provider/model boundaries. Its generating model ID is provenance only; reuse
+still requires exact source hash and supported summary versions, and every new
+request is re-estimated against the selected model's own budget.
 
 ### Task 7: Verify Phase 4D and Update Status
 

@@ -17,7 +17,7 @@ public record GuideHistoryPartition(
         GuideModelMode modelMode,
         List<GuideSessionSnapshot> sessions,
         Instant updatedAt) {
-    public static final int SCHEMA_VERSION = 1;
+    public static final int SCHEMA_VERSION = 2;
 
     public GuideHistoryPartition {
         if (schemaVersion != SCHEMA_VERSION) {

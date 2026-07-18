@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import dev.tomewisp.agent.context.ContextCheckpoint;
 import dev.tomewisp.guide.GuideFailure;
 import dev.tomewisp.guide.GuideMessage;
 import dev.tomewisp.guide.GuideModelMode;
@@ -46,6 +47,74 @@ final class SqliteGuideHistoryStoreTest {
 
         assertEquals(replacement, store.load(alpha.scope()).partition().orElseThrow());
         assertEquals(beta, store.load(beta.scope()).partition().orElseThrow());
+    }
+
+    @Test
+    void migratesSchemaOneInPlaceWithoutChangingMessagesOrTimeline() throws Exception {
+        SqliteGuideHistoryStore store = store();
+        GuideHistoryPartition original =
+                partition("migration.example", "main", completed("main", "saved"));
+        store.save(original);
+        try (var connection = DriverManager.getConnection("jdbc:sqlite:" + database());
+                var statement = connection.createStatement()) {
+            statement.execute("drop table compaction_checkpoints");
+            statement.executeUpdate(
+                    "update schema_metadata set schema_version = 1 where singleton = 1");
+        }
+
+        GuideHistoryPartition loaded = store.load(original.scope()).partition().orElseThrow();
+
+        assertEquals(original, loaded);
+        try (var connection = DriverManager.getConnection("jdbc:sqlite:" + database());
+                var statement = connection.createStatement()) {
+            assertEquals(2, queryInt(
+                    statement,
+                    "select schema_version from schema_metadata where singleton = 1"));
+            assertEquals(2, queryInt(statement, "select count(*) from messages"));
+            assertEquals(2, queryInt(statement, "select count(*) from timeline_entries"));
+            assertEquals(0, queryInt(
+                    statement, "select count(*) from compaction_checkpoints"));
+        }
+    }
+
+    @Test
+    void roundTripsSuccessfulAndFailedCheckpointsWithinTheirPartition() throws Exception {
+        GuideHistoryPartition base =
+                partition("checkpoint.example", "main", completed("main", "saved"));
+        ContextCheckpoint success = checkpoint(ContextCheckpoint.Status.SUCCEEDED);
+        ContextCheckpoint failed = new ContextCheckpoint(
+                UUID.randomUUID(), 0, 1, "b".repeat(64), "model-b", 1, 1,
+                RECOVERY_TIME, ContextCheckpoint.Status.FAILED, null,
+                "summary_malformed", "schema mismatch", 700);
+        GuideSessionSnapshot session = base.sessions().getFirst();
+        GuideHistoryPartition withCheckpoints = new GuideHistoryPartition(
+                GuideHistoryPartition.SCHEMA_VERSION,
+                base.scope(),
+                base.selectedSession(),
+                base.modelMode(),
+                List.of(new GuideSessionSnapshot(
+                        session.sessionId(), session.messages(), session.requests(),
+                        List.of(success, failed))),
+                base.updatedAt());
+        SqliteGuideHistoryStore store = store();
+
+        store.save(withCheckpoints);
+
+        assertEquals(withCheckpoints, store.load(base.scope()).partition().orElseThrow());
+        GuideHistoryPartition other =
+                partition("other-checkpoint.example", "main", completed("main", "other"));
+        store.save(other);
+        assertTrue(store.load(other.scope()).partition().orElseThrow()
+                .sessions().getFirst().checkpoints().isEmpty());
+        try (var connection = DriverManager.getConnection("jdbc:sqlite:" + database());
+                var result = connection.createStatement().executeQuery(
+                        "select payload_json from compaction_checkpoints order by ordinal")) {
+            assertTrue(result.next());
+            String payload = result.getString(1);
+            assertFalse(payload.contains("normalized"));
+            assertFalse(payload.contains("reasoning"));
+            assertFalse(payload.contains("authorization"));
+        }
     }
 
     @Test
@@ -144,6 +213,13 @@ final class SqliteGuideHistoryStoreTest {
         return temporary.resolve("history.sqlite3");
     }
 
+    private static int queryInt(java.sql.Statement statement, String query) throws Exception {
+        try (var result = statement.executeQuery(query)) {
+            assertTrue(result.next());
+            return result.getInt(1);
+        }
+    }
+
     private static GuideHistoryPartition partition(
             String server, String sessionId, GuideRequestSnapshot request) {
         GuideHistoryScope scope = GuideHistoryScope.derive(
@@ -205,5 +281,18 @@ final class SqliteGuideHistoryStoreTest {
                 null);
         assertNotNull(request);
         return request;
+    }
+
+    private static ContextCheckpoint checkpoint(ContextCheckpoint.Status status) {
+        if (status != ContextCheckpoint.Status.SUCCEEDED) {
+            throw new IllegalArgumentException("success helper only");
+        }
+        return new ContextCheckpoint(
+                UUID.randomUUID(), 0, 1, "a".repeat(64), "model-a", 1, 1,
+                RECOVERY_TIME, status,
+                "{\"goals\":[],\"preferences\":[],\"completedTopics\":[],"
+                        + "\"currentTasks\":[],\"decisions\":[],"
+                        + "\"unresolvedQuestions\":[],\"evidenceReferences\":[]}",
+                null, null, 600);
     }
 }

@@ -16,7 +16,9 @@ public final class BridgeJsonCodec {
                     Set.of("version", "correlationId", "index", "total", "contentHash", "base64Data"),
             RemoteCancelPayload.class, Set.of("version", "correlationId"),
             ServerAgentRequestPayload.class,
-                    Set.of("version", "requestId", "sessionId", "question", "stream"),
+                    Set.of("version", "requestId", "sessionId", "question", "stream", "history"),
+            ServerAgentRequestChunkPayload.class,
+                    Set.of("version", "requestId", "index", "total", "contentHash", "base64Data"),
             ServerAgentCancelPayload.class, Set.of("version", "requestId"),
             ServerAgentEventPayload.class,
                     Set.of("version", "requestId", "eventType", "eventJson", "terminal"));
@@ -55,6 +57,18 @@ public final class BridgeJsonCodec {
             extra.removeAll(expected);
             throw new IllegalArgumentException(
                     "Bridge payload schema mismatch; missing=" + missing + ", extra=" + extra);
+        }
+        if (type == ServerAgentRequestPayload.class) {
+            JsonElement history = object.get("history");
+            if (history == null || !history.isJsonArray()) {
+                throw new IllegalArgumentException("Server Agent history must be an array");
+            }
+            for (JsonElement item : history.getAsJsonArray()) {
+                if (!item.isJsonObject()
+                        || !item.getAsJsonObject().keySet().equals(Set.of("role", "text"))) {
+                    throw new IllegalArgumentException("Server Agent history schema mismatch");
+                }
+            }
         }
         T value = gson.fromJson(object, type);
         if (value == null) {

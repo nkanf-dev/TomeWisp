@@ -65,11 +65,18 @@ Patchouli reference, and craftability conclusion fields.
 - Create: `common/src/main/java/dev/tomewisp/agent/context/ContextCompactor.java`
 - Test: `common/src/test/java/dev/tomewisp/agent/context/ContextCompactorTest.java`
 
-- [ ] Write red fake-model tests for no-op projection, deterministic-only projection, successful same-model summary, malformed summary, transport failure fallback, still-too-large failure, source hash stability, stale checkpoint rejection, and cancellation before/while summary.
-- [ ] Implement a versioned JSON-only summary prompt containing goals, preferences, completed topics, current tasks, decisions, unresolved questions, and evidence references; omit reasoning content before serialization.
-- [ ] Budget summary input, summarize only a structural prefix, prefix inserted memory as derived/non-evidence, validate exact output fields, and retain structured failed checkpoints.
-- [ ] Ensure every primary or summary request uses the original scheduling key and cancellation signal.
-- [ ] Run focused tests and commit `feat: compact model context with checkpoints`.
+- [x] Write red fake-model tests for no-op projection, deterministic-only projection, successful same-model summary, malformed summary, transport failure fallback, still-too-large failure, source hash stability, stale checkpoint rejection, and cancellation before/while summary.
+- [x] Implement a versioned JSON-only summary prompt containing goals, preferences, completed topics, current tasks, decisions, unresolved questions, and evidence references; omit reasoning content before serialization.
+- [x] Budget summary input, summarize only a structural prefix, prefix inserted memory as derived/non-evidence, validate exact output fields, and retain structured failed checkpoints.
+- [x] Ensure every primary or summary request uses the original scheduling key and cancellation signal.
+- [x] Run focused tests and commit `feat: compact model context with checkpoints`.
+
+The context package run passed sixteen tests in four seconds. Deterministic
+fixtures cover original/reduced/summarized projections, strict checkpoint
+round trips, same-key summary dispatch, source-hash invalidation, malformed and
+provider-failed summaries, and pre-dispatch cancellation. Cancellation during a
+pending summary is additionally exercised at the Agent integration boundary in
+Task 4, where late primary dispatch can be observed.
 
 ### Task 4: Integrate Compaction Into the Agent Loop
 

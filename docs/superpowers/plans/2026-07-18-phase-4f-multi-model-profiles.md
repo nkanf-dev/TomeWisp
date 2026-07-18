@@ -106,33 +106,40 @@ when `models.json` is absent; missing both formats is `model_not_configured`.
 - Modify: `common/src/main/java/dev/tomewisp/guide/GuideLocalEndpoint.java`
 - Test: `common/src/test/java/dev/tomewisp/client/ClientModelRuntimeRegistryTest.java`
 
-- [ ] **Step 1: Write red routing, shared-history, missing-profile, and replacement-race tests**
+- [x] **Step 1: Write red routing, shared-history, missing-profile, and replacement-race tests**
 
 Use deterministic fake clients `model-a` and `model-b`. Prove calls route by
 captured profile, the second model receives the first model's completed common
 history, removing a profile fails future dispatch, and an in-flight call held by
 an old immutable registry snapshot can finish after atomic reload.
 
-- [ ] **Step 2: Refactor runtime construction around one shared session store**
+- [x] **Step 2: Refactor runtime construction around one shared session store**
 
 Each profile gets its own immutable `ModelClient`, endpoint scheduler, context
 budget/compactor, model provenance, and redacted trace secret set. All profile
 agents share one `AgentSessionStore` and common tool executor semantics.
 
-- [ ] **Step 3: Extend the local endpoint contract by profile ID**
+- [x] **Step 3: Extend the local endpoint contract by profile ID**
 
 Expose ordered profile summaries, default profile ID, profile availability,
 profile-specific required context, and `ask(profileId, ...)`. Keep narrow
 compatibility defaults for deterministic single-endpoint tests while production
 loaders use the registry. Never select another runtime inside `ask`.
 
-- [ ] **Step 4: Run focused client/agent tests and commit**
+- [x] **Step 4: Run focused client/agent tests and commit**
 
 ```bash
 ./gradlew :common:test --tests 'dev.tomewisp.client.*' \
   --tests 'dev.tomewisp.agent.session.*'
 git commit -m "feat: route client requests by model profile"
 ```
+
+The red run failed only on the absent registry/profile contract. Focused client
+and agent-session suites now pass. Profile routing captures one immutable
+registry state, all generated runtimes share one `AgentSessionStore`, a later
+model receives earlier completed semantic history, missing/disabled profiles
+fail with their structured code, and atomic replacement does not cancel an
+in-flight call holding the previous runtime reference.
 
 ### Task 3: Per-session selection and active-request capture
 

@@ -68,7 +68,7 @@ public final class ClientGuideRuntime implements GuideLocalEndpoint {
         this(runtime, model, sessions, gson, dispatcher, extension, new LiveTraceStore(null, Set.of()), null, null);
     }
 
-    private ClientGuideRuntime(
+    ClientGuideRuntime(
             TomeWispRuntime runtime,
             ModelClient model,
             AgentSessionStore sessions,

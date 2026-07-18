@@ -36,6 +36,7 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 import java.util.function.Function;
@@ -145,7 +146,12 @@ public final class ClientModelRuntimeRegistry implements GuideLocalEndpoint {
     }
 
     public synchronized void replace(ModelProfilesConfigLoader.Load replacement) {
-        state.set(build(replacement, modelFactory));
+        prepare(replacement).publish();
+    }
+
+    public synchronized PreparedReplacement prepare(
+            ModelProfilesConfigLoader.Load replacement) {
+        return new PreparedReplacement(this, build(replacement, modelFactory));
     }
 
     @Override
@@ -292,6 +298,27 @@ public final class ClientModelRuntimeRegistry implements GuideLocalEndpoint {
             }
             profiles = List.copyOf(profiles);
             runtimes = java.util.Collections.unmodifiableMap(new LinkedHashMap<>(runtimes));
+        }
+    }
+
+    /** Fully built replacement whose publication is one non-failing atomic state swap. */
+    public static final class PreparedReplacement {
+        private final ClientModelRuntimeRegistry owner;
+        private final State replacement;
+        private final AtomicBoolean published = new AtomicBoolean();
+
+        private PreparedReplacement(
+                ClientModelRuntimeRegistry owner,
+                State replacement) {
+            this.owner = owner;
+            this.replacement = replacement;
+        }
+
+        public void publish() {
+            if (!published.compareAndSet(false, true)) {
+                throw new IllegalStateException("Prepared model replacement was already published");
+            }
+            owner.state.set(replacement);
         }
     }
 }

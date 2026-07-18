@@ -130,7 +130,7 @@ Expected: focused tests pass; the commit contains no loader/UI changes.
 - Test: `common/src/test/java/dev/tomewisp/client/ClientModelRuntimeRegistryTest.java`
 - Create: `common/src/test/java/dev/tomewisp/model/config/ModelProfileSettingsStoreTest.java`
 
-- [ ] **Step 1: Add failing tests for prepare/publish and file/runtime rollback**
+- [x] **Step 1: Add failing tests for prepare/publish and file/runtime rollback**
 
 ```java
 @Test
@@ -155,14 +155,14 @@ void persistenceFailureNeverPublishesPreparedRegistry() {
 Also prove an in-flight request held by the old runtime finishes after publish,
 matching the existing capture test.
 
-- [ ] **Step 2: Run tests and verify the missing API failure**
+- [x] **Step 2: Run tests and verify the missing API failure**
 
 ```bash
 ./gradlew :common:test --tests 'dev.tomewisp.client.ClientModelRuntimeRegistryTest' \
   --tests 'dev.tomewisp.model.config.ModelProfileSettingsStoreTest'
 ```
 
-- [ ] **Step 3: Implement prepared replacement and store transaction**
+- [x] **Step 3: Implement prepared replacement and store transaction**
 
 ```java
 public final class ClientModelRuntimeRegistry {
@@ -205,7 +205,7 @@ atomic reference swap. Store validation may retain a profile whose environment
 variable is absent because the loader returns a resolved failure entry rather
 than rejecting the complete document.
 
-- [ ] **Step 4: Run tests and commit**
+- [x] **Step 4: Run tests and commit**
 
 ```bash
 ./gradlew :common:test --tests 'dev.tomewisp.client.ClientModelRuntimeRegistryTest' \

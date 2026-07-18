@@ -108,6 +108,29 @@ final class ClientModelRuntimeRegistryTest {
         assertEquals("b", registry.defaultProfileId());
     }
 
+    @Test
+    void preparedReplacementDoesNotPublishUntilExplicitOneTimeCommit() {
+        RecordingModel modelA = new RecordingModel("model-a");
+        RecordingModel modelB = new RecordingModel("model-b");
+        ClientModelRuntimeRegistry registry = registry(
+                load("a", "a"), Map.of("a", modelA, "b", modelB));
+
+        ClientModelRuntimeRegistry.PreparedReplacement prepared =
+                registry.prepare(load("b", "b"));
+
+        assertEquals(List.of("a"), registry.profiles().stream()
+                .map(value -> value.id()).toList());
+        assertEquals("a", registry.defaultProfileId());
+
+        prepared.publish();
+
+        assertEquals(List.of("b"), registry.profiles().stream()
+                .map(value -> value.id()).toList());
+        assertEquals("b", registry.defaultProfileId());
+        org.junit.jupiter.api.Assertions.assertThrows(
+                IllegalStateException.class, prepared::publish);
+    }
+
     private static ClientModelRuntimeRegistry registry(
             ModelProfilesConfigLoader.Load load,
             Map<String, ModelClient> clients) {

@@ -42,7 +42,7 @@ Java 11+, and AST-oriented; TomeWisp converts it immediately into product types.
 - Test: `common/src/test/java/dev/tomewisp/guide/semantic/SemanticStreamingStateTest.java`
 - Test: `common/src/test/java/dev/tomewisp/guide/semantic/SemanticDependencyPackagingTest.java`
 
-- [ ] **Step 1: Write parser safety and supported-node tests**
+- [x] **Step 1: Write parser safety and supported-node tests**
 
 Cover paragraphs, headings, ordered/unordered lists, emphasis/strong,
 blockquote, table, inline/fenced code, hard/soft breaks, literal HTML, links,
@@ -50,21 +50,21 @@ images, malformed delimiters, deeply nested content, Unicode, and empty text.
 HTML/link destinations/images must never become actionable nodes. Every
 document must produce the exact plain-text/narration fallback.
 
-- [ ] **Step 2: Add and package the parser dependencies symmetrically**
+- [x] **Step 2: Add and package the parser dependencies symmetrically**
 
 Pin one `commonmark_version` property. Compile against both artifacts in common;
 Fabric `include`s and NeoForge `jarJar`s both. Add JAR-content tests so a build
 cannot compile and then omit the parser at runtime. Record BSD-2-Clause in the
 existing dependency/license documentation if present.
 
-- [ ] **Step 3: Implement the sealed product AST and adapter**
+- [x] **Step 3: Implement the sealed product AST and adapter**
 
 Translate only supported CommonMark nodes. Do not expose `org.commonmark` types
 outside the adapter. Unknown/unsafe nodes collapse to literal text. Defensive
 copies, node-depth validation, stable node IDs derived from block position and
 content hash, and a non-empty fallback are mandatory.
 
-- [ ] **Step 4: Implement block-incremental streaming state**
+- [x] **Step 4: Implement block-incremental streaming state**
 
 Split completed block prefixes from the mutable tail, cache completed blocks by
 hash, and reparse only the tail. Incomplete fenced code, emphasis, table,
@@ -72,7 +72,7 @@ semantic token, or component block remains literal. Tests must assert object
 identity reuse for unchanged completed blocks and no stale content after a
 reconciled `FinalText`.
 
-- [ ] **Step 5: Run focused tests and commit**
+- [x] **Step 5: Run focused tests and commit**
 
 ```bash
 ./gradlew :common:test --tests 'dev.tomewisp.guide.semantic.*' \

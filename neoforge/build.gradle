@@ -6,6 +6,10 @@ plugins {
 dependencies {
     implementation("org.xerial:sqlite-jdbc:${sqlite_jdbc_version}")
     jarJar("org.xerial:sqlite-jdbc:${sqlite_jdbc_version}")
+    implementation("org.commonmark:commonmark:${commonmark_version}")
+    jarJar("org.commonmark:commonmark:${commonmark_version}")
+    implementation("org.commonmark:commonmark-ext-gfm-tables:${commonmark_version}")
+    jarJar("org.commonmark:commonmark-ext-gfm-tables:${commonmark_version}")
     compileOnly("mezz.jei:jei-${minecraft_version}-neoforge-api:${jei_version}")
     compileOnly("me.shedaniel:RoughlyEnoughItems-api-neoforge:${rei_version}")
     compileOnly("dev.architectury:architectury-neoforge:${architectury_version}")

@@ -23,6 +23,8 @@ dependencies {
     compileOnly("mezz.jei:jei-${minecraft_version}-common-api:${jei_version}")
     compileOnly("me.shedaniel:RoughlyEnoughItems-api-fabric:${rei_version}")
     compileOnly("dev.architectury:architectury-fabric:${architectury_version}")
+    implementation("org.commonmark:commonmark:${commonmark_version}")
+    implementation("org.commonmark:commonmark-ext-gfm-tables:${commonmark_version}")
     testImplementation('com.google.code.gson:gson:2.14.0')
     testImplementation('org.junit.jupiter:junit-jupiter:5.11.4')
     testRuntimeOnly('org.junit.platform:junit-platform-launcher:1.11.4')

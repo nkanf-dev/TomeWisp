@@ -111,7 +111,7 @@ specific config fields/type.
 - Create: `common/src/test/java/dev/tomewisp/capability/CapabilityPolicyLoaderTest.java`
 - Create: `common/src/test/java/dev/tomewisp/capability/CapabilityPolicyStoreTest.java`
 
-- [ ] **Step 1: Write strict codec, unknown-ID retention, dependency, and atomicity tests**
+- [x] **Step 1: Write strict codec, unknown-ID retention, dependency, and atomicity tests**
 
 ```java
 @Test
@@ -135,13 +135,13 @@ void failedAtomicMoveRetainsPriorPolicyAndRuntime() {
 Reject extra/missing fields, duplicate IDs, invalid namespace/name, blank Skill
 names, and unsupported schema. Missing file returns defaults without writing.
 
-- [ ] **Step 2: Run tests and verify missing policy types**
+- [x] **Step 2: Run tests and verify missing policy types**
 
 ```bash
 ./gradlew :common:test --tests 'dev.tomewisp.capability.CapabilityPolicy*Test'
 ```
 
-- [ ] **Step 3: Implement immutable policy and atomic store**
+- [x] **Step 3: Implement immutable policy and atomic store**
 
 ```java
 public record CapabilityPolicy(
@@ -164,7 +164,7 @@ Defensively copy into sorted immutable sets. The store validates by canonical
 encode/decode before calling `AtomicSettingsFile.replace` and publishes only
 after the move succeeds.
 
-- [ ] **Step 4: Run tests and commit**
+- [x] **Step 4: Run tests and commit**
 
 ```bash
 ./gradlew :common:test --tests 'dev.tomewisp.capability.CapabilityPolicy*Test'

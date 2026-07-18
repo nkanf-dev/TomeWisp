@@ -5,6 +5,7 @@
 - approval_source: designer stated “从现在开始，整个phase 4 的决策，我都相信你的最佳判断”; the selected design keeps domain configuration independent behind one native settings service
 - date: 2026-07-18
 - commit: e7acf43, 507d628
+- implementation_commits: 1930516, 22b3656, 6498516
 - patterns:
   - A_async_wait
   - B_state_persistence

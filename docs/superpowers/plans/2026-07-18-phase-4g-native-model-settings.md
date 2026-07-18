@@ -596,7 +596,7 @@ git commit -m "feat: wire model settings on both loaders"
 - Modify: `docs/superpowers/plans/2026-07-18-phase-4g-native-model-settings.md`
 - Modify: `scripts/live-model-smoke.sh`
 
-- [ ] **Step 1: Extend the existing live smoke harness without accepting secrets on argv**
+- [x] **Step 1: Extend the existing live smoke harness without accepting secrets on argv**
 
 Add an explicit settings-probe mode that reads endpoint/model/protocol/profile
 from an ignored JSON path and the API key only from the environment variable
@@ -604,7 +604,7 @@ named by that file. It must print only a redacted authority, model label,
 latency, and terminal code. It must refuse inline `apiKey`, URL userinfo/query,
 or non-HTTPS non-loopback endpoints.
 
-- [ ] **Step 2: Run deterministic full verification**
+- [x] **Step 2: Run deterministic full verification**
 
 ```bash
 ./gradlew clean :common:test :fabric:build :neoforge:build
@@ -617,7 +617,7 @@ Record actual test totals, loader JAR paths and SHA-256 hashes, JSON/shell/Pytho
 syntax results, source-boundary checks, and production-JAR scans for credential
 patterns and known test secrets.
 
-- [ ] **Step 3: Run one authorized live probe only from a user-exported environment**
+- [x] **Step 3: Run one authorized live probe only from a user-exported environment**
 
 Do not copy a conversation key into a command, file, log, or tool argument. Run
 only if the expected named environment variable is already present in the
@@ -628,7 +628,7 @@ Expected retained result: one success/failure category and latency with no
 assistant output or raw body. Recommend rotating the conversation-exposed key
 afterward.
 
-- [ ] **Step 4: Update docs and commit verification truth**
+- [x] **Step 4: Update docs and commit verification truth**
 
 Document native profile CRUD, env-only credentials, real-request warning,
 metadata/listing separation, redacted failures, both-loader parity, and exactly

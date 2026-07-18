@@ -22,8 +22,8 @@ accepted and contains explicit approval evidence.
 | SKMB-2026-07-18-012 | accepted | model metadata cache and refresh | A, B, D, F | decisions/2026-07-18-012-model-metadata-cache.md | 7e2a735 |
 | SKMB-2026-07-18-013 | accepted | shared outbound HTTP authority boundaries | D, E, F | decisions/2026-07-18-013-outbound-http-boundaries.md | 7e2a735 |
 | SKMB-2026-07-18-014 | accepted | player history administration | B, C, F, G | decisions/2026-07-18-014-history-administration.md | adaffaf |
-| SKMB-2026-07-18-015 | accepted | settings model administration and live connection testing | A, B, C, D, E, F, G | decisions/2026-07-18-015-settings-model-administration.md | f1ba74b |
-| SKMB-2026-07-18-016 | accepted | native settings coordination and domain config writes | A, B, C, E, F | decisions/2026-07-18-016-native-settings-coordination.md | e7acf43, 507d628 |
+| SKMB-2026-07-18-015 | accepted | settings model administration and live connection testing | A, B, C, D, E, F, G | decisions/2026-07-18-015-settings-model-administration.md | f1ba74b; implemented through 6498516 |
+| SKMB-2026-07-18-016 | accepted | native settings coordination and domain config writes | A, B, C, E, F | decisions/2026-07-18-016-native-settings-coordination.md | e7acf43, 507d628; model settings implemented through 6498516 |
 | SKMB-2026-07-18-017 | accepted | knowledge/capability catalog and local Tool/Skill policy | B, C, D, E, F | decisions/2026-07-18-017-capability-settings-policy.md | e7acf43, 507d628 |
 
 SKMB-2026-07-18-006 is implemented by `a0eaeff`, `19ab90f`, and `c6ca6bc`.
@@ -34,6 +34,13 @@ SKMB-2026-07-18-007 is implemented through `5af5b4e`. Its deterministic
 provider/catalog/navigation coverage and retained Fabric JEI/REI/Farmer's
 Delight graphical evidence are recorded in the Phase 4C plan and
 `docs/verification/phase-4c-all-known-recipes/`.
+
+SKMB-2026-07-18-015 and the model-administration slice of
+SKMB-2026-07-18-016 are implemented through `6498516`. Their deterministic
+atomicity, redaction, generation-race, responsive UI, localization, and
+both-loader evidence is recorded in the Phase 4G plan and
+`docs/verification/phase-4g-native-model-settings/`. The opt-in live probe was
+not run when no credential was exported to the verification process.
 
 ## Named States
 

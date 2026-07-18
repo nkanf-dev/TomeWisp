@@ -82,9 +82,12 @@ normalized data are absent by default and appear only in the local, default-off
 Debug Mode. Multiple named model profiles, per-session runtime switching from
 the native screen or commands, OpenRouter capability caching, and the shared
 JDK asynchronous HTTP foundation are now implemented; the profile editor and
-manual-refresh settings UI, history management, model-authored rich messages,
-and the remaining controlled dynamic
-components remain Phase 4 work. Dynamic
+manual-refresh settings UI are now available on both loaders with atomic
+profile CRUD, environment-only credentials, isolated billable-request warning,
+redacted connection probes, and generation-safe metadata reconciliation.
+Knowledge/Tool/Skill policy, capability-owned recipe settings, history
+administration, model-authored rich messages, and the remaining controlled
+dynamic components remain Phase 4 work. Dynamic
 Ponder generation is deferred beyond Phase 4 because Ponder/Ponderer do not yet
 provide a verified 26.2 runtime target. Phase 3C now provides the native player
 GUI; graphical E2E remains explicit opt-in and is never inferred from
@@ -97,7 +100,8 @@ friendly grounded tool/source cards, and preserves the real Agent chronology: as
 segments, inline tool calls/results, later continuations, and the final answer.
 Running tool cards update in place. The screen also supports cancel, retry,
 sessions and explicit client/server model selection. Escape closes only the
-screen, not the request.
+screen, not the request. The gear button opens native settings; returning keeps
+the same GuideService conversation and active request state.
 
 ## License
 

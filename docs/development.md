@@ -93,6 +93,28 @@ semantics:
 The last two forms remain compatibility shortcuts. `client` restores that
 session's last named client profile and never silently chooses another one.
 
+The Guide screen's gear button opens the common native settings screen on both
+Fabric and NeoForge. Its Models page can create, edit, enable/disable, delete,
+select the default profile, reload external edits, manually refresh trusted
+metadata, and run one explicit connection test. Saving validates the whole
+candidate, atomically replaces `models.json`, and only then publishes the
+already-prepared runtime for future requests. Active requests retain the
+runtime they captured at submission.
+
+The connection test displays a cost warning and requires a second confirmation.
+It sends one non-streaming, non-retrying request capped at 64 output tokens with
+no Guide history, Tools, Skills, game state, evidence, or trace. Assistant text
+and provider bodies are discarded. The result contains only a stable category,
+redacted endpoint authority, protocol, completion time, and latency. Model
+metadata refresh/listing is a separate configuration operation and never counts
+as a successful inference test. Closing settings cancels only an active probe;
+an already-confirmed atomic save continues to its terminal result.
+
+If neither model file exists, TomeWisp presents one disabled in-memory draft and
+does not create a file until the player explicitly saves. Invalid startup files
+remain untouched and produce a redacted settings notice. The screen receives
+only environment-variable names and presence flags; it cannot render values.
+
 Client recipe visibility and optional viewer preference live separately at
 `config/tomewisp/recipes.json`. A missing file uses the same defaults shown
 below: every known enabled source is queried, and recipe-book unlock state is
@@ -114,8 +136,10 @@ not an access boundary.
 `visibility` may be `all_known` or `unlocked_only`; the latter deliberately
 excludes viewer records whose vanilla unlock state is unknown. A preferred
 viewer may be `auto`, `jei`, or `rei`. Invalid edits retain the last valid
-in-memory settings and surface an explicit screen diagnostic. Configuration
-reload and editing controls are part of the later Phase 4 settings flow.
+in-memory settings and surface an explicit screen diagnostic. Recipe
+configuration reload/editing remains owned by the recipe Tool's future child
+page under Knowledge & Capabilities; Recipes is not a top-level mod settings
+section.
 
 Player-facing tool details are controlled separately by
 `config/tomewisp/display.json` on both loaders. A missing file uses the safe
@@ -135,8 +159,9 @@ capture timestamps, provenance, internal failure codes, or normalized JSON.
 Setting `debugMode` to `true` appends a clearly separated local diagnostic
 section containing the already-redacted technical projection. An invalid file
 keeps Debug Mode off and displays a localized notice; it never rewrites the
-malformed file. In-game editing/reload belongs to the later Phase 4 settings
-screen.
+malformed file. General/diagnostic editing of Debug Mode remains in the later
+Phase 4 settings administration package; the current Models page already
+respects the loaded display projection.
 
 For an optional server-hosted model, use
 `config/tomewisp/server-model.json` on the server. The capability is advertised
@@ -323,6 +348,23 @@ TOMEWISP_MODEL_PROTOCOL=ANTHROPIC_MESSAGES \
 ```
 
 Never commit a model JSON containing `apiKey`.
+
+To exercise exactly the native settings connection-probe contract, place a
+strict `models.json`-format file in an ignored path such as
+`run/tomewisp/settings-probe.json`. The file names an `apiKeyEnv`; export that
+environment variable in the shell, then run:
+
+```bash
+export TOMEWISP_SETTINGS_PROBE_CONFIG="$PWD/run/tomewisp/settings-probe.json"
+export PROVIDER_KEY_NAMED_BY_THE_FILE='...'
+./scripts/live-model-smoke.sh settings-probe
+```
+
+The script never accepts a credential on argv. It rejects inline `apiKey`, URL
+credentials/query/fragment, and non-HTTPS remote endpoints through the strict
+production loader. Retained output contains only the terminal code and, on
+success, profile ID, protocol, redacted authority, and latency; it never prints
+assistant output or raw provider bodies.
 
 ## Development commands
 

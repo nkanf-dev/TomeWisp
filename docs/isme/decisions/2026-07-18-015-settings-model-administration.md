@@ -5,6 +5,7 @@
 - approval_source: designer authorized a real request through the supplied provider for testing, requested mainstream connection-test behavior, and then stated “从现在开始，整个phase 4 的决策，我都相信你的最佳判断”
 - date: 2026-07-18
 - commit: f1ba74b
+- implementation_commits: ed7fef3, 32ac7c7, 4afd5d1, 1930516, 22b3656, 6498516
 - patterns:
   - A_async_wait
   - B_state_persistence

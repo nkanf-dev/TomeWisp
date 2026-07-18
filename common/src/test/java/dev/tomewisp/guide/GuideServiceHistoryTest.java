@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.google.gson.Gson;
@@ -16,6 +17,8 @@ import dev.tomewisp.agent.context.ContextCheckpoint;
 import dev.tomewisp.context.ContextCapability;
 import dev.tomewisp.context.ToolInvocationContext;
 import dev.tomewisp.guide.history.GuideHistoryAccess;
+import dev.tomewisp.guide.history.GuideHistoryActivity;
+import dev.tomewisp.guide.history.GuideHistoryDeleteScope;
 import dev.tomewisp.guide.history.GuideHistoryException;
 import dev.tomewisp.guide.history.GuideHistoryLoad;
 import dev.tomewisp.guide.history.GuideHistoryPartition;
@@ -185,6 +188,130 @@ final class GuideServiceHistoryTest {
                         .toList());
     }
 
+    @Test
+    void actorDeleteRejectsAnActiveRequestInAnySessionWithoutCancellingIt() {
+        FakeHistory history = new FakeHistory();
+        FakeLocal local = new FakeLocal();
+        GuideService service = service(local, history);
+        history.load.complete(GuideHistoryLoad.empty());
+        service.selectSession("other").join();
+        history.completeAllSaves();
+        UUID active = success(service.ask("stay active").join());
+        history.completeAllSaves();
+
+        assertFailure(service.deleteActorHistory().join(), "history_delete_busy");
+
+        assertEquals(active, service.snapshot().sessions().stream()
+                .flatMap(session -> session.requests().stream())
+                .filter(request -> !request.terminal())
+                .findFirst().orElseThrow().requestId());
+        assertTrue(history.deletes.isEmpty());
+        assertTrue(local.pending.containsKey(active));
+    }
+
+    @Test
+    void successfulPartitionDeleteBlocksStateChangesAndResetsMemoryWithoutSaving() {
+        FakeHistory history = new FakeHistory();
+        FakeLocal local = new FakeLocal();
+        GuideService service = service(local, history);
+        history.load.complete(GuideHistoryLoad.empty());
+        service.selectSession("other").join();
+        history.completeAllSaves();
+        int savesBefore = history.saved.size();
+
+        CompletableFuture<ToolResult<Boolean>> deleting = service.deleteCurrentHistory();
+
+        assertEquals(List.of(GuideHistoryDeleteScope.partition(SCOPE)), history.deletes);
+        assertFailure(service.ask("during delete").join(), "history_delete_busy");
+        assertFailure(service.selectSession("blocked").join(), "history_delete_busy");
+        assertFalse(deleting.isDone());
+        history.completeDeletion();
+
+        assertInstanceOf(ToolResult.Success.class, deleting.join());
+        assertEquals(List.of("main"), service.snapshot().sessions().stream()
+                .map(GuideSessionSnapshot::sessionId).toList());
+        assertTrue(service.snapshot().sessions().getFirst().requests().isEmpty());
+        assertEquals(GuidePersistenceSnapshot.State.AVAILABLE,
+                service.snapshot().persistence().state());
+        assertEquals(savesBefore, history.saved.size());
+        assertEquals(List.of(ACTOR), local.clearedActors);
+    }
+
+    @Test
+    void actorDeleteIsBoundToTheCurrentActorAndFailureRetainsExactSnapshot() {
+        FakeHistory history = new FakeHistory();
+        GuideService service = service(new FakeLocal(), history);
+        history.load.complete(GuideHistoryLoad.empty());
+        service.selectSession("retained").join();
+        history.completeAllSaves();
+        GuideSnapshot before = service.snapshot();
+
+        CompletableFuture<ToolResult<Boolean>> deleting = service.deleteActorHistory();
+        assertEquals(List.of(GuideHistoryDeleteScope.actor(ACTOR)), history.deletes);
+        history.failDeletion();
+
+        assertFailure(deleting.join(), "history_delete_failed");
+        assertSame(before, service.snapshot());
+        assertInstanceOf(ToolResult.Success.class, service.selectSession("after-failure").join());
+    }
+
+    @Test
+    void pendingWriteAndUnavailablePersistenceRejectDeletionWithoutRepositoryCall() {
+        FakeHistory pending = new FakeHistory();
+        GuideService service = service(new FakeLocal(), pending);
+        pending.load.complete(GuideHistoryLoad.empty());
+        service.selectSession("pending").join();
+
+        assertFailure(service.deleteCurrentHistory().join(), "history_delete_busy");
+        assertTrue(pending.deletes.isEmpty());
+
+        FakeHistory unavailable = new FakeHistory();
+        GuideService unavailableService = service(new FakeLocal(), unavailable);
+        assertFailure(unavailableService.deleteCurrentHistory().join(), "history_loading");
+        unavailable.load.completeExceptionally(new GuideHistoryException(
+                "history_load_failed", "injected"));
+        assertFailure(unavailableService.deleteCurrentHistory().join(), "history_unavailable");
+    }
+
+    @Test
+    void explicitDatabaseResetCanRecoverAnUnsupportedPreReleaseSchema() {
+        FakeHistory history = new FakeHistory();
+        GuideService service = service(new FakeLocal(), history);
+        history.load.completeExceptionally(new GuideHistoryException(
+                "history_schema_unsupported", "future schema"));
+        assertEquals(GuidePersistenceSnapshot.State.UNAVAILABLE,
+                service.snapshot().persistence().state());
+
+        CompletableFuture<ToolResult<Boolean>> resetting = service.resetHistoryDatabase();
+
+        assertEquals(1, history.resetCalls);
+        history.completeDeletion();
+        assertInstanceOf(ToolResult.Success.class, resetting.join());
+        assertEquals(GuidePersistenceSnapshot.State.AVAILABLE,
+                service.snapshot().persistence().state());
+        assertTrue(service.snapshot().sessions().getFirst().requests().isEmpty());
+    }
+
+    @Test
+    void disconnectDuringDeleteLeavesDisconnectedMemoryCleanAndWaitsForTransaction() {
+        FakeHistory history = new FakeHistory();
+        GuideService service = service(new FakeLocal(), history);
+        history.load.complete(GuideHistoryLoad.empty());
+        service.selectSession("other").join();
+        history.completeAllSaves();
+        CompletableFuture<ToolResult<Boolean>> deleting = service.deleteCurrentHistory();
+
+        CompletableFuture<Void> disconnect = service.disconnect();
+        assertFalse(disconnect.isDone());
+        history.completeDeletion();
+
+        assertInstanceOf(ToolResult.Success.class, deleting.join());
+        disconnect.join();
+        assertEquals(List.of("main"), service.snapshot().sessions().stream()
+                .map(GuideSessionSnapshot::sessionId).toList());
+        assertTrue(service.snapshot().sessions().getFirst().requests().isEmpty());
+    }
+
     private static GuideService service(FakeLocal local, FakeHistory history) {
         return service(local, history, new FakeRemote(false));
     }
@@ -273,6 +400,9 @@ final class GuideServiceHistoryTest {
         private final CompletableFuture<GuideHistoryLoad> load = new CompletableFuture<>();
         private final List<GuideHistoryPartition> saved = new ArrayList<>();
         private final List<CompletableFuture<Void>> saveCompletions = new ArrayList<>();
+        private final List<GuideHistoryDeleteScope> deletes = new ArrayList<>();
+        private final List<CompletableFuture<Void>> deleteCompletions = new ArrayList<>();
+        private int resetCalls;
 
         @Override
         public CompletableFuture<GuideHistoryLoad> load(GuideHistoryScope scope) {
@@ -290,29 +420,49 @@ final class GuideServiceHistoryTest {
 
         @Override
         public CompletableFuture<Void> delete(
-                dev.tomewisp.guide.history.GuideHistoryDeleteScope scope) {
-            return CompletableFuture.failedFuture(new UnsupportedOperationException());
+                GuideHistoryDeleteScope scope) {
+            deletes.add(scope);
+            CompletableFuture<Void> completion = new CompletableFuture<>();
+            deleteCompletions.add(completion);
+            return completion;
         }
 
         @Override
         public CompletableFuture<Void> resetDatabase() {
-            return CompletableFuture.failedFuture(new UnsupportedOperationException());
+            resetCalls++;
+            CompletableFuture<Void> completion = new CompletableFuture<>();
+            deleteCompletions.add(completion);
+            return completion;
         }
 
         @Override
         public CompletableFuture<Void> flush() {
+            if (!deleteCompletions.isEmpty() && !deleteCompletions.getLast().isDone()) {
+                return deleteCompletions.getLast().handle((ignored, failure) -> null);
+            }
             return saveCompletions.isEmpty()
                     ? CompletableFuture.completedFuture(null)
                     : saveCompletions.getLast().handle((ignored, failure) -> null);
         }
 
         @Override
-        public dev.tomewisp.guide.history.GuideHistoryActivity activity() {
-            return dev.tomewisp.guide.history.GuideHistoryActivity.idle();
+        public GuideHistoryActivity activity() {
+            int pending = (int) saveCompletions.stream().filter(value -> !value.isDone()).count();
+            boolean deleting = deleteCompletions.stream().anyMatch(value -> !value.isDone());
+            return new GuideHistoryActivity(pending, deleting);
         }
 
         private void completeAllSaves() {
             saveCompletions.forEach(completion -> completion.complete(null));
+        }
+
+        private void completeDeletion() {
+            deleteCompletions.getLast().complete(null);
+        }
+
+        private void failDeletion() {
+            deleteCompletions.getLast().completeExceptionally(new GuideHistoryException(
+                    "history_delete_failed", "injected"));
         }
     }
 
@@ -320,6 +470,7 @@ final class GuideServiceHistoryTest {
         private final java.util.Map<UUID, Consumer<AgentEvent>> pending = new java.util.LinkedHashMap<>();
         private final List<GuideMessage> hydratedMessages = new ArrayList<>();
         private final List<ContextCheckpoint> hydratedCheckpoints = new ArrayList<>();
+        private final List<UUID> clearedActors = new ArrayList<>();
 
         @Override public Set<ContextCapability> requiredContext() { return Set.of(); }
         @Override
@@ -332,7 +483,7 @@ final class GuideServiceHistoryTest {
         }
         @Override public boolean cancel(UUID actor, String sessionId) { return true; }
         @Override public void clearSession(UUID actor, String sessionId) {}
-        @Override public void clearActor(UUID actor) {}
+        @Override public void clearActor(UUID actor) { clearedActors.add(actor); }
 
         @Override
         public void hydrateSession(

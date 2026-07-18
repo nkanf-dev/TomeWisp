@@ -1,12 +1,17 @@
 package dev.tomewisp.guide;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.google.gson.Gson;
 import dev.tomewisp.agent.AgentEvent;
 import dev.tomewisp.context.ContextCapability;
 import dev.tomewisp.context.ToolInvocationContext;
 import dev.tomewisp.guide.history.GuideHistoryAccess;
+import dev.tomewisp.guide.history.GuideHistoryActivity;
+import dev.tomewisp.guide.history.GuideHistoryDeleteScope;
 import dev.tomewisp.guide.history.GuideHistoryLoad;
 import dev.tomewisp.guide.history.GuideHistoryPartition;
 import dev.tomewisp.guide.history.GuideHistoryScope;
@@ -58,6 +63,56 @@ final class GuideServiceManagerHistoryTest {
         assertEquals(List.of(first, second), history.loads);
     }
 
+    @Test
+    void managerResetUsesCurrentServiceGateAndResetsOnlyAfterCommit() {
+        RecordingHistory history = new RecordingHistory();
+        GuideHistoryScope scope = GuideHistoryScope.derive(
+                ACTOR, GuideHistoryScope.Kind.MULTIPLAYER, "reset.example");
+        GuideServiceManager manager = new GuideServiceManager(
+                new IdleLocal(),
+                new IdleRemote(),
+                (capabilities, correlation) -> new ToolResult.Success<>(
+                        ToolInvocationContext.developmentConsole(correlation)),
+                Runnable::run,
+                Clock.systemUTC(),
+                new Gson(),
+                history,
+                actor -> scope);
+        GuideService service = manager.forActor(ACTOR);
+        service.selectSession("other").join();
+
+        CompletableFuture<ToolResult<Boolean>> resetting = manager.resetHistoryDatabase();
+
+        assertEquals(1, history.resetCalls);
+        assertFalse(resetting.isDone());
+        assertFailure(service.ask("during reset").join(), "history_delete_busy");
+        history.reset.complete(null);
+
+        assertInstanceOf(ToolResult.Success.class, resetting.join());
+        assertEquals(List.of("main"), service.snapshot().sessions().stream()
+                .map(GuideSessionSnapshot::sessionId).toList());
+        assertTrue(service.snapshot().sessions().getFirst().requests().isEmpty());
+    }
+
+    @Test
+    void managerResetWithoutCurrentServiceIsUnavailable() {
+        GuideServiceManager manager = new GuideServiceManager(
+                new IdleLocal(),
+                new IdleRemote(),
+                (capabilities, correlation) -> new ToolResult.Success<>(
+                        ToolInvocationContext.developmentConsole(correlation)),
+                Runnable::run,
+                Clock.systemUTC(),
+                new Gson());
+
+        assertFailure(manager.resetHistoryDatabase().join(), "history_unavailable");
+    }
+
+    private static void assertFailure(ToolResult<?> result, String code) {
+        assertEquals(code,
+                ((ToolResult.Failure<?>) assertInstanceOf(ToolResult.Failure.class, result)).code());
+    }
+
     private static final class QueuedDispatcher implements dev.tomewisp.client.ClientEventDispatcher {
         private final ArrayDeque<Runnable> queued = new ArrayDeque<>();
 
@@ -75,6 +130,8 @@ final class GuideServiceManagerHistoryTest {
 
     private static final class RecordingHistory implements GuideHistoryAccess {
         private final List<GuideHistoryScope> loads = new ArrayList<>();
+        private final CompletableFuture<Void> reset = new CompletableFuture<>();
+        private int resetCalls;
 
         @Override
         public CompletableFuture<GuideHistoryLoad> load(GuideHistoryScope scope) {
@@ -89,13 +146,14 @@ final class GuideServiceManagerHistoryTest {
 
         @Override
         public CompletableFuture<Void> delete(
-                dev.tomewisp.guide.history.GuideHistoryDeleteScope scope) {
+                GuideHistoryDeleteScope scope) {
             return CompletableFuture.failedFuture(new UnsupportedOperationException());
         }
 
         @Override
         public CompletableFuture<Void> resetDatabase() {
-            return CompletableFuture.failedFuture(new UnsupportedOperationException());
+            resetCalls++;
+            return reset;
         }
 
         @Override
@@ -104,8 +162,8 @@ final class GuideServiceManagerHistoryTest {
         }
 
         @Override
-        public dev.tomewisp.guide.history.GuideHistoryActivity activity() {
-            return dev.tomewisp.guide.history.GuideHistoryActivity.idle();
+        public GuideHistoryActivity activity() {
+            return new GuideHistoryActivity(0, resetCalls > 0 && !reset.isDone());
         }
     }
 

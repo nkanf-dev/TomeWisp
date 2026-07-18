@@ -6,6 +6,7 @@ import dev.tomewisp.agent.context.ContextCheckpoint;
 import dev.tomewisp.client.ClientEventDispatcher;
 import dev.tomewisp.context.ToolInvocationContext;
 import dev.tomewisp.guide.history.GuideHistoryAccess;
+import dev.tomewisp.guide.history.GuideHistoryDeleteScope;
 import dev.tomewisp.guide.history.GuideHistoryException;
 import dev.tomewisp.guide.history.GuideHistoryLoad;
 import dev.tomewisp.guide.history.GuideHistoryPartition;
@@ -25,7 +26,7 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.function.Consumer;
 
 /** Single client product state source for commands and screens. */
-public final class GuideService {
+public final class GuideService implements GuideHistoryAdministration {
     private final UUID actor;
     private final GuideLocalEndpoint local;
     private final GuideRemoteEndpoint remote;
@@ -43,6 +44,7 @@ public final class GuideService {
     private String selectedSession = "main";
     private GuidePersistenceSnapshot persistence;
     private boolean allowHistoryWrites;
+    private boolean historyDeletionPending;
     private boolean disconnected;
 
     public GuideService(
@@ -113,7 +115,7 @@ public final class GuideService {
     public CompletableFuture<ToolResult<Boolean>> cancel() {
         CompletableFuture<ToolResult<Boolean>> result = new CompletableFuture<>();
         dispatcher.execute(() -> {
-            if (rejectWhileHistoryLoads(result)) {
+            if (rejectStateChange(result)) {
                 return;
             }
             SessionState session = sessions.get(selectedSession);
@@ -137,7 +139,7 @@ public final class GuideService {
     public CompletableFuture<ToolResult<UUID>> retry(UUID requestId) {
         CompletableFuture<ToolResult<UUID>> result = new CompletableFuture<>();
         dispatcher.execute(() -> {
-            if (rejectWhileHistoryLoads(result)) {
+            if (rejectStateChange(result)) {
                 return;
             }
             GuideRequestSnapshot request = find(requestId);
@@ -157,7 +159,7 @@ public final class GuideService {
     public CompletableFuture<ToolResult<String>> selectSession(String sessionId) {
         CompletableFuture<ToolResult<String>> result = new CompletableFuture<>();
         dispatcher.execute(() -> {
-            if (rejectWhileHistoryLoads(result)) {
+            if (rejectStateChange(result)) {
                 return;
             }
             if (!validSession(sessionId)) {
@@ -177,7 +179,7 @@ public final class GuideService {
     public CompletableFuture<ToolResult<Boolean>> closeSession(String sessionId) {
         CompletableFuture<ToolResult<Boolean>> result = new CompletableFuture<>();
         dispatcher.execute(() -> {
-            if (rejectWhileHistoryLoads(result)) {
+            if (rejectStateChange(result)) {
                 return;
             }
             SessionState session = sessions.get(sessionId);
@@ -215,7 +217,7 @@ public final class GuideService {
     public CompletableFuture<ToolResult<Boolean>> clearSelectedSession() {
         CompletableFuture<ToolResult<Boolean>> result = new CompletableFuture<>();
         dispatcher.execute(() -> {
-            if (rejectWhileHistoryLoads(result)) {
+            if (rejectStateChange(result)) {
                 return;
             }
             SessionState session = sessions.get(selectedSession);
@@ -239,7 +241,7 @@ public final class GuideService {
     public CompletableFuture<ToolResult<GuideModelMode>> setModelMode(GuideModelMode mode) {
         CompletableFuture<ToolResult<GuideModelMode>> result = new CompletableFuture<>();
         dispatcher.execute(() -> {
-            if (rejectWhileHistoryLoads(result)) {
+            if (rejectStateChange(result)) {
                 return;
             }
             Objects.requireNonNull(mode, "mode");
@@ -263,7 +265,7 @@ public final class GuideService {
             GuideModelSelection selection) {
         CompletableFuture<ToolResult<GuideModelSelection>> result = new CompletableFuture<>();
         dispatcher.execute(() -> {
-            if (rejectWhileHistoryLoads(result)) {
+            if (rejectStateChange(result)) {
                 return;
             }
             Objects.requireNonNull(selection, "selection");
@@ -337,9 +339,125 @@ public final class GuideService {
         return disconnect();
     }
 
+    @Override
+    public CompletableFuture<ToolResult<Boolean>> deleteCurrentHistory() {
+        return administerHistory(HistoryAdministrationKind.PARTITION);
+    }
+
+    @Override
+    public CompletableFuture<ToolResult<Boolean>> deleteActorHistory() {
+        return administerHistory(HistoryAdministrationKind.ACTOR);
+    }
+
+    CompletableFuture<ToolResult<Boolean>> resetHistoryDatabase() {
+        return administerHistory(HistoryAdministrationKind.DATABASE);
+    }
+
+    private CompletableFuture<ToolResult<Boolean>> administerHistory(
+            HistoryAdministrationKind kind) {
+        CompletableFuture<ToolResult<Boolean>> result = new CompletableFuture<>();
+        dispatcher.execute(() -> startHistoryAdministration(kind, result));
+        return result;
+    }
+
+    private void startHistoryAdministration(
+            HistoryAdministrationKind kind,
+            CompletableFuture<ToolResult<Boolean>> result) {
+        GuideFailure unavailable;
+        try {
+            unavailable = historyAdministrationFailure(kind);
+        } catch (RuntimeException failure) {
+            GuideFailure historyFailure = historyFailure(failure, "history_delete_failed");
+            result.complete(new ToolResult.Failure<>(
+                    historyFailure.code(), historyFailure.message()));
+            return;
+        }
+        if (unavailable != null) {
+            result.complete(new ToolResult.Failure<>(
+                    unavailable.code(), unavailable.message()));
+            return;
+        }
+        historyDeletionPending = true;
+        CompletableFuture<Void> deletion;
+        try {
+            deletion = switch (kind) {
+                case PARTITION -> history.delete(
+                        GuideHistoryDeleteScope.partition(historyScope));
+                case ACTOR -> history.delete(GuideHistoryDeleteScope.actor(actor));
+                case DATABASE -> history.resetDatabase();
+            };
+            Objects.requireNonNull(deletion, "history deletion future");
+        } catch (RuntimeException failure) {
+            finishHistoryAdministration(failure, result);
+            return;
+        }
+        deletion.whenComplete((ignored, failure) -> dispatcher.execute(
+                () -> finishHistoryAdministration(failure, result)));
+    }
+
+    private GuideFailure historyAdministrationFailure(HistoryAdministrationKind kind) {
+        if (history == null || historyScope == null || disconnected) {
+            return new GuideFailure(
+                    "history_unavailable", "Durable guide history is unavailable");
+        }
+        if (historyDeletionPending
+                || persistence.state() == GuidePersistenceSnapshot.State.SAVING
+                || !history.activity().idleForDeletion()
+                || sessions.values().stream().anyMatch(session -> active(session) != null)) {
+            return new GuideFailure("history_delete_busy", "Guide history is busy");
+        }
+        if (persistence.state() == GuidePersistenceSnapshot.State.LOADING) {
+            return new GuideFailure(
+                    "history_loading", "Durable guide history is still loading");
+        }
+        if (kind != HistoryAdministrationKind.DATABASE
+                && (!allowHistoryWrites
+                        || persistence.state() == GuidePersistenceSnapshot.State.UNAVAILABLE)) {
+            return new GuideFailure(
+                    "history_unavailable", "Durable guide history is unavailable");
+        }
+        return null;
+    }
+
+    private void finishHistoryAdministration(
+            Throwable failure,
+            CompletableFuture<ToolResult<Boolean>> result) {
+        if (failure != null) {
+            historyDeletionPending = false;
+            GuideFailure historyFailure = historyFailure(failure, "history_delete_failed");
+            result.complete(new ToolResult.Failure<>(
+                    historyFailure.code(), historyFailure.message()));
+            return;
+        }
+        if (!disconnected) {
+            resetHistoryMemory();
+            allowHistoryWrites = true;
+            persistence = GuidePersistenceSnapshot.available(0);
+            historyDeletionPending = false;
+            publishWithoutSave();
+        } else {
+            historyDeletionPending = false;
+        }
+        result.complete(new ToolResult.Success<>(Boolean.TRUE));
+    }
+
+    private void resetHistoryMemory() {
+        if (local != null) {
+            try {
+                local.clearActor(actor);
+            } catch (RuntimeException ignored) {
+                // Durable deletion is already committed; stale model memory cannot block reset.
+            }
+        }
+        requestSessions.clear();
+        sessions.clear();
+        sessions.put("main", new SessionState("main", defaultClientSelection()));
+        selectedSession = "main";
+    }
+
     private void submit(
             String sessionId, String question, CompletableFuture<ToolResult<UUID>> result) {
-        if (rejectWhileHistoryLoads(result)) {
+        if (rejectStateChange(result)) {
             return;
         }
         if (question == null || question.isBlank()) {
@@ -646,7 +764,7 @@ public final class GuideService {
     }
 
     private void scheduleHistorySave() {
-        if (history == null || !allowHistoryWrites || disconnected) {
+        if (history == null || !allowHistoryWrites || historyDeletionPending || disconnected) {
             return;
         }
         long generation = persistence.submittedGeneration() + 1;
@@ -732,13 +850,24 @@ public final class GuideService {
                 request.modelSelection());
     }
 
-    private <T> boolean rejectWhileHistoryLoads(CompletableFuture<ToolResult<T>> result) {
+    private <T> boolean rejectStateChange(CompletableFuture<ToolResult<T>> result) {
+        if (historyDeletionPending) {
+            result.complete(new ToolResult.Failure<>(
+                    "history_delete_busy", "Guide history is busy"));
+            return true;
+        }
         if (persistence.state() != GuidePersistenceSnapshot.State.LOADING) {
             return false;
         }
         result.complete(new ToolResult.Failure<>(
                 "history_loading", "Durable guide history is still loading"));
         return true;
+    }
+
+    private enum HistoryAdministrationKind {
+        PARTITION,
+        ACTOR,
+        DATABASE
     }
 
     private static GuidePersistenceSnapshot unavailable(Throwable failure, String fallbackCode) {

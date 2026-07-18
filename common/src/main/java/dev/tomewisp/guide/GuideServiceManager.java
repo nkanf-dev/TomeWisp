@@ -5,6 +5,7 @@ import dev.tomewisp.client.ClientEventDispatcher;
 import dev.tomewisp.guide.history.GuideHistoryAccess;
 import dev.tomewisp.guide.history.GuideHistoryScope;
 import dev.tomewisp.guide.history.GuideHistoryScopeProvider;
+import dev.tomewisp.tool.ToolResult;
 import java.time.Clock;
 import java.util.Objects;
 import java.util.UUID;
@@ -88,6 +89,14 @@ public final class GuideServiceManager {
 
     public synchronized GuideService current() {
         return current;
+    }
+
+    public synchronized CompletableFuture<ToolResult<Boolean>> resetHistoryDatabase() {
+        if (current == null) {
+            return CompletableFuture.completedFuture(new ToolResult.Failure<>(
+                    "history_unavailable", "Durable guide history is unavailable"));
+        }
+        return current.resetHistoryDatabase();
     }
 
     private GuideHistoryAccess afterDisconnect(CompletableFuture<Void> disconnected) {

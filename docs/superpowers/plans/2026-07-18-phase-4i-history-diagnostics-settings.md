@@ -180,7 +180,7 @@ git commit -m "feat: reserve idle history deletion"
 - Modify: `common/src/test/java/dev/tomewisp/guide/GuideServiceHistoryTest.java`
 - Modify: `common/src/test/java/dev/tomewisp/guide/GuideServiceManagerHistoryTest.java`
 
-- [ ] **Step 1: Write active request, no-new-write, reset, and failure-retention races**
+- [x] **Step 1: Write active request, no-new-write, reset, and failure-retention races**
 
 ```java
 @Test
@@ -211,14 +211,14 @@ Cover pending repository write, SQL failure preserving exact snapshot, current
 partition vs actor-all call, foreign actor impossibility, delete after screen
 detach, disconnect race, and reset requiring Debug Mode + fresh second token.
 
-- [ ] **Step 2: Run Guide history/manager tests and verify missing actions**
+- [x] **Step 2: Run Guide history/manager tests and verify missing actions**
 
 ```bash
 ./gradlew :common:test --tests 'dev.tomewisp.guide.GuideServiceHistoryTest' \
   --tests 'dev.tomewisp.guide.GuideServiceManagerHistoryTest'
 ```
 
-- [ ] **Step 3: Implement Guide-owned gates and reset after commit**
+- [x] **Step 3: Implement Guide-owned gates and reset after commit**
 
 ```java
 public interface GuideHistoryAdministration {
@@ -247,7 +247,7 @@ plus global repository activity, calls reset, then resets the current service
 only after commit. It is not exposed to the Screen; `ClientSettingsService`
 validates the Debug Mode one-use second-confirmation token before invoking it.
 
-- [ ] **Step 4: Run state/race tests and commit**
+- [x] **Step 4: Run state/race tests and commit**
 
 ```bash
 ./gradlew :common:test --tests 'dev.tomewisp.guide.GuideService*Test' \

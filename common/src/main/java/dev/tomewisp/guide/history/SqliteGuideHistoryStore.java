@@ -36,11 +36,21 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 
 /** JDBC store used only behind the asynchronous history repository. */
 public final class SqliteGuideHistoryStore implements GuideHistoryStore {
     private static final int SCHEMA_VERSION = GuideHistoryPartition.SCHEMA_VERSION;
+    private static final Set<String> RECOGNIZED_HISTORY_TABLES = Set.of(
+            "schema_metadata",
+            "partitions",
+            "sessions",
+            "requests",
+            "messages",
+            "timeline_entries",
+            "request_sources",
+            "compaction_checkpoints");
 
     private final Path database;
     private final Clock clock;
@@ -390,7 +400,7 @@ public final class SqliteGuideHistoryStore implements GuideHistoryStore {
         }
     }
 
-    private static void ensureSchema(Connection connection) throws SQLException {
+    private void ensureSchema(Connection connection) throws SQLException {
         if (!tableExists(connection, "schema_metadata")) {
             createSchema(connection);
             return;
@@ -405,10 +415,49 @@ public final class SqliteGuideHistoryStore implements GuideHistoryStore {
             }
             version = result.getInt(1);
         }
+        if (version > 0 && version < SCHEMA_VERSION) {
+            rebuildRecognizedSchema(connection);
+            return;
+        }
         if (version != SCHEMA_VERSION) {
             throw new GuideHistoryException(
                     "history_schema_unsupported",
                     "Unsupported guide history schema version " + version);
+        }
+    }
+
+    private void rebuildRecognizedSchema(Connection connection) throws SQLException {
+        List<String> tables = applicationTables(connection);
+        if (!RECOGNIZED_HISTORY_TABLES.containsAll(tables)) {
+            throw new GuideHistoryException(
+                    "history_schema_unsupported",
+                    "Guide history database contains unrecognized tables");
+        }
+        boolean autoCommit = connection.getAutoCommit();
+        try (Statement statement = connection.createStatement()) {
+            statement.execute("pragma foreign_keys=off");
+        }
+        connection.setAutoCommit(false);
+        try {
+            for (String table : tables) {
+                try (Statement statement = connection.createStatement()) {
+                    statement.execute("drop table " + quoteIdentifier(table));
+                }
+            }
+            createSchemaObjects(connection);
+            failureInjector.beforeCommit(Mutation.RESET);
+            connection.commit();
+        } catch (SQLException | RuntimeException failure) {
+            rollback(connection, failure);
+            throw new GuideHistoryException(
+                    "history_schema_rebuild_failed",
+                    "Unable to rebuild pre-release guide history",
+                    failure);
+        } finally {
+            connection.setAutoCommit(autoCommit);
+            try (Statement statement = connection.createStatement()) {
+                statement.execute("pragma foreign_keys=on");
+            }
         }
     }
 

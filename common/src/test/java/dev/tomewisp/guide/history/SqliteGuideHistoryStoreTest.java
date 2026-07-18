@@ -53,28 +53,72 @@ final class SqliteGuideHistoryStoreTest {
     }
 
     @Test
-    void rejectsPreReleaseSchemaWithoutMutatingTestData() throws Exception {
+    void rebuildsRecognizedPreReleaseSchemasWithoutTouchingSiblingFiles() throws Exception {
+        for (int oldVersion : List.of(1, 2, 3)) {
+            Path versionDatabase = temporary.resolve("history-v" + oldVersion + ".sqlite3");
+            SqliteGuideHistoryStore store = new SqliteGuideHistoryStore(
+                    versionDatabase,
+                    Clock.fixed(RECOVERY_TIME, ZoneOffset.UTC),
+                    new GuideHistoryCodec());
+            GuideHistoryPartition original = partition(
+                    "old-schema-" + oldVersion + ".example",
+                    "main",
+                    completed("main", "saved"));
+            store.save(original);
+            Path retained = temporary.resolve("retained-v" + oldVersion + ".txt");
+            Files.writeString(retained, "retained");
+            try (var connection = DriverManager.getConnection(
+                            "jdbc:sqlite:" + versionDatabase);
+                    var statement = connection.createStatement()) {
+                statement.executeUpdate("update schema_metadata set schema_version = "
+                        + oldVersion + " where singleton = 1");
+            }
+
+            assertTrue(store.load(original.scope()).partition().isEmpty());
+
+            try (var connection = DriverManager.getConnection(
+                            "jdbc:sqlite:" + versionDatabase);
+                    var statement = connection.createStatement()) {
+                assertEquals(GuideHistoryPartition.SCHEMA_VERSION, queryInt(
+                        statement,
+                        "select schema_version from schema_metadata where singleton = 1"));
+                assertEquals(0, queryInt(statement, "select count(*) from partitions"));
+            }
+            assertEquals("retained", Files.readString(retained));
+        }
+    }
+
+    @Test
+    void recognizedSchemaRebuildFailureRollsBackWithSpecificFailure() throws Exception {
         SqliteGuideHistoryStore store = store();
         GuideHistoryPartition original =
-                partition("old-schema.example", "main", completed("main", "saved"));
+                partition("old-rollback.example", "main", completed("main", "saved"));
         store.save(original);
         try (var connection = DriverManager.getConnection("jdbc:sqlite:" + database());
                 var statement = connection.createStatement()) {
             statement.executeUpdate(
                     "update schema_metadata set schema_version = 1 where singleton = 1");
         }
+        SqliteGuideHistoryStore failing = new SqliteGuideHistoryStore(
+                database(),
+                Clock.fixed(RECOVERY_TIME, ZoneOffset.UTC),
+                new GuideHistoryCodec(),
+                mutation -> {
+                    if (mutation == SqliteGuideHistoryStore.Mutation.RESET) {
+                        throw new java.sql.SQLException("injected rebuild failure");
+                    }
+                });
 
         GuideHistoryException failure = assertThrows(
-                GuideHistoryException.class, () -> store.load(original.scope()));
+                GuideHistoryException.class, () -> failing.load(original.scope()));
 
-        assertEquals("history_schema_unsupported", failure.code());
+        assertEquals("history_schema_rebuild_failed", failure.code());
         try (var connection = DriverManager.getConnection("jdbc:sqlite:" + database());
                 var statement = connection.createStatement()) {
             assertEquals(1, queryInt(
                     statement,
                     "select schema_version from schema_metadata where singleton = 1"));
-            assertEquals(2, queryInt(statement, "select count(*) from messages"));
-            assertEquals(2, queryInt(statement, "select count(*) from timeline_entries"));
+            assertEquals(1, queryInt(statement, "select count(*) from partitions"));
         }
     }
 
@@ -241,6 +285,34 @@ final class SqliteGuideHistoryStoreTest {
                         "select schema_version from schema_metadata where singleton = 1")) {
             assertTrue(result.next());
             assertEquals(99, result.getInt(1));
+        }
+    }
+
+    @Test
+    void olderVersionWithForeignTableFailsClosedWithoutMutation() throws Exception {
+        SqliteGuideHistoryStore store = store();
+        GuideHistoryPartition saved =
+                partition("foreign-table.example", "main", completed("main", "saved"));
+        store.save(saved);
+        try (var connection = DriverManager.getConnection("jdbc:sqlite:" + database());
+                var statement = connection.createStatement()) {
+            statement.execute("create table unrelated_data(value text)");
+            statement.execute("insert into unrelated_data(value) values ('retained')");
+            statement.executeUpdate(
+                    "update schema_metadata set schema_version = 1 where singleton = 1");
+        }
+
+        GuideHistoryException failure = assertThrows(
+                GuideHistoryException.class, () -> store.load(saved.scope()));
+
+        assertEquals("history_schema_unsupported", failure.code());
+        try (var connection = DriverManager.getConnection("jdbc:sqlite:" + database());
+                var statement = connection.createStatement()) {
+            assertEquals(1, queryInt(
+                    statement,
+                    "select schema_version from schema_metadata where singleton = 1"));
+            assertEquals(1, queryInt(statement, "select count(*) from unrelated_data"));
+            assertEquals(1, queryInt(statement, "select count(*) from partitions"));
         }
     }
 

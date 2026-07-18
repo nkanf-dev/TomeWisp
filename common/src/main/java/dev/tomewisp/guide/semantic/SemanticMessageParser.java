@@ -35,21 +35,49 @@ import org.commonmark.parser.Parser;
 
 /** Converts CommonMark into TomeWisp's closed, non-actionable semantic AST. */
 public final class SemanticMessageParser {
+    private static final java.util.UUID EMPTY_REQUEST = new java.util.UUID(0, 0);
     private final Parser parser = Parser.builder()
             .extensions(List.of(TablesExtension.create()))
             .includeSourceSpans(IncludeSourceSpans.BLOCKS_AND_INLINES)
             .build();
+    private final SemanticReferenceValidator references = new SemanticReferenceValidator();
+    private final RichComponentRegistry components;
+
+    public SemanticMessageParser() {
+        this(RichComponentRegistry.builtins());
+    }
+
+    public SemanticMessageParser(RichComponentRegistry components) {
+        this.components = Objects.requireNonNull(components, "components");
+    }
 
     public SemanticDocument parse(String source) {
-        return parseFragment(source, 0);
+        return parse(source, SemanticReferenceIndex.empty(EMPTY_REQUEST));
+    }
+
+    public SemanticDocument parse(String source, SemanticReferenceIndex referenceIndex) {
+        return parseFragment(source, 0, referenceIndex);
     }
 
     SemanticDocument parseFragment(String source, int firstBlockOrdinal) {
+        return parseFragment(source, firstBlockOrdinal,
+                SemanticReferenceIndex.empty(EMPTY_REQUEST));
+    }
+
+    SemanticDocument parseFragment(
+            String source,
+            int firstBlockOrdinal,
+            SemanticReferenceIndex referenceIndex) {
         source = source == null ? "" : source;
         if (firstBlockOrdinal < 0) {
             throw new IllegalArgumentException("first block ordinal must not be negative");
         }
-        Conversion conversion = new Conversion(source, firstBlockOrdinal);
+        Conversion conversion = new Conversion(
+                source,
+                firstBlockOrdinal,
+                Objects.requireNonNull(referenceIndex, "referenceIndex"),
+                references,
+                components);
         Node document = parser.parse(source);
         List<SemanticBlock> blocks = conversion.blocks(document, "root");
         return SemanticDocument.of(blocks, conversion.diagnostics);
@@ -58,11 +86,22 @@ public final class SemanticMessageParser {
     private static final class Conversion {
         private final String source;
         private final int firstBlockOrdinal;
+        private final SemanticReferenceIndex referenceIndex;
+        private final SemanticReferenceValidator referenceValidator;
+        private final RichComponentRegistry componentRegistry;
         private final List<SemanticDiagnostic> diagnostics = new ArrayList<>();
 
-        private Conversion(String source, int firstBlockOrdinal) {
+        private Conversion(
+                String source,
+                int firstBlockOrdinal,
+                SemanticReferenceIndex referenceIndex,
+                SemanticReferenceValidator referenceValidator,
+                RichComponentRegistry componentRegistry) {
             this.source = source;
             this.firstBlockOrdinal = firstBlockOrdinal;
+            this.referenceIndex = referenceIndex;
+            this.referenceValidator = referenceValidator;
+            this.componentRegistry = componentRegistry;
         }
 
         private List<SemanticBlock> blocks(Node parent, String parentPath) {
@@ -103,6 +142,9 @@ public final class SemanticMessageParser {
                         id(path, "quote", literal(node)), blocks(quote, path));
             }
             if (node instanceof FencedCodeBlock code) {
+                if ("tomewisp-component".equals(code.getInfo().strip())) {
+                    return component(code, path);
+                }
                 return new SemanticBlock.CodeBlock(
                         id(path, "code_block", literal(node)), code.getInfo(), code.getLiteral());
             }
@@ -117,6 +159,19 @@ public final class SemanticMessageParser {
                 return new SemanticBlock.ThematicBreak(id(path, "thematic_break", literal(node)));
             }
             return unsafeBlock(node, path);
+        }
+
+        private SemanticBlock component(FencedCodeBlock code, String path) {
+            String nodeId = id(path, "component", code.getLiteral());
+            RichComponentRegistry.Decode decoded = componentRegistry.decode(
+                    code.getLiteral(), nodeId, referenceIndex);
+            if (decoded.successful()) {
+                return new SemanticBlock.Component(nodeId, decoded.component());
+            }
+            diagnostics.add(new SemanticDiagnostic(decoded.failureCode(), nodeId));
+            SemanticInline.Text fallback = new SemanticInline.Text(
+                    id(path + ".s0", "text", decoded.fallbackText()), decoded.fallbackText());
+            return new SemanticBlock.Paragraph(nodeId, List.of(fallback));
         }
 
         private SemanticBlock list(Node node, String path, boolean ordered, int start) {
@@ -185,8 +240,7 @@ public final class SemanticMessageParser {
             for (Node node = parent.getFirstChild(); node != null; node = node.getNext()) {
                 String childPath = path + ".s" + index++;
                 if (node instanceof Text text) {
-                    result.add(new SemanticInline.Text(
-                            id(childPath, "text", text.getLiteral()), text.getLiteral()));
+                    result.addAll(text(text.getLiteral(), childPath));
                 } else if (node instanceof Emphasis emphasis) {
                     result.add(new SemanticInline.Emphasis(
                             id(childPath, "emphasis", literal(node)), inlines(emphasis, childPath)));
@@ -207,6 +261,37 @@ public final class SemanticMessageParser {
                 } else {
                     result.add(unsafeInline(node, childPath));
                 }
+            }
+            return List.copyOf(result);
+        }
+
+        private List<SemanticInline> text(String text, String path) {
+            List<SemanticInline> result = new ArrayList<>();
+            java.util.regex.Matcher matcher = referenceValidator.matcher(text);
+            int offset = 0;
+            int part = 0;
+            while (matcher.find()) {
+                if (matcher.start() > offset) {
+                    String literal = text.substring(offset, matcher.start());
+                    result.add(new SemanticInline.Text(
+                            id(path + ".p" + part++, "text", literal), literal));
+                }
+                String token = matcher.group();
+                SemanticReferenceValidator.Validation validated =
+                        referenceValidator.validate(token, referenceIndex);
+                String nodeId = id(path + ".p" + part++, "reference", token);
+                if (validated.successful()) {
+                    result.add(new SemanticInline.Reference(nodeId, validated.reference()));
+                } else {
+                    diagnostics.add(new SemanticDiagnostic(validated.failureCode(), nodeId));
+                    result.add(new SemanticInline.Text(nodeId, token));
+                }
+                offset = matcher.end();
+            }
+            if (offset < text.length() || result.isEmpty()) {
+                String literal = text.substring(offset);
+                result.add(new SemanticInline.Text(
+                        id(path + ".p" + part, "text", literal), literal));
             }
             return List.copyOf(result);
         }

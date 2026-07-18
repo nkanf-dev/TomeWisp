@@ -6,7 +6,7 @@ import java.util.List;
 public sealed interface SemanticBlock
         permits SemanticBlock.Paragraph, SemanticBlock.Heading, SemanticBlock.ListBlock,
                 SemanticBlock.Quote, SemanticBlock.CodeBlock, SemanticBlock.Table,
-                SemanticBlock.ThematicBreak {
+                SemanticBlock.ThematicBreak, SemanticBlock.Component {
     String nodeId();
 
     record Paragraph(String nodeId, List<SemanticInline> content) implements SemanticBlock {
@@ -85,6 +85,16 @@ public sealed interface SemanticBlock
     record ThematicBreak(String nodeId) implements SemanticBlock {
         public ThematicBreak {
             SemanticIds.require(nodeId);
+        }
+    }
+
+    record Component(String nodeId, RichComponent component) implements SemanticBlock {
+        public Component {
+            SemanticIds.require(nodeId);
+            java.util.Objects.requireNonNull(component, "component");
+            if (!nodeId.equals(component.nodeId())) {
+                throw new IllegalArgumentException("component node identity is inconsistent");
+            }
         }
     }
 }

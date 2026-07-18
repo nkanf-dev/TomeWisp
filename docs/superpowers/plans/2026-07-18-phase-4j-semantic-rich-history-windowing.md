@@ -96,7 +96,7 @@ git commit -m "feat: parse safe semantic guide messages"
 - Test: `common/src/test/java/dev/tomewisp/guide/semantic/RichComponentRegistryTest.java`
 - Test: `common/src/test/java/dev/tomewisp/guide/semantic/SemanticAuthorityTest.java`
 
-- [ ] **Step 1: Write closed-schema and authority tests**
+- [x] **Step 1: Write closed-schema and authority tests**
 
 Test all eleven inline kinds and all eight component kinds. Reject unknown
 keys, versions, types, actions, Java names, scripts, commands, URLs, texture or
@@ -104,13 +104,13 @@ filesystem paths, NBT selectors, oversized numeric values, duplicate node IDs,
 foreign-request handles, stale recipe generations, and unregistered source or
 evidence IDs. Fuzz malformed JSON/token boundaries and assert readable fallback.
 
-- [ ] **Step 2: Build the same-request reference index**
+- [x] **Step 2: Build the same-request reference index**
 
 Derive immutable handles only from typed `GuideToolActivity` normalized results
 and `GuideSource` records. Index resource IDs separately as ungrounded display
 references. Never infer a stable handle from arbitrary matching prose.
 
-- [ ] **Step 3: Register strict built-in component records**
+- [x] **Step 3: Register strict built-in component records**
 
 Implement item row, recipe grid, ingredient check, craftability summary,
 progress steps, source summary, status badge, and bounded choice group as
@@ -118,7 +118,7 @@ sealed records. Each codec has an exact key set, schema version 1, allowlisted
 display properties, typed intent declarations, and mandatory fallback/narration.
 The model cannot register new definitions.
 
-- [ ] **Step 4: Validate full documents in request context and commit**
+- [x] **Step 4: Validate full documents in request context and commit**
 
 ```bash
 ./gradlew :common:test --tests 'dev.tomewisp.guide.semantic.*'

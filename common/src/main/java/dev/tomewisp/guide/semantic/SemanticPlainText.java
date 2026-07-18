@@ -26,6 +26,8 @@ final class SemanticPlainText {
                 case SemanticInline.Strong strong -> text.append(inline(strong.children()));
                 case SemanticInline.Code code -> text.append(code.text());
                 case SemanticInline.Break ignored -> text.append('\n');
+                case SemanticInline.Reference reference ->
+                    text.append(reference.reference().displayText());
             }
         }
         return text.toString();
@@ -40,6 +42,7 @@ final class SemanticPlainText {
             case SemanticBlock.ThematicBreak ignored -> "---";
             case SemanticBlock.ListBlock list -> list(list, depth);
             case SemanticBlock.Table table -> table(table);
+            case SemanticBlock.Component component -> component.component().fallbackText();
         };
     }
 

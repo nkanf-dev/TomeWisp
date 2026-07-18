@@ -16,6 +16,8 @@ final class SettingsLocalizationTest {
             "screen.tomewisp.settings.short",
             "screen.tomewisp.settings.general",
             "screen.tomewisp.settings.models",
+            "screen.tomewisp.settings.tools",
+            "screen.tomewisp.settings.skills",
             "screen.tomewisp.settings.knowledge",
             "screen.tomewisp.settings.history",
             "screen.tomewisp.settings.diagnostics",
@@ -48,6 +50,10 @@ final class SettingsLocalizationTest {
             "screen.tomewisp.settings.recipe.visibility_unlocked",
             "screen.tomewisp.settings.recipe.preferred_auto",
             "screen.tomewisp.settings.recipe.source.minecraft_client_recipe_book",
+            "tomewisp.settings.tools.recipes.title",
+            "tomewisp.settings.tools.guides.description",
+            "screen.tomewisp.settings.tools.source.add_local",
+            "screen.tomewisp.settings.skills.create_override",
             "settings.tomewisp.capability.tool.tomewisp_recipes.title",
             "settings.tomewisp.capability.skill.search_guide_books.description");
 

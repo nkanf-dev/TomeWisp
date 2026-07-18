@@ -47,11 +47,13 @@ final class TomeWispSettingsScreenProjectionTest {
                 .toList());
         assertFalse(projection.toString().contains("ALPHA_KEY"));
         assertFalse(projection.toString().contains("secret-value"));
-        assertTrue(projection.sections().contains(SettingsSection.KNOWLEDGE_AND_CAPABILITIES));
+        assertTrue(projection.sections().contains(SettingsSection.TOOLS));
+        assertTrue(projection.sections().contains(SettingsSection.SKILLS));
         assertFalse(projection.sections().stream()
                 .anyMatch(section -> section.name().equals("RECIPES")));
-        assertEquals(0, projection.capabilities().cards().size());
         assertEquals(0, projection.recipes().sources().size());
+        assertEquals(6, projection.tools().families().size());
+        assertEquals(0, projection.skills().skills().size());
         assertFalse(projection.general().debugMode());
         assertTrue(projection.general().animationsEnabled());
         assertTrue(projection.history().actions().stream()

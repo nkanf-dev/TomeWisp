@@ -6,7 +6,8 @@ import java.util.List;
 public enum SettingsSection {
     GENERAL("screen.tomewisp.settings.general"),
     MODELS("screen.tomewisp.settings.models"),
-    KNOWLEDGE_AND_CAPABILITIES("screen.tomewisp.settings.knowledge"),
+    TOOLS("screen.tomewisp.settings.tools"),
+    SKILLS("screen.tomewisp.settings.skills"),
     HISTORY("screen.tomewisp.settings.history"),
     DIAGNOSTICS("screen.tomewisp.settings.diagnostics");
 

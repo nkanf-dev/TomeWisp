@@ -39,6 +39,24 @@ public record ToolSettingsView(List<Family> families) {
         return families.stream().filter(family -> family.id() == id).findFirst();
     }
 
+    public static ToolSettingsView empty() {
+        List<Family> families = new ArrayList<>();
+        for (ToolFamilyId id : ToolFamilyId.values()) {
+            families.add(new Family(
+                    id,
+                    titleKey(id),
+                    descriptionKey(id),
+                    true,
+                    false,
+                    id.memberToolIds(),
+                    List.of(),
+                    id == ToolFamilyId.RECIPES
+                            ? new RecipeDetail("ALL_KNOWN", "auto", true, List.of(), Set.of())
+                            : null));
+        }
+        return new ToolSettingsView(families);
+    }
+
     static ToolSettingsView project(
             Map<ToolFamilyId, ToolFamilyConfig> configs,
             ToolSourceKindRegistry registry,

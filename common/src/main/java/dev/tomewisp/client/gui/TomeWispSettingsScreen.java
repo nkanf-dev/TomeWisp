@@ -1,9 +1,5 @@
 package dev.tomewisp.client.gui;
 
-import dev.tomewisp.capability.CapabilityChildPage;
-import dev.tomewisp.capability.CapabilityKind;
-import dev.tomewisp.capability.CapabilityPolicy;
-import dev.tomewisp.client.gui.settings.CapabilitySettingsProjection;
 import dev.tomewisp.client.gui.settings.DiagnosticsSettingsProjection;
 import dev.tomewisp.client.gui.settings.GeneralSettingsProjection;
 import dev.tomewisp.client.gui.settings.HistorySettingsProjection;
@@ -11,6 +7,8 @@ import dev.tomewisp.client.gui.settings.ModelProfileDraft;
 import dev.tomewisp.client.gui.settings.RecipeSettingsProjection;
 import dev.tomewisp.client.gui.settings.SettingsLayout;
 import dev.tomewisp.client.gui.settings.SettingsSection;
+import dev.tomewisp.client.gui.settings.ToolSettingsProjection;
+import dev.tomewisp.client.gui.settings.SkillSettingsProjection;
 import dev.tomewisp.model.config.ModelProfileDefinition;
 import dev.tomewisp.model.config.ModelProfilesConfig;
 import dev.tomewisp.model.config.ModelProtocol;
@@ -26,12 +24,17 @@ import dev.tomewisp.settings.diagnostics.SettingsDiagnosticsSnapshot;
 import dev.tomewisp.settings.model.ModelConnectionResult;
 import dev.tomewisp.settings.model.ModelProfileSettingsView;
 import dev.tomewisp.tool.ToolResult;
+import dev.tomewisp.tool.config.ToolFamilyConfig;
+import dev.tomewisp.tool.config.ToolFamilyId;
+import dev.tomewisp.tool.config.ToolSourceDefinition;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.EditBox;
+import net.minecraft.client.gui.components.MultiLineEditBox;
 import net.minecraft.client.gui.components.Tooltip;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.locale.Language;
@@ -60,18 +63,21 @@ public final class TomeWispSettingsScreen extends Screen {
     private boolean draftEnabled;
     private ModelProtocol draftProtocol;
     private int editorScroll;
-    private CapabilityPolicy capabilityDraft;
     private RecipeClientConfig recipeDraft;
-    private CapabilityChildPage capabilityRoute;
-    private String capabilityFilterText = "";
-    private String renderedCapabilityFilter = "";
-    private CapabilityKind capabilityKindFilter;
-    private int capabilityScroll;
+    private ToolFamilyId selectedTool = ToolFamilyId.RECIPES;
+    private String selectedToolSourceId;
+    private String selectedSkillName;
+    private boolean skillEditing;
+    private boolean narrowToolDetail;
+    private boolean narrowSkillDetail;
+    private String skillDraftMarkdown = "";
+    private MultiLineEditBox skillEditor;
+    private EditBox sourceDisplayName;
+    private EditBox sourceDirectory;
+    private EditBox sourceLocale;
     private int pageScroll;
     private int pageContentHeight;
     private ClientSettingsService.HistoryConfirmationToken historyConfirmation;
-    private boolean restoreCapabilityFilterFocus;
-    private EditBox capabilityFilter;
     private EditBox id;
     private EditBox displayName;
     private EditBox baseUrl;
@@ -90,8 +96,10 @@ public final class TomeWispSettingsScreen extends Screen {
         this.service = Objects.requireNonNull(service, "service");
         this.returnToGuide = Objects.requireNonNull(returnToGuide, "returnToGuide");
         this.snapshot = service.snapshot();
-        capabilityDraft = snapshot.capabilities().policy();
         recipeDraft = snapshot.recipes().config();
+        selectedSkillName = snapshot.skills().skills().isEmpty()
+                ? null
+                : snapshot.skills().skills().getFirst().metadata().name();
         select(snapshot.models().config().defaultProfileId());
     }
 
@@ -104,8 +112,10 @@ public final class TomeWispSettingsScreen extends Screen {
         }
         if (section == SettingsSection.MODELS) {
             addModelsPage();
-        } else if (section == SettingsSection.KNOWLEDGE_AND_CAPABILITIES) {
+        } else if (section == SettingsSection.TOOLS) {
             addKnowledgePage();
+        } else if (section == SettingsSection.SKILLS) {
+            addSkillsPage();
         } else if (section == SettingsSection.GENERAL) {
             addGeneralPage();
         } else if (section == SettingsSection.HISTORY) {
@@ -136,17 +146,20 @@ public final class TomeWispSettingsScreen extends Screen {
                 select(retained);
                 confirmation = Confirmation.NONE;
             }
-            if (!previous.capabilities().policy().equals(next.capabilities().policy())
-                    || completedReload(
-                            previous, next, SettingsOperation.Kind.RELOADING_CAPABILITIES)) {
-                capabilityDraft = next.capabilities().policy();
-                confirmation = Confirmation.NONE;
-            }
             if (!previous.recipes().config().equals(next.recipes().config())
                     || completedReload(
                             previous, next, SettingsOperation.Kind.RELOADING_RECIPES)) {
                 recipeDraft = next.recipes().config();
                 confirmation = Confirmation.NONE;
+            }
+            if (!previous.skills().equals(next.skills())) {
+                if (selectedSkillName == null || next.skills().find(selectedSkillName).isEmpty()) {
+                    selectedSkillName = next.skills().skills().isEmpty()
+                            ? null
+                            : next.skills().skills().getFirst().metadata().name();
+                }
+                skillEditing = false;
+                skillDraftMarkdown = "";
             }
             if (layout != null) {
                 rebuildWidgets();
@@ -158,6 +171,9 @@ public final class TomeWispSettingsScreen extends Screen {
     public void removed() {
         service.cancelConnectionTest();
         historyConfirmation = null;
+        narrowToolDetail = false;
+        narrowSkillDetail = false;
+        skillEditing = false;
         if (listener != null) {
             try {
                 listener.close();
@@ -183,13 +199,6 @@ public final class TomeWispSettingsScreen extends Screen {
     public void tick() {
         super.tick();
         service.refreshRuntimeState();
-        if (section == SettingsSection.KNOWLEDGE_AND_CAPABILITIES
-                && capabilityRoute == null
-                && !renderedCapabilityFilter.equals(capabilityFilterText)) {
-            renderedCapabilityFilter = capabilityFilterText;
-            restoreCapabilityFilterFocus = true;
-            rebuildWidgets();
-        }
     }
 
     @Override
@@ -220,15 +229,6 @@ public final class TomeWispSettingsScreen extends Screen {
                     pageScroll - (int) Math.round(scrollY * 24), 0, maximum);
             return true;
         }
-        if (section == SettingsSection.KNOWLEDGE_AND_CAPABILITIES
-                && layout.content().contains(mouseX, mouseY)) {
-            capabilityScroll = net.minecraft.util.Mth.clamp(
-                    capabilityScroll - (int) Math.round(scrollY * 24),
-                    0,
-                    maximumCapabilityScroll());
-            rebuildWidgets();
-            return true;
-        }
         return super.mouseScrolled(mouseX, mouseY, scrollX, scrollY);
     }
 
@@ -248,8 +248,10 @@ public final class TomeWispSettingsScreen extends Screen {
         }
         if (section == SettingsSection.MODELS) {
             renderModels(graphics);
-        } else if (section == SettingsSection.KNOWLEDGE_AND_CAPABILITIES) {
+        } else if (section == SettingsSection.TOOLS) {
             renderKnowledge(graphics);
+        } else if (section == SettingsSection.SKILLS) {
+            renderSkills(graphics);
         } else if (section == SettingsSection.GENERAL) {
             renderGeneral(graphics);
         } else if (section == SettingsSection.HISTORY) {
@@ -379,122 +381,238 @@ public final class TomeWispSettingsScreen extends Screen {
     }
 
     private void addKnowledgePage() {
-        if (capabilityRoute == null) {
-            addCapabilityCards();
-        } else if (capabilityRoute.routeId().equals("tomewisp:recipe_settings")) {
-            addRecipeSettings();
+        if (layout.wide() || !narrowToolDetail) {
+            addToolList();
+        }
+        if (layout.wide() || narrowToolDetail) {
+            addToolDetail();
         }
     }
 
-    private void addCapabilityCards() {
-        SettingsLayout.Rect area = layout.wide() ? layout.list() : layout.editor();
+    private void addToolList() {
+        SettingsLayout.Rect area = layout.wide() ? layout.list() : layout.content();
         int x = area.x() + 7;
+        int y = area.y() + 28;
         int width = area.width() - 14;
-        int filterY = area.y() + (layout.wide()
-                ? 7
-                : (capabilityProjection().retainedUnknownCount() > 0 ? 61 : 43));
-        int kindWidth = Math.min(78, Math.max(64, width / 3));
-        capabilityFilter = new EditBox(
-                font,
-                x,
-                filterY,
-                width - kindWidth - 4,
-                18,
-                Component.translatable("screen.tomewisp.settings.capability.filter"));
-        capabilityFilter.setValue(capabilityFilterText);
-        capabilityFilter.setMaxLength(96);
-        capabilityFilter.setResponder(value -> capabilityFilterText = value);
-        addRenderableWidget(capabilityFilter);
-        if (restoreCapabilityFilterFocus) {
-            setFocused(capabilityFilter);
-            capabilityFilter.moveCursorToEnd(false);
-            restoreCapabilityFilterFocus = false;
-        }
-        addRenderableWidget(Button.builder(
-                        Component.translatable(capabilityKindFilterKey()),
-                        ignored -> cycleCapabilityKindFilter())
-                .bounds(x + width - kindWidth, filterY, kindWidth, 18)
-                .build());
-        capabilityScroll = Math.min(capabilityScroll, maximumCapabilityScroll());
-        int firstRowY = filterY + 24;
-        int y = firstRowY - capabilityScroll;
-        String query = capabilityFilterText.strip().toLowerCase(java.util.Locale.ROOT);
-        for (CapabilitySettingsProjection.Card card : capabilityProjection().cards()) {
-            if (capabilityKindFilter != null && card.kind() != capabilityKindFilter) {
-                continue;
-            }
-            Component titleComponent = friendlyTitle(
-                    card.titleKey(), capabilityFallbackKey(card.kind()));
-            String title = titleComponent.getString();
-            if (!query.isEmpty() && !title.toLowerCase(java.util.Locale.ROOT).contains(query)) {
-                continue;
-            }
-            Component label = Component.translatable(capabilityKindKey(card.kind()))
-                    .copy().append(" · ").append(title).append(" · ")
-                    .append(Component.translatable(card.statusKey()));
-            Button button = Button.builder(label, ignored -> activateCapability(card))
+        for (ToolSettingsProjection.Family family : toolProjection().families()) {
+            Button button = addRenderableWidget(Button.builder(
+                            Component.translatable(family.titleKey()),
+                            ignored -> {
+                                selectedTool = family.id();
+                                selectedToolSourceId = null;
+                                narrowToolDetail = true;
+                                rebuildWidgets();
+                            })
                     .bounds(x, y, width, 22)
-                    .build();
-            button.setTooltip(Tooltip.create(friendlyTitle(
-                    card.descriptionKey(), capabilityDescriptionFallbackKey(card.kind()))));
-            button.active = card.childPage() != null || card.toggleable();
-            if (y >= firstRowY - 4 && y + 22 <= area.bottom() - 4) {
-                addRenderableWidget(button);
-            }
+                    .build());
+            button.active = family.id() != selectedTool;
             y += 26;
         }
     }
 
-    private void addRecipeSettings() {
+    private void addToolDetail() {
+        ToolSettingsProjection.Family family = selectedToolFamily();
         SettingsLayout.Rect area = layout.editor();
-        capabilityScroll = Math.min(capabilityScroll, maximumCapabilityScroll());
-        int x = area.x() + 8;
-        int width = area.width() - 16;
-        int controlsY = area.y() + 32;
+        int x = area.x() + 9;
+        int y = area.y() + 48;
+        int width = area.width() - 18;
+        Button enable = addRenderableWidget(Button.builder(
+                        Component.translatable(family.enabled()
+                                ? "screen.tomewisp.settings.tools.disable"
+                                : "screen.tomewisp.settings.tools.enable"),
+                        ignored -> accept(service.saveToolSettings(
+                                toolProjection().toggleTool(family.id()))))
+                .bounds(x, y, Math.min(150, width), 22)
+                .build());
+        enable.active = family.available()
+                && snapshot.operation().kind() == SettingsOperation.Kind.IDLE;
+        y += 32;
+
+        if (family.id() == ToolFamilyId.RECIPES) {
+            int half = Math.max(80, (width - 4) / 2);
+            addRenderableWidget(Button.builder(
+                            Component.translatable(
+                                    recipeDraft.visibility() == RecipeVisibilityPolicy.ALL_KNOWN
+                                            ? "screen.tomewisp.settings.recipe.visibility_all"
+                                            : "screen.tomewisp.settings.recipe.visibility_unlocked"),
+                            ignored -> {
+                                recipeDraft = recipeProjection().cycleVisibility();
+                                accept(service.saveRecipeSettings(recipeDraft));
+                            })
+                    .bounds(x, y, half, 20)
+                    .build());
+            addRenderableWidget(Button.builder(
+                            Component.translatable(
+                                    "screen.tomewisp.settings.recipe.preferred",
+                                    preferredViewerLabel()),
+                            ignored -> {
+                                recipeDraft = recipeProjection().cyclePreferredViewer();
+                                accept(service.saveRecipeSettings(recipeDraft));
+                            })
+                    .bounds(x + half + 4, y, width - half - 4, 20)
+                    .build());
+            y += 30;
+        }
+
+        for (ToolSettingsProjection.Source source : family.sources()) {
+            int toggleWidth = Math.min(76, Math.max(58, width / 4));
+            Button select = addRenderableWidget(Button.builder(
+                            Component.literal(source.displayName()),
+                            ignored -> {
+                                selectedToolSourceId = source.id();
+                                rebuildWidgets();
+                            })
+                    .bounds(x, y, width - toggleWidth - 4, 20)
+                    .build());
+            select.active = !source.id().equals(selectedToolSourceId);
+            Button toggle = addRenderableWidget(Button.builder(
+                            Component.translatable(source.enabled()
+                                    ? "screen.tomewisp.settings.capability.enabled"
+                                    : "screen.tomewisp.settings.capability.disabled"),
+                            ignored -> accept(service.saveToolSettings(
+                                    toolProjection().toggleSource(family.id(), source.id()))))
+                    .bounds(x + width - toggleWidth, y, toggleWidth, 20)
+                    .build());
+            toggle.active = source.available()
+                    && snapshot.operation().kind() == SettingsOperation.Kind.IDLE;
+            y += 24;
+        }
+
+        if (family.id() == ToolFamilyId.GUIDES) {
+            addRenderableWidget(Button.builder(
+                            Component.translatable("screen.tomewisp.settings.tools.source.add_local"),
+                            ignored -> addLocalMarkdownSource())
+                    .bounds(x, y + 2, Math.min(180, width), 20)
+                    .build());
+            y += 30;
+        }
+        int sourceEditorY = y;
+        selectedToolSource().ifPresent(
+                source -> addSourceEditor(source, x, sourceEditorY, width));
+    }
+
+    private void addSourceEditor(
+            ToolSettingsProjection.Source source, int x, int y, int width) {
+        if (!source.editable()) {
+            return;
+        }
+        sourceDisplayName = field(
+                x, y, width, "screen.tomewisp.settings.tools.source.name", source.displayName());
+        y += 22;
+        sourceDirectory = field(
+                x,
+                y,
+                width,
+                "screen.tomewisp.settings.tools.source.directory",
+                source.config().get("directory").getAsString());
+        y += 22;
+        sourceLocale = field(
+                x,
+                y,
+                width,
+                "screen.tomewisp.settings.tools.source.locale",
+                source.config().get("locale").getAsString());
+        y += 24;
+        int half = Math.max(60, (width - 4) / 2);
         addRenderableWidget(Button.builder(
-                        Component.translatable(
-                                recipeDraft.visibility() == RecipeVisibilityPolicy.ALL_KNOWN
-                                        ? "screen.tomewisp.settings.recipe.visibility_all"
-                                        : "screen.tomewisp.settings.recipe.visibility_unlocked"),
-                        ignored -> {
-                            recipeDraft = recipeProjection().cycleVisibility();
-                            rebuildWidgets();
-                        })
-                .bounds(x, controlsY, Math.max(80, (width - 4) / 2), 20)
+                        Component.translatable("screen.tomewisp.settings.save"),
+                        ignored -> saveSelectedSource())
+                .bounds(x, y, half, 20)
                 .build());
         addRenderableWidget(Button.builder(
-                        Component.translatable(
-                                "screen.tomewisp.settings.recipe.preferred",
-                                preferredViewerLabel()),
-                        ignored -> {
-                            recipeDraft = recipeProjection().cyclePreferredViewer();
-                            rebuildWidgets();
-                        })
-                .bounds(
-                        x + Math.max(80, (width - 4) / 2) + 4,
-                        controlsY,
-                        Math.max(80, width - Math.max(80, (width - 4) / 2) - 4),
-                        20)
+                        Component.translatable("screen.tomewisp.settings.delete"),
+                        ignored -> deleteSelectedSource())
+                .bounds(x + half + 4, y, width - half - 4, 20)
                 .build());
-        int firstRowY = controlsY + 28;
-        int y = firstRowY - capabilityScroll;
-        for (RecipeSettingsProjection.SourceRow source : recipeProjection().sources()) {
-            Component label = friendlyTitle(
-                            source.titleKey(), "screen.tomewisp.settings.recipe.source.other")
-                    .copy().append(" · ")
-                    .append(Component.translatable(source.enabled()
-                            ? "screen.tomewisp.settings.capability.enabled"
-                            : "screen.tomewisp.settings.capability.disabled"));
-            Button button = Button.builder(label, ignored -> toggleRecipeSource(source.actionId()))
+    }
+
+    private void addSkillsPage() {
+        SkillSettingsProjection projection = skillProjection();
+        SettingsLayout.Rect listArea = layout.wide() ? layout.list() : layout.content();
+        int x = listArea.x() + 7;
+        int y = listArea.y() + 28;
+        int width = listArea.width() - 14;
+        if (layout.wide() || !narrowSkillDetail) for (SkillSettingsProjection.Skill skill : projection.skills()) {
+            Component label = Component.literal(skill.name()).copy().append(" · ")
+                    .append(Component.translatable(skill.localOverride()
+                            ? "screen.tomewisp.settings.skills.local"
+                            : "screen.tomewisp.settings.skills.bundled"));
+            Button button = addRenderableWidget(Button.builder(label, ignored -> {
+                        selectedSkillName = skill.name();
+                        narrowSkillDetail = true;
+                        skillEditing = false;
+                        skillDraftMarkdown = "";
+                        rebuildWidgets();
+                    })
                     .bounds(x, y, width, 22)
-                    .build();
-            button.setTooltip(Tooltip.create(Component.translatable(
-                    "screen.tomewisp.settings.recipe.source.description")));
-            if (y >= firstRowY - 4 && y + 22 <= area.bottom() - 4) {
-                addRenderableWidget(button);
-            }
+                    .build());
+            button.active = !skill.name().equals(selectedSkillName);
             y += 26;
         }
+
+        if (layout.wide() || narrowSkillDetail) selectedSkill().ifPresent(skill -> {
+            SettingsLayout.Rect area = layout.editor();
+            int editorX = area.x() + 9;
+            int editorY = area.y() + 58;
+            int editorWidth = area.width() - 18;
+            if (skillEditing) {
+                skillEditor = MultiLineEditBox.builder()
+                        .setX(editorX)
+                        .setY(editorY)
+                        .setPlaceholder(Component.translatable(
+                                "screen.tomewisp.settings.skills.editor_placeholder"))
+                        .build(
+                                font,
+                                editorWidth,
+                                Math.max(70, area.bottom() - editorY - 34),
+                                Component.translatable("screen.tomewisp.settings.skills.editor"));
+                skillEditor.setValue(skillDraftMarkdown, true);
+                skillEditor.setValueListener(value -> skillDraftMarkdown = value);
+                addRenderableWidget(skillEditor);
+                addRenderableWidget(Button.builder(
+                                Component.translatable("screen.tomewisp.settings.save"),
+                                ignored -> saveSkillOverride())
+                        .bounds(editorX, area.bottom() - 26, Math.min(120, editorWidth), 20)
+                        .build());
+                addRenderableWidget(Button.builder(
+                                Component.translatable("screen.tomewisp.settings.cancel"),
+                                ignored -> {
+                                    skillEditing = false;
+                                    skillDraftMarkdown = "";
+                                    rebuildWidgets();
+                                })
+                        .bounds(
+                                editorX + Math.min(120, editorWidth) + 4,
+                                area.bottom() - 26,
+                                Math.min(100, Math.max(50, editorWidth - 124)),
+                                20)
+                        .build());
+            } else {
+                addRenderableWidget(Button.builder(
+                                Component.translatable(skill.createsOverrideOnSave()
+                                        ? "screen.tomewisp.settings.skills.create_override"
+                                        : "screen.tomewisp.settings.skills.edit_override"),
+                                ignored -> {
+                                    skillEditing = true;
+                                    skillDraftMarkdown = skill.markdown();
+                                    rebuildWidgets();
+                                })
+                        .bounds(editorX, area.bottom() - 26, Math.min(160, editorWidth), 20)
+                        .build());
+                if (skill.canDeleteOverride()) {
+                    addRenderableWidget(Button.builder(
+                                    Component.translatable(
+                                            "screen.tomewisp.settings.skills.delete_override"),
+                                    ignored -> accept(service.deleteSkillOverride(skill.name())))
+                            .bounds(
+                                    editorX + Math.min(160, editorWidth) + 4,
+                                    area.bottom() - 26,
+                                    Math.min(140, Math.max(60, editorWidth - 164)),
+                                    20)
+                            .build());
+                }
+            }
+        });
     }
 
     private void addEditor() {
@@ -611,7 +729,12 @@ public final class TomeWispSettingsScreen extends Screen {
                     new Action("screen.tomewisp.settings.cancel", this::cancel),
                     new Action("screen.tomewisp.settings.models.refresh", this::refreshMetadata),
                     new Action("screen.tomewisp.settings.done", this::onClose));
-            case KNOWLEDGE_AND_CAPABILITIES -> knowledgeActions();
+            case TOOLS -> knowledgeActions();
+            case SKILLS -> List.of(
+                    new Action(
+                            "screen.tomewisp.settings.reload",
+                            () -> accept(service.reloadSkills(true))),
+                    new Action("screen.tomewisp.settings.done", this::onClose));
             case GENERAL -> List.of(
                     new Action(
                             "screen.tomewisp.settings.reload",
@@ -923,36 +1046,99 @@ public final class TomeWispSettingsScreen extends Screen {
     }
 
     private void renderKnowledge(GuiGraphicsExtractor graphics) {
-        SettingsLayout.Rect area = layout.wide() ? layout.editor() : layout.content();
+        SettingsLayout.Rect area = layout.editor();
+        ToolSettingsProjection.Family family = selectedToolFamily();
         graphics.text(
                 font,
-                Component.translatable(capabilityRoute == null
-                        ? "screen.tomewisp.settings.knowledge"
-                        : "screen.tomewisp.settings.recipe.title"),
+                Component.translatable(family.titleKey()),
                 area.x() + 10,
-                area.y() + (layout.wide() ? 12 : 4),
+                area.y() + 12,
                 ACCENT,
                 false);
-        int y = area.y() + 31;
-        if (capabilityRoute == null) {
-            graphics.text(
-                    font,
-                    Component.translatable("screen.tomewisp.settings.capability.help"),
-                    area.x() + 10,
-                    y,
-                    MUTED,
-                    false);
-            if (capabilityProjection().retainedUnknownCount() > 0) {
+        graphics.text(
+                font,
+                Component.translatable(family.descriptionKey()),
+                area.x() + 10,
+                area.y() + 29,
+                MUTED,
+                false);
+        selectedToolSource().ifPresent(source -> {
+            int y = area.bottom() - (source.editable() ? 116 : 28);
+            Component sourceInfo = Component.literal(source.displayName()).copy().append(" · ")
+                    .append(Component.translatable(source.available()
+                            ? "screen.tomewisp.settings.tools.source.ready"
+                            : "screen.tomewisp.settings.tools.source.unavailable"));
+            graphics.text(font, sourceInfo, area.x() + 10, y, MUTED, false);
+            if (snapshot.display().debugMode()) {
                 graphics.text(
                         font,
-                        Component.translatable(
-                                "screen.tomewisp.settings.capability.retained_unknown",
-                                capabilityProjection().retainedUnknownCount()),
+                        Component.literal(source.id() + " · " + source.kind()),
                         area.x() + 10,
-                        y + 18,
+                        y + 11,
                         MUTED,
                         false);
             }
+        });
+    }
+
+    private void renderSkills(GuiGraphicsExtractor graphics) {
+        SettingsLayout.Rect area = layout.editor();
+        Optional<SkillSettingsProjection.Skill> selected = selectedSkill();
+        graphics.text(
+                font,
+                Component.translatable("screen.tomewisp.settings.skills"),
+                area.x() + 10,
+                area.y() + 12,
+                ACCENT,
+                false);
+        if (selected.isEmpty()) {
+            graphics.text(
+                    font,
+                    Component.translatable("screen.tomewisp.settings.skills.empty"),
+                    area.x() + 10,
+                    area.y() + 31,
+                    MUTED,
+                    false);
+            return;
+        }
+        SkillSettingsProjection.Skill skill = selected.orElseThrow();
+        graphics.text(font, skill.name(), area.x() + 10, area.y() + 30, TEXT, false);
+        graphics.text(
+                font,
+                Component.translatable(skill.localOverride()
+                        ? "screen.tomewisp.settings.skills.local"
+                        : "screen.tomewisp.settings.skills.bundled"),
+                area.x() + 10,
+                area.y() + 42,
+                MUTED,
+                false);
+        if (skillEditing) {
+            return;
+        }
+        int y = area.y() + 60;
+        int width = Math.max(80, area.width() - 20);
+        for (net.minecraft.util.FormattedCharSequence line : font.split(
+                Component.literal(skill.description()), width)) {
+            graphics.text(font, line, area.x() + 10, y, MUTED, false);
+            y += 10;
+        }
+        y += 7;
+        for (net.minecraft.util.FormattedCharSequence line : font.split(
+                Component.literal(skill.body()), width)) {
+            if (y > area.bottom() - 36) {
+                break;
+            }
+            graphics.text(font, line, area.x() + 10, y, TEXT, false);
+            y += 10;
+        }
+        if (snapshot.display().debugMode()) {
+            graphics.text(
+                    font,
+                    Component.literal(skill.provenance()),
+                    area.x() + 10,
+                    Math.min(y + 6, area.bottom() - 38),
+                    MUTED,
+                    false);
         }
     }
 
@@ -987,24 +1173,17 @@ public final class TomeWispSettingsScreen extends Screen {
     }
 
     private List<Action> knowledgeActions() {
-        List<Action> actions = new ArrayList<>();
-        actions.add(new Action("screen.tomewisp.settings.save", this::saveCurrent));
-        actions.add(new Action(reloadKey(), this::reloadCurrent));
-        if (capabilityRoute != null) {
-            actions.add(new Action("screen.tomewisp.settings.back", this::backOrClose));
-        }
-        actions.add(new Action("screen.tomewisp.settings.done", this::onClose));
-        return List.copyOf(actions);
+        return List.of(
+                new Action(
+                        "screen.tomewisp.settings.reload",
+                        () -> accept(service.reloadToolSettings(selectedTool, true))),
+                new Action("screen.tomewisp.settings.done", this::onClose));
     }
 
     private void saveCurrent() {
         confirmation = Confirmation.NONE;
         if (section == SettingsSection.MODELS) {
             save();
-        } else if (section == SettingsSection.KNOWLEDGE_AND_CAPABILITIES) {
-            accept(capabilityRoute == null
-                    ? service.saveCapabilities(capabilityDraft)
-                    : service.saveRecipeSettings(recipeDraft));
         }
     }
 
@@ -1019,20 +1198,20 @@ public final class TomeWispSettingsScreen extends Screen {
         confirmation = Confirmation.NONE;
         if (section == SettingsSection.MODELS) {
             accept(service.reloadModels(true));
-        } else if (section == SettingsSection.KNOWLEDGE_AND_CAPABILITIES) {
-            accept(capabilityRoute == null
-                    ? service.reloadCapabilities(true)
-                    : service.reloadRecipeSettings(true));
         }
     }
 
     private void backOrClose() {
-        if (section == SettingsSection.KNOWLEDGE_AND_CAPABILITIES
-                && capabilityRoute != null) {
-            capabilityRoute = null;
-            capabilityScroll = 0;
-            confirmation = Confirmation.NONE;
-            localNotice = "";
+        if (!layout.wide() && section == SettingsSection.TOOLS && narrowToolDetail) {
+            narrowToolDetail = false;
+            selectedToolSourceId = null;
+            rebuildWidgets();
+            return;
+        }
+        if (!layout.wide() && section == SettingsSection.SKILLS && narrowSkillDetail) {
+            narrowSkillDetail = false;
+            skillEditing = false;
+            skillDraftMarkdown = "";
             rebuildWidgets();
             return;
         }
@@ -1115,52 +1294,148 @@ public final class TomeWispSettingsScreen extends Screen {
         };
     }
 
-    private CapabilitySettingsProjection capabilityProjection() {
-        return CapabilitySettingsProjection.from(
-                snapshot.capabilities(), capabilityDraft, snapshot.display().debugMode());
+    private ToolSettingsProjection toolProjection() {
+        return ToolSettingsProjection.from(snapshot.tools(), snapshot.display().debugMode());
+    }
+
+    private SkillSettingsProjection skillProjection() {
+        return SkillSettingsProjection.from(snapshot.skills(), snapshot.display().debugMode());
+    }
+
+    private ToolSettingsProjection.Family selectedToolFamily() {
+        return toolProjection().find(selectedTool).orElseGet(() -> {
+            selectedTool = ToolFamilyId.RECIPES;
+            return toolProjection().find(selectedTool).orElseThrow();
+        });
+    }
+
+    private Optional<ToolSettingsProjection.Source> selectedToolSource() {
+        if (selectedToolSourceId == null) {
+            return Optional.empty();
+        }
+        return selectedToolFamily().sources().stream()
+                .filter(source -> source.id().equals(selectedToolSourceId))
+                .findFirst();
+    }
+
+    private Optional<SkillSettingsProjection.Skill> selectedSkill() {
+        return selectedSkillName == null
+                ? Optional.empty()
+                : skillProjection().find(selectedSkillName);
+    }
+
+    private void addLocalMarkdownSource() {
+        ToolSettingsProjection.Family guides =
+                toolProjection().find(ToolFamilyId.GUIDES).orElseThrow();
+        int suffix = 1;
+        String shortName = "notes";
+        while (containsSource(guides, "user:" + shortName)) {
+            shortName = "notes-" + ++suffix;
+        }
+        com.google.gson.JsonObject config = new com.google.gson.JsonObject();
+        config.addProperty("directory", shortName);
+        config.addProperty("locale", "zh_cn");
+        List<ToolSourceDefinition> sources = new ArrayList<>();
+        for (ToolSettingsProjection.Source source : guides.sources()) {
+            sources.add(new ToolSourceDefinition(
+                    source.id(),
+                    source.kind(),
+                    source.displayName(),
+                    source.enabled(),
+                    source.config(),
+                    source.lifecycle()));
+        }
+        ToolSourceDefinition created = new ToolSourceDefinition(
+                "user:" + shortName,
+                "local_markdown",
+                Component.translatable("screen.tomewisp.settings.tools.source.local_default")
+                        .getString(),
+                true,
+                config,
+                ToolSourceDefinition.Lifecycle.USER);
+        sources.add(created);
+        selectedToolSourceId = created.sourceId();
+        accept(service.saveToolSettings(new ToolFamilyConfig(
+                ToolFamilyConfig.SCHEMA_VERSION,
+                ToolFamilyId.GUIDES,
+                guides.enabled(),
+                sources)));
+    }
+
+    private static boolean containsSource(
+            ToolSettingsProjection.Family family, String sourceId) {
+        return family.sources().stream().anyMatch(source -> source.id().equals(sourceId));
+    }
+
+    private void saveSelectedSource() {
+        ToolSettingsProjection.Source selected = selectedToolSource().orElse(null);
+        if (selected == null || !selected.editable()) {
+            return;
+        }
+        com.google.gson.JsonObject config = new com.google.gson.JsonObject();
+        config.addProperty("directory", sourceDirectory.getValue().strip());
+        config.addProperty("locale", sourceLocale.getValue().strip().toLowerCase(java.util.Locale.ROOT));
+        List<ToolSourceDefinition> sources = new ArrayList<>();
+        for (ToolSettingsProjection.Source source : selectedToolFamily().sources()) {
+            sources.add(source.id().equals(selected.id())
+                    ? new ToolSourceDefinition(
+                            source.id(),
+                            source.kind(),
+                            sourceDisplayName.getValue().strip(),
+                            source.enabled(),
+                            config,
+                            source.lifecycle())
+                    : new ToolSourceDefinition(
+                            source.id(),
+                            source.kind(),
+                            source.displayName(),
+                            source.enabled(),
+                            source.config(),
+                            source.lifecycle()));
+        }
+        accept(service.saveToolSettings(new ToolFamilyConfig(
+                ToolFamilyConfig.SCHEMA_VERSION,
+                selectedTool,
+                selectedToolFamily().enabled(),
+                sources)));
+    }
+
+    private void deleteSelectedSource() {
+        ToolSettingsProjection.Source selected = selectedToolSource().orElse(null);
+        if (selected == null || !selected.deletable()) {
+            return;
+        }
+        List<ToolSourceDefinition> sources = selectedToolFamily().sources().stream()
+                .filter(source -> !source.id().equals(selected.id()))
+                .map(source -> new ToolSourceDefinition(
+                        source.id(),
+                        source.kind(),
+                        source.displayName(),
+                        source.enabled(),
+                        source.config(),
+                        source.lifecycle()))
+                .toList();
+        selectedToolSourceId = null;
+        accept(service.saveToolSettings(new ToolFamilyConfig(
+                ToolFamilyConfig.SCHEMA_VERSION,
+                selectedTool,
+                selectedToolFamily().enabled(),
+                sources)));
+    }
+
+    private void saveSkillOverride() {
+        SkillSettingsProjection.Skill selected = selectedSkill().orElse(null);
+        if (selected == null || skillDraftMarkdown.isBlank()) {
+            return;
+        }
+        skillEditing = false;
+        accept(service.saveSkillOverride(selected.name(), skillDraftMarkdown));
+        skillDraftMarkdown = "";
     }
 
     private RecipeSettingsProjection recipeProjection() {
         return RecipeSettingsProjection.from(
                 snapshot.recipes(), recipeDraft, snapshot.display().debugMode());
-    }
-
-    private void activateCapability(CapabilitySettingsProjection.Card card) {
-        CapabilityChildPage route = capabilityProjection().route(card.actionId());
-        if (route != null) {
-            if (!route.routeId().equals("tomewisp:recipe_settings")) {
-                localNotice = Component.translatable(
-                        "screen.tomewisp.settings.capability.page_unavailable").getString();
-                return;
-            }
-            capabilityRoute = route;
-            capabilityScroll = 0;
-            confirmation = Confirmation.NONE;
-            localNotice = "";
-            rebuildWidgets();
-            return;
-        }
-        ToolResult<CapabilityPolicy> toggled = capabilityProjection().toggle(card.actionId());
-        if (toggled instanceof ToolResult.Success<CapabilityPolicy> success) {
-            capabilityDraft = success.value();
-            confirmation = Confirmation.NONE;
-            localNotice = "";
-            rebuildWidgets();
-        } else if (toggled instanceof ToolResult.Failure<CapabilityPolicy> failure) {
-            localNotice = failure.message();
-        }
-    }
-
-    private void toggleRecipeSource(String actionId) {
-        ToolResult<RecipeClientConfig> toggled = recipeProjection().toggleSource(actionId);
-        if (toggled instanceof ToolResult.Success<RecipeClientConfig> success) {
-            recipeDraft = success.value();
-            confirmation = Confirmation.NONE;
-            localNotice = "";
-            rebuildWidgets();
-        } else if (toggled instanceof ToolResult.Failure<RecipeClientConfig> failure) {
-            localNotice = failure.message();
-        }
     }
 
     private Component preferredViewerLabel() {
@@ -1178,74 +1453,6 @@ public final class TomeWispSettingsScreen extends Screen {
 
     private static Component friendlyTitle(String titleKey, String fallbackKey) {
         return Component.translatable(Language.getInstance().has(titleKey) ? titleKey : fallbackKey);
-    }
-
-    private int maximumCapabilityScroll() {
-        SettingsLayout.Rect area = capabilityRoute == null
-                ? (layout.wide() ? layout.list() : layout.editor())
-                : layout.editor();
-        int rowCount;
-        int reservedHeight;
-        if (capabilityRoute == null) {
-            String query = capabilityFilterText.strip().toLowerCase(java.util.Locale.ROOT);
-            rowCount = (int) capabilityProjection().cards().stream()
-                    .filter(card -> capabilityKindFilter == null
-                            || card.kind() == capabilityKindFilter)
-                    .map(card -> friendlyTitle(
-                            card.titleKey(), capabilityFallbackKey(card.kind())).getString())
-                    .filter(title -> query.isEmpty()
-                            || title.toLowerCase(java.util.Locale.ROOT).contains(query))
-                    .count();
-            reservedHeight = layout.wide()
-                    ? 35
-                    : (capabilityProjection().retainedUnknownCount() > 0 ? 89 : 71);
-        } else {
-            rowCount = recipeProjection().sources().size();
-            reservedHeight = 64;
-        }
-        return Math.max(0, rowCount * 26 - Math.max(1, area.height() - reservedHeight));
-    }
-
-    private static String capabilityFallbackKey(CapabilityKind kind) {
-        return switch (kind) {
-            case KNOWLEDGE_SOURCE -> "screen.tomewisp.settings.capability.other_source";
-            case TOOL -> "screen.tomewisp.settings.capability.other_tool";
-            case SKILL -> "screen.tomewisp.settings.capability.other_skill";
-        };
-    }
-
-    private static String capabilityKindKey(CapabilityKind kind) {
-        return switch (kind) {
-            case KNOWLEDGE_SOURCE -> "screen.tomewisp.settings.capability.kind_source";
-            case TOOL -> "screen.tomewisp.settings.capability.kind_tool";
-            case SKILL -> "screen.tomewisp.settings.capability.kind_skill";
-        };
-    }
-
-    private String capabilityKindFilterKey() {
-        return capabilityKindFilter == null
-                ? "screen.tomewisp.settings.capability.kind_all"
-                : capabilityKindKey(capabilityKindFilter);
-    }
-
-    private void cycleCapabilityKindFilter() {
-        capabilityKindFilter = switch (capabilityKindFilter) {
-            case null -> CapabilityKind.KNOWLEDGE_SOURCE;
-            case KNOWLEDGE_SOURCE -> CapabilityKind.TOOL;
-            case TOOL -> CapabilityKind.SKILL;
-            case SKILL -> null;
-        };
-        capabilityScroll = 0;
-        rebuildWidgets();
-    }
-
-    private static String capabilityDescriptionFallbackKey(
-            CapabilityKind kind) {
-        return switch (kind) {
-            case KNOWLEDGE_SOURCE -> "screen.tomewisp.settings.capability.other_source_description";
-            case TOOL -> "screen.tomewisp.settings.capability.other_tool_description";
-            case SKILL -> "screen.tomewisp.settings.capability.other_skill_description";
-        };
     }
 
     private void save() {
@@ -1396,13 +1603,13 @@ public final class TomeWispSettingsScreen extends Screen {
         captureDraft();
         section = replacement;
         editorScroll = 0;
-        capabilityScroll = 0;
         pageScroll = 0;
         pageContentHeight = 0;
         historyConfirmation = null;
-        if (replacement != SettingsSection.KNOWLEDGE_AND_CAPABILITIES) {
-            capabilityRoute = null;
-        }
+        narrowToolDetail = false;
+        narrowSkillDetail = false;
+        skillEditing = false;
+        skillDraftMarkdown = "";
         confirmation = Confirmation.NONE;
         localNotice = "";
         rebuildWidgets();
@@ -1552,14 +1759,14 @@ public final class TomeWispSettingsScreen extends Screen {
                 SettingsSection.topLevel(),
                 cards,
                 GeneralSettingsProjection.from(snapshot.display()),
-                CapabilitySettingsProjection.from(
-                        snapshot.capabilities(),
-                        snapshot.capabilities().policy(),
-                        snapshot.display().debugMode()),
                 RecipeSettingsProjection.from(
                         snapshot.recipes(),
                         snapshot.recipes().config(),
                         snapshot.display().debugMode()),
+                ToolSettingsProjection.from(
+                        snapshot.tools(), snapshot.display().debugMode()),
+                SkillSettingsProjection.from(
+                        snapshot.skills(), snapshot.display().debugMode()),
                 HistorySettingsProjection.from(
                         snapshot.history(),
                         snapshot.display().debugMode(),
@@ -1573,8 +1780,9 @@ public final class TomeWispSettingsScreen extends Screen {
             List<SettingsSection> sections,
             List<ModelCard> models,
             GeneralSettingsProjection general,
-            CapabilitySettingsProjection capabilities,
             RecipeSettingsProjection recipes,
+            ToolSettingsProjection tools,
+            SkillSettingsProjection skills,
             HistorySettingsProjection history,
             DiagnosticsSettingsProjection diagnostics,
             SettingsOperation operation,
@@ -1583,8 +1791,9 @@ public final class TomeWispSettingsScreen extends Screen {
             sections = List.copyOf(sections);
             models = List.copyOf(models);
             Objects.requireNonNull(general, "general");
-            Objects.requireNonNull(capabilities, "capabilities");
             Objects.requireNonNull(recipes, "recipes");
+            Objects.requireNonNull(tools, "tools");
+            Objects.requireNonNull(skills, "skills");
             Objects.requireNonNull(history, "history");
             Objects.requireNonNull(diagnostics, "diagnostics");
         }

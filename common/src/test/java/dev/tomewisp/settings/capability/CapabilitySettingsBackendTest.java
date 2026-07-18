@@ -92,6 +92,28 @@ final class CapabilitySettingsBackendTest {
         assertTrue(Files.readString(path).contains("future:tool"));
     }
 
+    @Test
+    void reconstructedToolPolicyPublishesWithoutWritingLegacyCapabilityFile() {
+        Fixture fixture = fixture();
+        Path path = temporary.resolve("capabilities.json");
+        AtomicReference<ClientCapabilitySnapshot> published =
+                new AtomicReference<>(fixture.initial());
+        CapabilitySettingsBackend backend = new CapabilitySettingsBackend(
+                path, fixture.runtime(), fixture.initial(), published::set);
+        CapabilityPolicy candidate = new CapabilityPolicy(
+                CapabilityPolicy.SCHEMA_VERSION, Set.of("test:fact"), Set.of());
+
+        CapabilitySettingsView view = success(backend.publishCapabilities(candidate));
+
+        CapabilityPolicy normalized = new CapabilityPolicy(
+                CapabilityPolicy.SCHEMA_VERSION,
+                Set.of("test:fact"),
+                Set.of("fact-guide"));
+        assertEquals(normalized, published.get().policy());
+        assertEquals(normalized, view.policy());
+        assertFalse(Files.exists(path));
+    }
+
     private static Fixture fixture() {
         ToolRegistry tools = new ToolRegistry();
         tools.register("test:provider", List.of(tool()));

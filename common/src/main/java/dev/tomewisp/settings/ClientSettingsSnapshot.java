@@ -6,6 +6,8 @@ import dev.tomewisp.settings.capability.CapabilitySettingsView;
 import dev.tomewisp.settings.capability.RecipeSettingsView;
 import dev.tomewisp.settings.diagnostics.SettingsDiagnosticsSnapshot;
 import dev.tomewisp.settings.history.HistorySettingsView;
+import dev.tomewisp.settings.skill.SkillSettingsView;
+import dev.tomewisp.settings.tool.ToolSettingsView;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
@@ -17,6 +19,8 @@ public record ClientSettingsSnapshot(
         ModelProfileSettingsView models,
         CapabilitySettingsView capabilities,
         RecipeSettingsView recipes,
+        ToolSettingsView tools,
+        SkillSettingsView skills,
         HistorySettingsView history,
         SettingsDiagnosticsSnapshot diagnostics,
         SettingsOperation operation,
@@ -29,6 +33,8 @@ public record ClientSettingsSnapshot(
         Objects.requireNonNull(models, "models");
         Objects.requireNonNull(capabilities, "capabilities");
         Objects.requireNonNull(recipes, "recipes");
+        Objects.requireNonNull(tools, "tools");
+        Objects.requireNonNull(skills, "skills");
         Objects.requireNonNull(history, "history");
         Objects.requireNonNull(diagnostics, "diagnostics");
         Objects.requireNonNull(operation, "operation");
@@ -48,6 +54,8 @@ public record ClientSettingsSnapshot(
                 models,
                 capabilities,
                 recipes,
+                ToolSettingsView.empty(),
+                SkillSettingsView.empty(),
                 HistorySettingsView.disconnected(),
                 new SettingsDiagnosticsSnapshot(List.of(), Optional.empty()),
                 operation,
@@ -66,6 +74,8 @@ public record ClientSettingsSnapshot(
                 models,
                 CapabilitySettingsView.defaults(),
                 RecipeSettingsView.defaults(),
+                ToolSettingsView.empty(),
+                SkillSettingsView.empty(),
                 HistorySettingsView.disconnected(),
                 new SettingsDiagnosticsSnapshot(List.of(), Optional.empty()),
                 operation,

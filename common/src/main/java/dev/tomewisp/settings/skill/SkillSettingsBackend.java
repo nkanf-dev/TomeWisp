@@ -7,6 +7,7 @@ import dev.tomewisp.skill.SkillParser;
 import dev.tomewisp.skill.SkillRepository;
 import dev.tomewisp.skill.SkillSettingsStore;
 import dev.tomewisp.skill.SkillSource;
+import dev.tomewisp.settings.ClientSettingsService;
 import dev.tomewisp.tool.ToolResult;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -18,7 +19,7 @@ import java.util.Objects;
 import java.util.Set;
 
 /** Player-owned Skill document editing outside the Agent tool surface. */
-public final class SkillSettingsBackend {
+public final class SkillSettingsBackend implements ClientSettingsService.SkillActions {
     private final SkillRepository repository;
     private final SkillParser parser;
     private final List<SkillSource> bundledSources;
@@ -73,6 +74,7 @@ public final class SkillSettingsBackend {
         return current;
     }
 
+    @Override
     public synchronized ToolResult<SkillSettingsView> reloadSkills() {
         try {
             reloadInternal();
@@ -83,6 +85,7 @@ public final class SkillSettingsBackend {
     }
 
     /** Saves a local override; a bundled selection is copied before its entry is replaced. */
+    @Override
     public synchronized ToolResult<SkillSettingsView> saveOverride(String name, String markdown) {
         SkillSettingsView.Skill selected = current.find(name).orElse(null);
         if (selected == null) {
@@ -148,6 +151,7 @@ public final class SkillSettingsBackend {
         }
     }
 
+    @Override
     public synchronized ToolResult<SkillSettingsView> deleteOverride(String name) {
         try {
             if (!store.hasOverride(name)) {

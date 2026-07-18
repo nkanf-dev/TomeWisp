@@ -63,6 +63,40 @@ public final class CapabilitySettingsBackend implements ClientSettingsService.Ca
         return new ToolResult.Success<>(view(candidate));
     }
 
+    /**
+     * Publishes a policy reconstructed from Tool-family files without writing the legacy generic
+     * capability document. Tool settings remain the durable source of truth.
+     */
+    public ToolResult<CapabilitySettingsView> publishCapabilities(CapabilityPolicy candidate) {
+        CapabilityPolicy normalized = toolOwnedPolicy(candidate);
+        ToolResult<ClientCapabilitySnapshot> resolved = resolve(normalized);
+        if (resolved instanceof ToolResult.Failure<ClientCapabilitySnapshot> failure) {
+            return new ToolResult.Failure<>(failure.code(), failure.message());
+        }
+        ClientCapabilitySnapshot prepared =
+                ((ToolResult.Success<ClientCapabilitySnapshot>) resolved).value();
+        publish.accept(prepared);
+        current = prepared;
+        return new ToolResult.Success<>(view(normalized));
+    }
+
+    private CapabilityPolicy toolOwnedPolicy(CapabilityPolicy candidate) {
+        Set<String> knownSkills = product.skills().metadata().stream()
+                .map(metadata -> metadata.name())
+                .collect(java.util.stream.Collectors.toSet());
+        Set<String> disabledSkills = new TreeSet<>(candidate.disabledSkills());
+        disabledSkills.removeAll(knownSkills);
+        product.skills().metadata().stream()
+                .filter(metadata -> metadata.allowedTools().stream()
+                        .anyMatch(candidate.disabledTools()::contains))
+                .map(metadata -> metadata.name())
+                .forEach(disabledSkills::add);
+        return new CapabilityPolicy(
+                CapabilityPolicy.SCHEMA_VERSION,
+                candidate.disabledTools(),
+                disabledSkills);
+    }
+
     @Override
     public ToolResult<CapabilitySettingsView> reloadCapabilities() {
         ToolResult<CapabilityPolicy> loaded = store.load();

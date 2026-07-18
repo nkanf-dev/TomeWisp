@@ -21,6 +21,11 @@ import dev.tomewisp.settings.capability.CapabilitySettingsView;
 import dev.tomewisp.settings.capability.RecipeSettingsView;
 import dev.tomewisp.settings.diagnostics.SettingsDiagnosticsAggregator;
 import dev.tomewisp.settings.history.HistorySettingsView;
+import dev.tomewisp.settings.skill.SkillSettingsView;
+import dev.tomewisp.settings.tool.ToolSettingsBackend;
+import dev.tomewisp.settings.tool.ToolSettingsView;
+import dev.tomewisp.tool.config.ToolFamilyConfig;
+import dev.tomewisp.tool.config.ToolFamilyId;
 import dev.tomewisp.recipe.config.RecipeClientConfig;
 import dev.tomewisp.tool.ToolResult;
 import java.util.Collections;
@@ -100,6 +105,20 @@ public final class ClientSettingsService implements AutoCloseable {
         ToolResult<RecipeSettingsView> saveRecipes(RecipeClientConfig candidate);
 
         ToolResult<RecipeSettingsView> reloadRecipes();
+    }
+
+    public interface SkillActions {
+        ToolResult<SkillSettingsView> saveOverride(String name, String markdown);
+
+        ToolResult<SkillSettingsView> deleteOverride(String name);
+
+        ToolResult<SkillSettingsView> reloadSkills();
+    }
+
+    public interface ToolActions {
+        ToolResult<ToolSettingsBackend.State> save(ToolFamilyConfig candidate);
+
+        ToolResult<ToolSettingsBackend.State> reload(ToolFamilyId family);
     }
 
     public interface DisplayActions {
@@ -232,6 +251,8 @@ public final class ClientSettingsService implements AutoCloseable {
     private final MetadataActions metadataActions;
     private final CapabilityActions capabilityActions;
     private final RecipeActions recipeActions;
+    private final SkillActions skillActions;
+    private final ToolActions toolActions;
     private final HistoryActions historyActions;
     private final ClientEventDispatcher dispatcher;
     private final Executor worker;
@@ -244,6 +265,8 @@ public final class ClientSettingsService implements AutoCloseable {
     private ModelState modelState;
     private CapabilitySettingsView capabilityState;
     private RecipeSettingsView recipeState;
+    private SkillSettingsView skillState;
+    private ToolSettingsView toolState;
     private HistoryRuntimeState historyState;
     private long modelGeneration;
     private long metadataGeneration;
@@ -348,6 +371,46 @@ public final class ClientSettingsService implements AutoCloseable {
             ClientEventDispatcher dispatcher,
             Executor worker,
             SettingsNotice initialNotice) {
+        this(
+                display,
+                displayActions,
+                initialModels,
+                presentEnvironmentNames,
+                models,
+                metadataActions,
+                initialCapabilities,
+                capabilityActions,
+                initialRecipes,
+                recipeActions,
+                ToolSettingsView.empty(),
+                defaultToolActions(),
+                SkillSettingsView.empty(),
+                defaultSkillActions(),
+                historyActions,
+                dispatcher,
+                worker,
+                initialNotice);
+    }
+
+    public ClientSettingsService(
+            GuideDisplayConfig display,
+            DisplayActions displayActions,
+            ModelState initialModels,
+            Set<String> presentEnvironmentNames,
+            ModelActions models,
+            MetadataActions metadataActions,
+            CapabilitySettingsView initialCapabilities,
+            CapabilityActions capabilityActions,
+            RecipeSettingsView initialRecipes,
+            RecipeActions recipeActions,
+            ToolSettingsView initialTools,
+            ToolActions toolActions,
+            SkillSettingsView initialSkills,
+            SkillActions skillActions,
+            HistoryActions historyActions,
+            ClientEventDispatcher dispatcher,
+            Executor worker,
+            SettingsNotice initialNotice) {
         this.display = Objects.requireNonNull(display, "display");
         this.displayActions = Objects.requireNonNull(displayActions, "displayActions");
         this.modelState = Objects.requireNonNull(initialModels, "initialModels");
@@ -359,6 +422,10 @@ public final class ClientSettingsService implements AutoCloseable {
         this.capabilityActions = Objects.requireNonNull(capabilityActions, "capabilityActions");
         this.recipeState = Objects.requireNonNull(initialRecipes, "initialRecipes");
         this.recipeActions = Objects.requireNonNull(recipeActions, "recipeActions");
+        this.toolState = Objects.requireNonNull(initialTools, "initialTools");
+        this.toolActions = Objects.requireNonNull(toolActions, "toolActions");
+        this.skillState = Objects.requireNonNull(initialSkills, "initialSkills");
+        this.skillActions = Objects.requireNonNull(skillActions, "skillActions");
         this.historyActions = Objects.requireNonNull(historyActions, "historyActions");
         this.historyState = safeHistoryState(historyActions);
         this.dispatcher = Objects.requireNonNull(dispatcher, "dispatcher");
@@ -518,6 +585,109 @@ public final class ClientSettingsService implements AutoCloseable {
                     "Unable to reload recipe settings");
             dispatcher.execute(() -> finishRecipes(
                     reservation.id(), loaded, result, "recipes_reloaded"));
+        });
+        return result;
+    }
+
+    public CompletableFuture<ToolResult<Boolean>> saveToolSettings(ToolFamilyConfig candidate) {
+        Objects.requireNonNull(candidate, "candidate");
+        Reservation reservation = reserve(SettingsOperation.domain(
+                SettingsOperation.Kind.SAVING_TOOL));
+        if (!reservation.accepted()) {
+            return CompletableFuture.completedFuture(failed(reservation.failureCode()));
+        }
+        CompletableFuture<ToolResult<Boolean>> result = new CompletableFuture<>();
+        worker.execute(() -> {
+            ToolResult<ToolSettingsBackend.State> saved = safely(
+                    () -> toolActions.save(candidate),
+                    "tool_settings_save_failed",
+                    "Unable to save Tool settings");
+            dispatcher.execute(() -> finishTools(
+                    reservation.id(), saved, result, "tool_settings_saved"));
+        });
+        return result;
+    }
+
+    public CompletableFuture<ToolResult<Boolean>> reloadToolSettings(
+            ToolFamilyId family, boolean discardDirtyConfirmed) {
+        Objects.requireNonNull(family, "family");
+        if (!discardDirtyConfirmed) {
+            return discardConfirmation();
+        }
+        Reservation reservation = reserve(SettingsOperation.domain(
+                SettingsOperation.Kind.RELOADING_TOOL));
+        if (!reservation.accepted()) {
+            return CompletableFuture.completedFuture(failed(reservation.failureCode()));
+        }
+        CompletableFuture<ToolResult<Boolean>> result = new CompletableFuture<>();
+        worker.execute(() -> {
+            ToolResult<ToolSettingsBackend.State> loaded = safely(
+                    () -> toolActions.reload(family),
+                    "tool_settings_reload_failed",
+                    "Unable to reload Tool settings");
+            dispatcher.execute(() -> finishTools(
+                    reservation.id(), loaded, result, "tool_settings_reloaded"));
+        });
+        return result;
+    }
+
+    public CompletableFuture<ToolResult<Boolean>> saveSkillOverride(
+            String name, String markdown) {
+        Objects.requireNonNull(name, "name");
+        Objects.requireNonNull(markdown, "markdown");
+        Reservation reservation = reserve(SettingsOperation.domain(
+                SettingsOperation.Kind.SAVING_SKILL));
+        if (!reservation.accepted()) {
+            return CompletableFuture.completedFuture(failed(reservation.failureCode()));
+        }
+        CompletableFuture<ToolResult<Boolean>> result = new CompletableFuture<>();
+        worker.execute(() -> {
+            ToolResult<SkillSettingsView> saved = safely(
+                    () -> skillActions.saveOverride(name, markdown),
+                    "skill_override_save_failed",
+                    "Unable to save the Skill override");
+            dispatcher.execute(() -> finishSkills(
+                    reservation.id(), saved, result, "skill_override_saved"));
+        });
+        return result;
+    }
+
+    public CompletableFuture<ToolResult<Boolean>> deleteSkillOverride(String name) {
+        Objects.requireNonNull(name, "name");
+        Reservation reservation = reserve(SettingsOperation.domain(
+                SettingsOperation.Kind.DELETING_SKILL_OVERRIDE));
+        if (!reservation.accepted()) {
+            return CompletableFuture.completedFuture(failed(reservation.failureCode()));
+        }
+        CompletableFuture<ToolResult<Boolean>> result = new CompletableFuture<>();
+        worker.execute(() -> {
+            ToolResult<SkillSettingsView> deleted = safely(
+                    () -> skillActions.deleteOverride(name),
+                    "skill_override_delete_failed",
+                    "Unable to delete the Skill override");
+            dispatcher.execute(() -> finishSkills(
+                    reservation.id(), deleted, result, "skill_override_deleted"));
+        });
+        return result;
+    }
+
+    public CompletableFuture<ToolResult<Boolean>> reloadSkills(boolean discardDirtyConfirmed) {
+        if (!discardDirtyConfirmed) {
+            return discardConfirmation();
+        }
+        Reservation reservation = reserve(SettingsOperation.domain(
+                SettingsOperation.Kind.RELOADING_SKILLS));
+        if (!reservation.accepted()) {
+            return CompletableFuture.completedFuture(failed(reservation.failureCode()));
+        }
+        CompletableFuture<ToolResult<Boolean>> result = new CompletableFuture<>();
+        worker.execute(() -> {
+            ToolResult<SkillSettingsView> loaded = safely(
+                    skillActions::reloadSkills,
+                    "skill_reload_failed",
+                    "Unable to reload Skills");
+            dispatcher.execute(() -> finishSkills(
+                    reservation.id(), loaded, result, "skills_reloaded"));
         });
         return result;
     }
@@ -900,6 +1070,72 @@ public final class ClientSettingsService implements AutoCloseable {
         outward.complete(result);
     }
 
+    private void finishTools(
+            long operationId,
+            ToolResult<ToolSettingsBackend.State> completed,
+            CompletableFuture<ToolResult<Boolean>> outward,
+            String successCode) {
+        ToolResult<Boolean> result;
+        synchronized (lock) {
+            if (!isCurrentLocked(operationId)) {
+                return;
+            }
+            operation = SettingsOperation.idle();
+            if (completed instanceof ToolResult.Success<ToolSettingsBackend.State> success) {
+                ToolSettingsBackend.State state = success.value();
+                toolState = state.view();
+                capabilityState = new CapabilitySettingsView(
+                        state.capabilityPolicy(),
+                        capabilityState.catalog(),
+                        capabilityState.unknownDisabledTools(),
+                        capabilityState.unknownDisabledSkills());
+                notice = SettingsNotice.success(
+                        successCode,
+                        successCode.equals("tool_settings_reloaded")
+                                ? "Tool settings reloaded"
+                                : "Tool settings saved");
+                result = new ToolResult.Success<>(Boolean.TRUE);
+            } else {
+                ToolResult.Failure<ToolSettingsBackend.State> failure =
+                        (ToolResult.Failure<ToolSettingsBackend.State>) completed;
+                notice = SettingsNotice.failure(failure.code(), failure.message());
+                result = new ToolResult.Failure<>(failure.code(), failure.message());
+            }
+            publishLocked();
+        }
+        outward.complete(result);
+    }
+
+    private void finishSkills(
+            long operationId,
+            ToolResult<SkillSettingsView> completed,
+            CompletableFuture<ToolResult<Boolean>> outward,
+            String successCode) {
+        ToolResult<Boolean> result;
+        synchronized (lock) {
+            if (!isCurrentLocked(operationId)) {
+                return;
+            }
+            operation = SettingsOperation.idle();
+            if (completed instanceof ToolResult.Success<SkillSettingsView> success) {
+                skillState = success.value();
+                notice = SettingsNotice.success(successCode, switch (successCode) {
+                    case "skills_reloaded" -> "Skills reloaded";
+                    case "skill_override_deleted" -> "Skill override deleted";
+                    default -> "Skill override saved";
+                });
+                result = new ToolResult.Success<>(Boolean.TRUE);
+            } else {
+                ToolResult.Failure<SkillSettingsView> failure =
+                        (ToolResult.Failure<SkillSettingsView>) completed;
+                notice = SettingsNotice.failure(failure.code(), failure.message());
+                result = new ToolResult.Failure<>(failure.code(), failure.message());
+            }
+            publishLocked();
+        }
+        outward.complete(result);
+    }
+
     private void finishDisplay(
             long operationId,
             ToolResult<GuideDisplayConfig> completed,
@@ -1127,6 +1363,8 @@ public final class ClientSettingsService implements AutoCloseable {
                 modelView,
                 capabilityState,
                 recipeState,
+                toolState,
+                skillState,
                 historyView,
                 diagnostics.snapshot(
                         display.debugMode(),
@@ -1314,6 +1552,44 @@ public final class ClientSettingsService implements AutoCloseable {
             public ToolResult<RecipeSettingsView> reloadRecipes() {
                 return new ToolResult.Failure<>(
                         "settings_unavailable", "Recipe settings are unavailable");
+            }
+        };
+    }
+
+    private static SkillActions defaultSkillActions() {
+        return new SkillActions() {
+            @Override
+            public ToolResult<SkillSettingsView> saveOverride(String name, String markdown) {
+                return new ToolResult.Failure<>(
+                        "settings_unavailable", "Skill settings are unavailable");
+            }
+
+            @Override
+            public ToolResult<SkillSettingsView> deleteOverride(String name) {
+                return new ToolResult.Failure<>(
+                        "settings_unavailable", "Skill settings are unavailable");
+            }
+
+            @Override
+            public ToolResult<SkillSettingsView> reloadSkills() {
+                return new ToolResult.Failure<>(
+                        "settings_unavailable", "Skill settings are unavailable");
+            }
+        };
+    }
+
+    private static ToolActions defaultToolActions() {
+        return new ToolActions() {
+            @Override
+            public ToolResult<ToolSettingsBackend.State> save(ToolFamilyConfig candidate) {
+                return new ToolResult.Failure<>(
+                        "settings_unavailable", "Tool settings are unavailable");
+            }
+
+            @Override
+            public ToolResult<ToolSettingsBackend.State> reload(ToolFamilyId family) {
+                return new ToolResult.Failure<>(
+                        "settings_unavailable", "Tool settings are unavailable");
             }
         };
     }

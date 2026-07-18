@@ -56,10 +56,11 @@ public final class ToolSettingsBackend {
     }
 
     public State currentState() {
-        CapabilitySettingsView current = capabilities.get();
-        return new State(
-                ToolSettingsView.project(currentConfigs(), registry, current, recipes.get()),
-                current.policy());
+        CapabilityPolicy candidate = capabilities.get().policy();
+        for (ToolFamilyId id : ToolFamilyId.values()) {
+            candidate = capabilityPolicyCandidate(candidate, id, current(id).enabled());
+        }
+        return stateWithPolicy(candidate);
     }
 
     public ToolFamilyConfig current(ToolFamilyId id) {

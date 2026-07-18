@@ -19,6 +19,9 @@ import dev.tomewisp.skill.SkillParser;
 import dev.tomewisp.skill.SkillRepository;
 import dev.tomewisp.tool.ToolRegistry;
 import dev.tomewisp.tool.ToolResult;
+import dev.tomewisp.tool.config.ToolFamilyConfig;
+import dev.tomewisp.tool.config.ToolFamilyId;
+import dev.tomewisp.tool.config.ToolSourceDefinition;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Clock;
@@ -168,6 +171,63 @@ final class ClientSettingsRuntimeTest {
         restarted.closeAsync().join();
     }
 
+    @Test
+    void toolOwnedLocalDocumentsPersistAndReloadIntoKnowledge(@TempDir Path directory)
+            throws Exception {
+        TomeWispRuntime product = runtime();
+        ClientSettingsRuntime settings = success(ClientSettingsRuntime.create(
+                product,
+                directory.resolve("models.json"),
+                directory.resolve("model.json"),
+                directory.resolve("model-metadata.json"),
+                Map.of(),
+                Runnable::run,
+                null,
+                Clock.systemUTC(),
+                GuideDisplayConfig.defaults()));
+        var guides = settings.settings().snapshot().tools()
+                .find(ToolFamilyId.GUIDES)
+                .orElseThrow();
+        com.google.gson.JsonObject config = new com.google.gson.JsonObject();
+        config.addProperty("directory", "notes");
+        config.addProperty("locale", "en_us");
+        java.util.ArrayList<ToolSourceDefinition> sources = new java.util.ArrayList<>();
+        guides.sources().forEach(source -> sources.add(new ToolSourceDefinition(
+                source.id(),
+                source.kind(),
+                source.displayName(),
+                source.enabled(),
+                source.config(),
+                source.lifecycle())));
+        sources.add(new ToolSourceDefinition(
+                "user:notes",
+                "local_markdown",
+                "Notes",
+                true,
+                config,
+                ToolSourceDefinition.Lifecycle.USER));
+
+        ToolResult<Boolean> savedTool = settings.settings()
+                .saveToolSettings(new ToolFamilyConfig(
+                        ToolFamilyConfig.SCHEMA_VERSION,
+                        ToolFamilyId.GUIDES,
+                        true,
+                        sources))
+                .join();
+        assertTrue(savedTool instanceof ToolResult.Success<Boolean>, savedTool.toString());
+        Path document = directory.resolve("knowledge/notes/iron.md");
+        Files.writeString(document, "# Iron\nUse a furnace.\n");
+        assertInstanceOf(ToolResult.Success.class, settings.settings()
+                .reloadToolSettings(ToolFamilyId.GUIDES, true)
+                .join());
+
+        assertTrue(Files.exists(directory.resolve("tools/guides.json")));
+        assertEquals("Iron", product.knowledge().snapshot().documents().getFirst().title());
+        assertEquals(3, settings.settings().snapshot().tools()
+                .find(ToolFamilyId.GUIDES).orElseThrow().sources().size());
+        settings.closeAsync().join();
+    }
+
     @SuppressWarnings("unchecked")
     private static ClientSettingsRuntime success(ToolResult<ClientSettingsRuntime> result) {
         return ((ToolResult.Success<ClientSettingsRuntime>)
@@ -200,6 +260,11 @@ final class ClientSettingsRuntimeTest {
         @Override
         public boolean isDevelopmentEnvironment() {
             return true;
+        }
+
+        @Override
+        public String gameVersion() {
+            return "test";
         }
     }
 }

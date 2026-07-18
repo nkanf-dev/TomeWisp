@@ -35,7 +35,7 @@ public final class ModelProfilesConfigWriter {
         encoded.addProperty("protocol", profile.protocol().name().toLowerCase(Locale.ROOT));
         encoded.addProperty("baseUrl", profile.baseUri().toString());
         encoded.addProperty("model", profile.model());
-        encoded.addProperty("apiKeyEnv", profile.apiKeyEnv());
+        encoded.addProperty("credentialRef", profile.credentialRef());
         if (profile.contextWindowTokens() != null) {
             encoded.addProperty("contextWindowTokens", profile.contextWindowTokens());
         }

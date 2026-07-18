@@ -28,7 +28,7 @@ final class ModelProfilesConfigWriterTest {
                 root.keySet().stream().toList());
         assertEquals(List.of(
                         "id", "displayName", "enabled", "protocol", "baseUrl", "model",
-                        "apiKeyEnv", "contextWindowTokens", "maxOutputTokens",
+                        "credentialRef", "contextWindowTokens", "maxOutputTokens",
                         "connectTimeoutSeconds", "requestTimeoutSeconds", "metadata"),
                 root.getAsJsonArray("profiles").get(0).getAsJsonObject()
                         .keySet().stream().toList());
@@ -53,7 +53,7 @@ final class ModelProfilesConfigWriterTest {
                 source.protocol(),
                 source.baseUri(),
                 source.model(),
-                source.apiKeyEnv(),
+                source.credentialRef(),
                 null,
                 source.maxOutputTokens(),
                 source.connectTimeout(),
@@ -68,7 +68,7 @@ final class ModelProfilesConfigWriterTest {
         assertFalse(profile.has("metadata"));
         assertEquals(List.of(
                         "id", "displayName", "enabled", "protocol", "baseUrl", "model",
-                        "apiKeyEnv", "maxOutputTokens", "connectTimeoutSeconds",
+                        "credentialRef", "maxOutputTokens", "connectTimeoutSeconds",
                         "requestTimeoutSeconds"),
                 profile.keySet().stream().toList());
     }

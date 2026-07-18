@@ -14,6 +14,9 @@ import dev.tomewisp.model.config.ModelProfilesConfig;
 import dev.tomewisp.model.config.ModelProfilesConfigLoader;
 import dev.tomewisp.model.config.ModelProtocol;
 import dev.tomewisp.model.config.ResolvedModelProfile;
+import dev.tomewisp.model.config.CredentialReference;
+import dev.tomewisp.model.config.CredentialResolver;
+import dev.tomewisp.model.config.LocalCredentialStore;
 import dev.tomewisp.model.metadata.ModelMetadataBootstrap;
 import dev.tomewisp.model.metadata.ModelMetadataCache;
 import dev.tomewisp.model.metadata.ModelMetadataUpdate;
@@ -181,8 +184,18 @@ public record ClientSettingsRuntime(
         Objects.requireNonNull(historyActions, "historyActions");
 
         Map<String, String> environmentSnapshot = Map.copyOf(environment);
+        LocalCredentialStore credentialStore = new LocalCredentialStore(
+                profilesPath.toAbsolutePath().normalize().resolveSibling("credentials.sqlite3"),
+                clock);
+        CredentialResolver credentials = CredentialResolver.composite(
+                credentialStore, environmentSnapshot);
         ToolResult<ModelProfilesConfigLoader.Load> loaded = new ModelProfilesConfigLoader()
-                .load(profilesPath, legacyPath, environmentSnapshot);
+                .load(
+                        profilesPath,
+                        legacyPath,
+                        credentials,
+                        environmentSnapshot,
+                        Map.of());
         ModelProfilesConfigLoader.Load initial;
         SettingsNotice startupNotice = null;
         if (loaded instanceof ToolResult.Success<ModelProfilesConfigLoader.Load> success) {
@@ -228,7 +241,9 @@ public record ClientSettingsRuntime(
                     legacyPath,
                     () -> environmentSnapshot,
                     registry,
-                    probe);
+                    probe,
+                    credentialStore);
+            backend.collectUnreferencedCredentials(initial.config());
             AtomicReference<ClientSettingsService> serviceReference = new AtomicReference<>();
             AtomicReference<ModelMetadataUpdate> pendingUpdate = new AtomicReference<>();
             ModelMetadataBootstrap metadata = new ModelMetadataBootstrap(
@@ -236,6 +251,7 @@ public record ClientSettingsRuntime(
                     profilesPath,
                     legacyPath,
                     environmentSnapshot,
+                    credentials,
                     update -> {
                         ClientSettingsService service = serviceReference.get();
                         if (service == null) {
@@ -254,7 +270,8 @@ public record ClientSettingsRuntime(
 
                         @Override
                         public CompletableFuture<Void> closeAsync() {
-                            return metadata.closeAsync();
+                            return metadata.closeAsync().whenComplete(
+                                    (ignored, failure) -> backend.closeCredentials());
                         }
                     };
             ClientSettingsService.ModelState initialState = new ClientSettingsService.ModelState(
@@ -285,6 +302,7 @@ public record ClientSettingsRuntime(
             metadata.start();
             return new ToolResult.Success<>(new ClientSettingsRuntime(registry, service));
         } catch (RuntimeException failure) {
+            credentialStore.close();
             return new ToolResult.Failure<>(
                     "settings_unavailable", "Native settings are unavailable");
         }
@@ -318,7 +336,7 @@ public record ClientSettingsRuntime(
                 ModelProtocol.OPENAI_CHAT,
                 URI.create("https://example.invalid/v1"),
                 "configure-model-id",
-                "TOMEWISP_API_KEY",
+                CredentialReference.environment("TOMEWISP_API_KEY").encoded(),
                 256_000,
                 4_096,
                 Duration.ofSeconds(30),

@@ -25,7 +25,11 @@ import java.util.Set;
 public final class ModelProfilesConfigLoader {
     private static final Set<String> ROOT_FIELDS =
             Set.of("schemaVersion", "defaultProfileId", "profiles");
-    private static final Set<String> REQUIRED_PROFILE_FIELDS = Set.of(
+    private static final Set<String> REQUIRED_PROFILE_FIELDS_V2 = Set.of(
+            "id", "displayName", "enabled", "protocol", "baseUrl", "model",
+            "credentialRef", "maxOutputTokens", "connectTimeoutSeconds",
+            "requestTimeoutSeconds");
+    private static final Set<String> REQUIRED_PROFILE_FIELDS_V1 = Set.of(
             "id", "displayName", "enabled", "protocol", "baseUrl", "model",
             "apiKeyEnv", "maxOutputTokens", "connectTimeoutSeconds",
             "requestTimeoutSeconds");
@@ -59,11 +63,26 @@ public final class ModelProfilesConfigLoader {
             Path legacyPath,
             Map<String, String> environment,
             Map<ModelMetadata.Key, ModelMetadata> metadata) {
+        return load(
+                profilesPath,
+                legacyPath,
+                CredentialResolver.environment(environment),
+                environment,
+                metadata);
+    }
+
+    public ToolResult<Load> load(
+            Path profilesPath,
+            Path legacyPath,
+            CredentialResolver credentials,
+            Map<String, String> legacyEnvironment,
+            Map<ModelMetadata.Key, ModelMetadata> metadata) {
         Objects.requireNonNull(profilesPath, "profilesPath");
         Objects.requireNonNull(legacyPath, "legacyPath");
+        Objects.requireNonNull(credentials, "credentials");
         if (Files.exists(profilesPath)) {
             try (Reader reader = Files.newBufferedReader(profilesPath)) {
-                return load(reader, environment, metadata);
+                return load(reader, credentials, metadata);
             } catch (IOException failure) {
                 return invalid("Unable to read model profiles configuration");
             }
@@ -72,7 +91,8 @@ public final class ModelProfilesConfigLoader {
             return new ToolResult.Failure<>(
                     "model_not_configured", "No model profiles or legacy model configuration exists");
         }
-        ToolResult<ModelConfig> legacy = new ModelConfigLoader().load(legacyPath, environment);
+        ToolResult<ModelConfig> legacy = new ModelConfigLoader().load(
+                legacyPath, legacyEnvironment);
         if (legacy instanceof ToolResult.Failure<ModelConfig> failure) {
             return new ToolResult.Failure<>(failure.code(), failure.message());
         }
@@ -88,24 +108,35 @@ public final class ModelProfilesConfigLoader {
             Reader reader,
             Map<String, String> environment,
             Map<ModelMetadata.Key, ModelMetadata> metadata) {
+        return load(reader, CredentialResolver.environment(environment), metadata);
+    }
+
+    public ToolResult<Load> load(
+            Reader reader,
+            CredentialResolver credentials,
+            Map<ModelMetadata.Key, ModelMetadata> metadata) {
         Objects.requireNonNull(reader, "reader");
-        Map<String, String> environmentCopy = Map.copyOf(environment);
+        Objects.requireNonNull(credentials, "credentials");
         Map<ModelMetadata.Key, ModelMetadata> metadataCopy = Map.copyOf(metadata);
         try {
             JsonElement parsed = JsonParser.parseReader(reader);
             JsonObject root = object(parsed, "Model profiles configuration");
             exactFields(root, ROOT_FIELDS, Set.of(), "model profiles configuration");
             int schemaVersion = integer(root, "schemaVersion");
+            if (schemaVersion != 1 && schemaVersion != ModelProfilesConfig.SCHEMA_VERSION) {
+                throw new IllegalArgumentException(
+                        "Unsupported model profiles schema version " + schemaVersion);
+            }
             String defaultProfileId = string(root, "defaultProfileId");
             JsonArray encodedProfiles = array(root, "profiles");
             List<ModelProfileDefinition> definitions = new ArrayList<>();
             for (JsonElement encoded : encodedProfiles) {
-                definitions.add(profile(object(encoded, "model profile")));
+                definitions.add(profile(object(encoded, "model profile"), schemaVersion));
             }
             ModelProfilesConfig config = new ModelProfilesConfig(
-                    schemaVersion, defaultProfileId, definitions);
+                    ModelProfilesConfig.SCHEMA_VERSION, defaultProfileId, definitions);
             List<ResolvedModelProfile> resolved = config.profiles().stream()
-                    .map(profile -> resolve(profile, environmentCopy, metadataCopy))
+                    .map(profile -> resolve(profile, credentials, metadataCopy))
                     .toList();
             return new ToolResult.Success<>(new Load(config, resolved, false));
         } catch (RuntimeException failure) {
@@ -113,8 +144,12 @@ public final class ModelProfilesConfigLoader {
         }
     }
 
-    private static ModelProfileDefinition profile(JsonObject object) {
-        exactFields(object, REQUIRED_PROFILE_FIELDS, OPTIONAL_PROFILE_FIELDS, "model profile");
+    private static ModelProfileDefinition profile(JsonObject object, int schemaVersion) {
+        exactFields(
+                object,
+                schemaVersion == 1 ? REQUIRED_PROFILE_FIELDS_V1 : REQUIRED_PROFILE_FIELDS_V2,
+                OPTIONAL_PROFILE_FIELDS,
+                "model profile");
         ModelProfileDefinition.MetadataProvenance metadata = null;
         if (object.has("metadata") && !object.get("metadata").isJsonNull()) {
             JsonObject encoded = object(object.get("metadata"), "profile metadata");
@@ -131,7 +166,9 @@ public final class ModelProfilesConfigLoader {
                 ModelProtocol.valueOf(string(object, "protocol").toUpperCase(Locale.ROOT)),
                 java.net.URI.create(string(object, "baseUrl")),
                 string(object, "model"),
-                string(object, "apiKeyEnv"),
+                schemaVersion == 1
+                        ? CredentialReference.environment(string(object, "apiKeyEnv")).encoded()
+                        : CredentialReference.parse(string(object, "credentialRef")).encoded(),
                 optionalInteger(object, "contextWindowTokens"),
                 integer(object, "maxOutputTokens"),
                 Duration.ofSeconds(integer(object, "connectTimeoutSeconds")),
@@ -141,7 +178,7 @@ public final class ModelProfilesConfigLoader {
 
     private static ResolvedModelProfile resolve(
             ModelProfileDefinition definition,
-            Map<String, String> environment,
+            CredentialResolver credentials,
             Map<ModelMetadata.Key, ModelMetadata> metadata) {
         if (!definition.enabled()) {
             return failed(definition, "model_disabled", "This model profile is disabled");
@@ -156,13 +193,17 @@ public final class ModelProfilesConfigLoader {
                     "invalid_model_config",
                     "contextWindowTokens is required unless trusted model metadata resolves it");
         }
-        String secret = environment.get(definition.apiKeyEnv());
-        if (secret == null || secret.isBlank()) {
-            return failed(
-                    definition,
-                    "model_not_configured",
-                    "The configured API key environment variable is not present");
+        ToolResult<SecretValue> resolvedCredential;
+        try {
+            resolvedCredential = credentials.resolve(
+                    CredentialReference.parse(definition.credentialRef()));
+        } catch (RuntimeException failure) {
+            return failed(definition, "credential_store_unavailable", "Stored credentials are unavailable");
         }
+        if (resolvedCredential instanceof ToolResult.Failure<SecretValue> failure) {
+            return failed(definition, failure.code(), failure.message());
+        }
+        SecretValue secret = ((ToolResult.Success<SecretValue>) resolvedCredential).value();
         try {
             return new ResolvedModelProfile(
                     definition,
@@ -171,7 +212,7 @@ public final class ModelProfilesConfigLoader {
                             definition.protocol(),
                             definition.baseUri(),
                             definition.model(),
-                            SecretValue.of(secret),
+                            secret,
                             contextWindow,
                             definition.maxOutputTokens(),
                             definition.connectTimeout(),
@@ -203,7 +244,7 @@ public final class ModelProfilesConfigLoader {
                 config.protocol(),
                 config.baseUri(),
                 config.model(),
-                "TOMEWISP_API_KEY",
+                CredentialReference.environment("TOMEWISP_API_KEY").encoded(),
                 config.contextWindowTokens(),
                 config.maxOutputTokens(),
                 config.connectTimeout(),
@@ -213,7 +254,8 @@ public final class ModelProfilesConfigLoader {
                 ? new ResolvedModelProfile(definition, config, null)
                 : failed(definition, "model_disabled", "This model profile is disabled");
         return new Load(
-                new ModelProfilesConfig(1, "default", List.of(definition)),
+                new ModelProfilesConfig(
+                        ModelProfilesConfig.SCHEMA_VERSION, "default", List.of(definition)),
                 List.of(resolved),
                 true);
     }

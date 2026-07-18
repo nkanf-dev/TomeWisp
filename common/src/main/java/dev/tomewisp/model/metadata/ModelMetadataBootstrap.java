@@ -4,6 +4,8 @@ import dev.tomewisp.guide.GuideFailure;
 import dev.tomewisp.model.CancellationSignal;
 import dev.tomewisp.model.config.ModelProfileDefinition;
 import dev.tomewisp.model.config.ModelProfilesConfigLoader;
+import dev.tomewisp.model.config.CredentialReference;
+import dev.tomewisp.model.config.CredentialResolver;
 import dev.tomewisp.model.config.SecretValue;
 import dev.tomewisp.tool.ToolResult;
 import java.nio.file.Path;
@@ -24,6 +26,7 @@ public final class ModelMetadataBootstrap {
     private final Path profilesPath;
     private final Path legacyPath;
     private final Map<String, String> environment;
+    private final CredentialResolver credentials;
     private final Consumer<ModelMetadataUpdate> updates;
     private final Function<ModelProfileDefinition, ModelMetadataResolver> resolverFactory;
     private final ModelProfilesConfigLoader loader = new ModelProfilesConfigLoader();
@@ -44,11 +47,33 @@ public final class ModelMetadataBootstrap {
                 profilesPath,
                 legacyPath,
                 environment,
+                CredentialResolver.environment(environment),
                 updates,
                 profile -> new OpenRouterMetadataResolver(
                         clock,
                         profile.connectTimeout(),
-                        secret(environment.get(profile.apiKeyEnv()))));
+                        secret(environment.get(environmentName(profile.credentialRef())))));
+    }
+
+    public ModelMetadataBootstrap(
+            ModelMetadataCache cache,
+            Path profilesPath,
+            Path legacyPath,
+            Map<String, String> environment,
+            CredentialResolver credentials,
+            Consumer<ModelMetadataUpdate> updates,
+            Clock clock) {
+        this(
+                cache,
+                profilesPath,
+                legacyPath,
+                environment,
+                credentials,
+                updates,
+                profile -> new OpenRouterMetadataResolver(
+                        clock,
+                        profile.connectTimeout(),
+                        resolveOptional(credentials, profile.credentialRef())));
     }
 
     ModelMetadataBootstrap(
@@ -58,10 +83,29 @@ public final class ModelMetadataBootstrap {
             Map<String, String> environment,
             Consumer<ModelMetadataUpdate> updates,
             Function<ModelProfileDefinition, ModelMetadataResolver> resolverFactory) {
+        this(
+                cache,
+                profilesPath,
+                legacyPath,
+                environment,
+                CredentialResolver.environment(environment),
+                updates,
+                resolverFactory);
+    }
+
+    private ModelMetadataBootstrap(
+            ModelMetadataCache cache,
+            Path profilesPath,
+            Path legacyPath,
+            Map<String, String> environment,
+            CredentialResolver credentials,
+            Consumer<ModelMetadataUpdate> updates,
+            Function<ModelProfileDefinition, ModelMetadataResolver> resolverFactory) {
         this.cache = Objects.requireNonNull(cache, "cache");
         this.profilesPath = Objects.requireNonNull(profilesPath, "profilesPath");
         this.legacyPath = Objects.requireNonNull(legacyPath, "legacyPath");
         this.environment = Map.copyOf(environment);
+        this.credentials = Objects.requireNonNull(credentials, "credentials");
         this.updates = Objects.requireNonNull(updates, "updates");
         this.resolverFactory = Objects.requireNonNull(resolverFactory, "resolverFactory");
     }
@@ -169,7 +213,7 @@ public final class ModelMetadataBootstrap {
     private ModelProfilesConfigLoader.Load load(
             Map<ModelMetadata.Key, ModelMetadata> metadata) {
         ToolResult<ModelProfilesConfigLoader.Load> result = loader.load(
-                profilesPath, legacyPath, environment, metadata);
+                profilesPath, legacyPath, credentials, environment, metadata);
         if (result instanceof ToolResult.Failure<ModelProfilesConfigLoader.Load> invalid) {
             failure.set(new GuideFailure(invalid.code(), invalid.message()));
             return null;
@@ -179,5 +223,29 @@ public final class ModelMetadataBootstrap {
 
     private static SecretValue secret(String value) {
         return value == null || value.isBlank() ? null : SecretValue.of(value);
+    }
+
+    private static String environmentName(String encoded) {
+        try {
+            CredentialReference reference = CredentialReference.parse(encoded);
+            return reference.kind() == CredentialReference.Kind.ENVIRONMENT
+                    ? reference.value()
+                    : "";
+        } catch (RuntimeException failure) {
+            return "";
+        }
+    }
+
+    private static SecretValue resolveOptional(
+            CredentialResolver credentials, String encoded) {
+        try {
+            ToolResult<SecretValue> resolved = credentials.resolve(
+                    CredentialReference.parse(encoded));
+            return resolved instanceof ToolResult.Success<SecretValue> success
+                    ? success.value()
+                    : null;
+        } catch (RuntimeException failure) {
+            return null;
+        }
     }
 }

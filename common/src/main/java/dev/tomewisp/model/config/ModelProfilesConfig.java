@@ -9,7 +9,7 @@ public record ModelProfilesConfig(
         int schemaVersion,
         String defaultProfileId,
         List<ModelProfileDefinition> profiles) {
-    public static final int SCHEMA_VERSION = 1;
+    public static final int SCHEMA_VERSION = 2;
 
     public ModelProfilesConfig {
         if (schemaVersion != SCHEMA_VERSION) {

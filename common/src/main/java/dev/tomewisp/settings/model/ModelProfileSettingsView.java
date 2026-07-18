@@ -50,12 +50,25 @@ public record ModelProfileSettingsView(
             views.add(new Profile(
                     definition,
                     profile.available(),
-                    presentEnvironmentNames.contains(definition.apiKeyEnv()),
+                    credentialPresent(definition.credentialRef(), presentEnvironmentNames),
                     profile.effectiveContextWindowTokens(),
                     profile.failure()));
         }
         return new ModelProfileSettingsView(
                 config, views, metadataFailure, connectionResult);
+    }
+
+    private static boolean credentialPresent(
+            String credentialRef, Set<String> presentEnvironmentNames) {
+        dev.tomewisp.model.config.CredentialReference reference;
+        try {
+            reference = dev.tomewisp.model.config.CredentialReference.parse(credentialRef);
+        } catch (RuntimeException failure) {
+            return false;
+        }
+        return reference.kind()
+                        == dev.tomewisp.model.config.CredentialReference.Kind.LOCAL
+                || presentEnvironmentNames.contains(reference.value());
     }
 
     /** Redacted resolution retained by settings; runtime credentials never enter the snapshot owner. */

@@ -15,7 +15,7 @@ public record ModelProfileDefinition(
         ModelProtocol protocol,
         URI baseUri,
         String model,
-        String apiKeyEnv,
+        String credentialRef,
         Integer contextWindowTokens,
         int maxOutputTokens,
         Duration connectTimeout,
@@ -36,8 +36,11 @@ public record ModelProfileDefinition(
         if (model == null || model.isBlank()) {
             throw new IllegalArgumentException("model must not be blank");
         }
-        if (apiKeyEnv == null || !apiKeyEnv.matches("[A-Za-z_][A-Za-z0-9_]*")) {
-            throw new IllegalArgumentException("apiKeyEnv must be an environment variable name");
+        if (credentialRef != null
+                && credentialRef.matches("[A-Za-z_][A-Za-z0-9_]*")) {
+            credentialRef = CredentialReference.environment(credentialRef).encoded();
+        } else {
+            credentialRef = CredentialReference.parse(credentialRef).encoded();
         }
         if (maxOutputTokens <= 0) {
             throw new IllegalArgumentException("maxOutputTokens must be positive");

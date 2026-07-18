@@ -41,7 +41,7 @@ public record ResolvedModelProfile(
                 definition.protocol(),
                 definition.baseUri(),
                 definition.model(),
-                definition.apiKeyEnv(),
+                definition.credentialRef(),
                 runtimeConfig != null,
                 runtimeConfig == null
                         ? definition.contextWindowTokens()
@@ -58,7 +58,7 @@ public record ResolvedModelProfile(
             ModelProtocol protocol,
             URI baseUri,
             String model,
-            String apiKeyEnv,
+            String credentialRef,
             boolean apiKeyPresent,
             Integer contextWindowTokens,
             int maxOutputTokens,

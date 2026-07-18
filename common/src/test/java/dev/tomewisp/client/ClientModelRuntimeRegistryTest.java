@@ -241,7 +241,8 @@ final class ClientModelRuntimeRegistryTest {
                     null));
         }
         return new ModelProfilesConfigLoader.Load(
-                new ModelProfilesConfig(1, defaultId, definitions),
+                new ModelProfilesConfig(
+                        ModelProfilesConfig.SCHEMA_VERSION, defaultId, definitions),
                 resolved,
                 false);
     }

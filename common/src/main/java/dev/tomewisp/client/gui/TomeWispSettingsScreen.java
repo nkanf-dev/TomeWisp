@@ -14,6 +14,7 @@ import dev.tomewisp.client.gui.settings.SettingsSection;
 import dev.tomewisp.model.config.ModelProfileDefinition;
 import dev.tomewisp.model.config.ModelProfilesConfig;
 import dev.tomewisp.model.config.ModelProtocol;
+import dev.tomewisp.model.config.SecretValue;
 import dev.tomewisp.recipe.RecipeVisibilityPolicy;
 import dev.tomewisp.recipe.config.RecipeClientConfig;
 import dev.tomewisp.settings.ClientSettingsService;
@@ -75,7 +76,8 @@ public final class TomeWispSettingsScreen extends Screen {
     private EditBox displayName;
     private EditBox baseUrl;
     private EditBox model;
-    private EditBox apiKeyEnv;
+    private PasswordEditBox apiKey;
+    private String pendingApiKey = "";
     private EditBox contextWindow;
     private EditBox maxOutput;
     private EditBox connectTimeout;
@@ -520,8 +522,7 @@ public final class TomeWispSettingsScreen extends Screen {
         model = field(
                 inputX, y, inputWidth, "screen.tomewisp.settings.models.model_id", draft.model());
         y += 22;
-        apiKeyEnv = field(
-                inputX, y, inputWidth, "screen.tomewisp.settings.models.api_key_env", draft.apiKeyEnv());
+        apiKey = passwordField(inputX, y, inputWidth);
         y += 22;
         contextWindow = field(
                 inputX,
@@ -554,6 +555,25 @@ public final class TomeWispSettingsScreen extends Screen {
         field.setValue(value == null ? "" : value);
         field.setMaxLength(2048);
         field.setResponder(ignored -> confirmation = Confirmation.NONE);
+        field.setVisible(y >= layout.editor().y() + 30
+                && y + 18 <= layout.editor().bottom());
+        return addRenderableWidget(field);
+    }
+
+    private PasswordEditBox passwordField(int x, int y, int width) {
+        PasswordEditBox field = new PasswordEditBox(
+                font,
+                x,
+                y,
+                width,
+                18,
+                Component.translatable("screen.tomewisp.settings.models.api_key"));
+        field.setValue(pendingApiKey);
+        field.setMaxLength(4096);
+        field.setResponder(value -> {
+            pendingApiKey = value;
+            confirmation = Confirmation.NONE;
+        });
         field.setVisible(y >= layout.editor().y() + 30
                 && y + 18 <= layout.editor().bottom());
         return addRenderableWidget(field);
@@ -631,7 +651,7 @@ public final class TomeWispSettingsScreen extends Screen {
             "screen.tomewisp.settings.models.name",
             "screen.tomewisp.settings.models.base_url",
             "screen.tomewisp.settings.models.model_id",
-            "screen.tomewisp.settings.models.api_key_env",
+            "screen.tomewisp.settings.models.api_key",
             "screen.tomewisp.settings.models.context_window",
             "screen.tomewisp.settings.models.max_output",
             "screen.tomewisp.settings.models.connect_timeout",
@@ -647,10 +667,15 @@ public final class TomeWispSettingsScreen extends Screen {
         selectedView().ifPresent(profile -> {
             int color = profile.available() ? 0xFF7FC8A9 : 0xFFFFD479;
             Component status = Component.translatable(
-                    profile.available()
-                            ? "screen.tomewisp.settings.models.available"
-                            : "screen.tomewisp.settings.models.unavailable",
-                    profile.definition().apiKeyEnv());
+                            profile.available()
+                                    ? "screen.tomewisp.settings.models.available"
+                                    : "screen.tomewisp.settings.models.unavailable")
+                    .copy().append(" · ")
+                    .append(Component.translatable(pendingApiKey.isBlank()
+                            ? (profile.credentialPresent()
+                                    ? "screen.tomewisp.settings.models.api_key_saved"
+                                    : "screen.tomewisp.settings.models.api_key_not_set")
+                            : "screen.tomewisp.settings.models.api_key_replace"));
             graphics.text(font, status, x, statusY, color, false);
         });
     }
@@ -1241,7 +1266,14 @@ public final class TomeWispSettingsScreen extends Screen {
             return;
         }
         selectedProfileId = definition.id();
-        accept(service.saveModels(candidate));
+        SecretValue replacement = pendingApiKey.isBlank()
+                ? null
+                : SecretValue.of(pendingApiKey);
+        pendingApiKey = "";
+        if (apiKey != null) {
+            apiKey.setValue("");
+        }
+        accept(service.saveModels(candidate, definition.id(), replacement));
     }
 
     private void delete() {
@@ -1270,7 +1302,8 @@ public final class TomeWispSettingsScreen extends Screen {
                 : snapshot.models().config().defaultProfileId();
         select(retained.getFirst().id());
         confirmation = Confirmation.NONE;
-        accept(service.saveModels(new ModelProfilesConfig(1, defaultId, retained)));
+        accept(service.saveModels(new ModelProfilesConfig(
+                ModelProfilesConfig.SCHEMA_VERSION, defaultId, retained)));
     }
 
     private void makeDefault() {
@@ -1301,7 +1334,10 @@ public final class TomeWispSettingsScreen extends Screen {
         confirmation = Confirmation.NONE;
         ModelProfileDefinition definition =
                 ((ToolResult.Success<ModelProfileDefinition>) validated).value();
-        service.testConnection(definition).thenAccept(result -> {
+        SecretValue replacement = pendingApiKey.isBlank()
+                ? null
+                : SecretValue.of(pendingApiKey);
+        service.testConnection(definition, replacement).thenAccept(result -> {
             if (result instanceof ModelConnectionResult.Failure failure) {
                 localNotice = failure.message();
             } else {
@@ -1390,6 +1426,7 @@ public final class TomeWispSettingsScreen extends Screen {
         draft = ModelProfileDraft.from(definition);
         draftEnabled = definition.enabled();
         draftProtocol = definition.protocol();
+        pendingApiKey = "";
     }
 
     private void createProfile() {
@@ -1402,6 +1439,7 @@ public final class TomeWispSettingsScreen extends Screen {
         draft = ModelProfileDraft.create(candidate);
         draftEnabled = true;
         draftProtocol = ModelProtocol.OPENAI_CHAT;
+        pendingApiKey = "";
         confirmation = Confirmation.NONE;
         localNotice = "";
         rebuildWidgets();
@@ -1423,7 +1461,7 @@ public final class TomeWispSettingsScreen extends Screen {
                 draftProtocol,
                 baseUrl.getValue(),
                 model.getValue(),
-                apiKeyEnv.getValue(),
+                draft.credentialRef(),
                 contextWindow.getValue(),
                 maxOutput.getValue(),
                 connectTimeout.getValue(),
@@ -1504,7 +1542,6 @@ public final class TomeWispSettingsScreen extends Screen {
                         profile.definition().id(),
                         profile.definition().displayName(),
                         profile.definition().model(),
-                        profile.definition().apiKeyEnv(),
                         profile.credentialPresent(),
                         profile.available(),
                         profile.definition().id().equals(
@@ -1557,7 +1594,6 @@ public final class TomeWispSettingsScreen extends Screen {
             String id,
             String displayName,
             String model,
-            String credentialEnvironment,
             boolean credentialPresent,
             boolean available,
             boolean defaultProfile,
@@ -1570,5 +1606,32 @@ public final class TomeWispSettingsScreen extends Screen {
         RELOAD,
         DELETE,
         TEST_CONNECTION
+    }
+
+    private static final class PasswordEditBox extends EditBox {
+        private PasswordEditBox(
+                net.minecraft.client.gui.Font font,
+                int x,
+                int y,
+                int width,
+                int height,
+                Component narration) {
+            super(font, x, y, width, height, narration);
+            addFormatter((text, offset) -> net.minecraft.util.FormattedCharSequence.forward(
+                    "•".repeat(text.length()), net.minecraft.network.chat.Style.EMPTY));
+        }
+
+        @Override
+        public boolean keyPressed(net.minecraft.client.input.KeyEvent event) {
+            if (event.isCopy() || event.isCut()) {
+                return true;
+            }
+            return super.keyPressed(event);
+        }
+
+        @Override
+        protected net.minecraft.network.chat.MutableComponent createNarrationMessage() {
+            return Component.translatable("screen.tomewisp.settings.models.api_key");
+        }
     }
 }

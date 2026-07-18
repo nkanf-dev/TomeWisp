@@ -22,7 +22,8 @@ final class TomeWispSettingsScreenProjectionTest {
     void modelProjectionPreservesOrderAndNeverContainsCredentialValue() {
         ModelProfileDefinition alpha = profile("alpha");
         ModelProfileDefinition beta = profile("beta");
-        ModelProfilesConfig config = new ModelProfilesConfig(1, "alpha", List.of(alpha, beta));
+        ModelProfilesConfig config = new ModelProfilesConfig(
+                ModelProfilesConfig.SCHEMA_VERSION, "alpha", List.of(alpha, beta));
         ModelProfileSettingsView models = ModelProfileSettingsView.from(
                 config,
                 List.of(
@@ -44,7 +45,7 @@ final class TomeWispSettingsScreenProjectionTest {
         assertEquals(List.of("alpha", "beta"), projection.models().stream()
                 .map(TomeWispSettingsScreen.ModelCard::id)
                 .toList());
-        assertTrue(projection.toString().contains("ALPHA_KEY"));
+        assertFalse(projection.toString().contains("ALPHA_KEY"));
         assertFalse(projection.toString().contains("secret-value"));
         assertTrue(projection.sections().contains(SettingsSection.KNOWLEDGE_AND_CAPABILITIES));
         assertFalse(projection.sections().stream()

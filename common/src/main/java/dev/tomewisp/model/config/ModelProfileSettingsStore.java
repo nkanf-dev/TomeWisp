@@ -59,10 +59,22 @@ public final class ModelProfileSettingsStore {
             Map<String, String> environment,
             Map<ModelMetadata.Key, ModelMetadata> metadata,
             ClientModelRuntimeRegistry registry) {
+        return save(
+                candidate,
+                CredentialResolver.environment(environment),
+                metadata,
+                registry);
+    }
+
+    public ToolResult<Saved> save(
+            ModelProfilesConfig candidate,
+            CredentialResolver credentials,
+            Map<ModelMetadata.Key, ModelMetadata> metadata,
+            ClientModelRuntimeRegistry registry) {
         Objects.requireNonNull(registry, "registry");
         return save(
                 candidate,
-                environment,
+                credentials,
                 metadata,
                 load -> registry.prepare(load)::publish);
     }
@@ -72,8 +84,20 @@ public final class ModelProfileSettingsStore {
             Map<String, String> environment,
             Map<ModelMetadata.Key, ModelMetadata> metadata,
             RuntimePreparer preparer) {
+        return save(
+                candidate,
+                CredentialResolver.environment(environment),
+                metadata,
+                preparer);
+    }
+
+    ToolResult<Saved> save(
+            ModelProfilesConfig candidate,
+            CredentialResolver credentials,
+            Map<ModelMetadata.Key, ModelMetadata> metadata,
+            RuntimePreparer preparer) {
         Objects.requireNonNull(candidate, "candidate");
-        Objects.requireNonNull(environment, "environment");
+        Objects.requireNonNull(credentials, "credentials");
         Objects.requireNonNull(metadata, "metadata");
         Objects.requireNonNull(preparer, "preparer");
 
@@ -83,7 +107,7 @@ public final class ModelProfileSettingsStore {
         try {
             encoded = writer.encode(candidate);
             ToolResult<ModelProfilesConfigLoader.Load> loaded = loader.load(
-                    new StringReader(encoded), Map.copyOf(environment), Map.copyOf(metadata));
+                    new StringReader(encoded), credentials, Map.copyOf(metadata));
             if (loaded instanceof ToolResult.Failure<ModelProfilesConfigLoader.Load> failure) {
                 return new ToolResult.Failure<>(failure.code(), failure.message());
             }

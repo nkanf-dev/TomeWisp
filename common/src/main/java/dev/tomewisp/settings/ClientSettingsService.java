@@ -12,6 +12,7 @@ import dev.tomewisp.model.CancellationSignal;
 import dev.tomewisp.model.config.ModelProfileDefinition;
 import dev.tomewisp.model.config.ModelProfilesConfig;
 import dev.tomewisp.model.config.ResolvedModelProfile;
+import dev.tomewisp.model.config.SecretValue;
 import dev.tomewisp.model.metadata.ModelMetadata;
 import dev.tomewisp.model.metadata.ModelMetadataUpdate;
 import dev.tomewisp.settings.model.ModelConnectionResult;
@@ -44,11 +45,36 @@ public final class ClientSettingsService implements AutoCloseable {
                 ModelProfilesConfig candidate,
                 Map<ModelMetadata.Key, ModelMetadata> metadata);
 
+        default ToolResult<ModelState> save(
+                ModelProfilesConfig candidate,
+                String replacementProfileId,
+                SecretValue replacement,
+                Map<ModelMetadata.Key, ModelMetadata> metadata) {
+            if (replacement != null) {
+                return new ToolResult.Failure<>(
+                        "credential_store_unavailable",
+                        "Stored credentials are unavailable");
+            }
+            return save(candidate, metadata);
+        }
+
         ToolResult<ModelState> reload(Map<ModelMetadata.Key, ModelMetadata> metadata);
 
         ToolResult<ResolvedModelProfile> resolve(
                 ModelProfileDefinition candidate,
                 Map<ModelMetadata.Key, ModelMetadata> metadata);
+
+        default ToolResult<ResolvedModelProfile> resolve(
+                ModelProfileDefinition candidate,
+                SecretValue replacement,
+                Map<ModelMetadata.Key, ModelMetadata> metadata) {
+            if (replacement != null) {
+                return new ToolResult.Failure<>(
+                        "credential_store_unavailable",
+                        "Stored credentials are unavailable");
+            }
+            return resolve(candidate, metadata);
+        }
 
         ToolResult<PreparedModels> prepare(
                 ModelProfilesConfig candidate,
@@ -360,6 +386,13 @@ public final class ClientSettingsService implements AutoCloseable {
     }
 
     public CompletableFuture<ToolResult<Boolean>> saveModels(ModelProfilesConfig candidate) {
+        return saveModels(candidate, null, null);
+    }
+
+    public CompletableFuture<ToolResult<Boolean>> saveModels(
+            ModelProfilesConfig candidate,
+            String replacementProfileId,
+            SecretValue replacement) {
         Objects.requireNonNull(candidate, "candidate");
         Reservation reservation = reserve(SettingsOperation.models(
                 SettingsOperation.Kind.SAVING_MODELS));
@@ -370,7 +403,11 @@ public final class ClientSettingsService implements AutoCloseable {
         Map<ModelMetadata.Key, ModelMetadata> metadataSnapshot = metadataSnapshot();
         worker.execute(() -> {
             ToolResult<ModelState> saved = safely(
-                    () -> models.save(candidate, metadataSnapshot),
+                    () -> models.save(
+                            candidate,
+                            replacementProfileId,
+                            replacement,
+                            metadataSnapshot),
                     "settings_save_failed",
                     "Unable to save model settings");
             dispatcher.execute(() -> finishModels(reservation.id(), saved, result, "models_saved"));
@@ -617,6 +654,12 @@ public final class ClientSettingsService implements AutoCloseable {
 
     public CompletableFuture<ModelConnectionResult> testConnection(
             ModelProfileDefinition candidate) {
+        return testConnection(candidate, null);
+    }
+
+    public CompletableFuture<ModelConnectionResult> testConnection(
+            ModelProfileDefinition candidate,
+            SecretValue replacement) {
         Objects.requireNonNull(candidate, "candidate");
         Reservation reservation = reserve(SettingsOperation.probe(candidate.id()));
         if (!reservation.accepted()) {
@@ -630,7 +673,12 @@ public final class ClientSettingsService implements AutoCloseable {
         }
         Map<ModelMetadata.Key, ModelMetadata> metadataSnapshot = metadataSnapshot();
         worker.execute(() -> startProbe(
-                reservation.id(), candidate, metadataSnapshot, cancellation, outward));
+                reservation.id(),
+                candidate,
+                replacement,
+                metadataSnapshot,
+                cancellation,
+                outward));
         return outward;
     }
 
@@ -698,6 +746,7 @@ public final class ClientSettingsService implements AutoCloseable {
     private void startProbe(
             long operationId,
             ModelProfileDefinition candidate,
+            SecretValue replacement,
             Map<ModelMetadata.Key, ModelMetadata> metadataSnapshot,
             CancellationSignal cancellation,
             CompletableFuture<ModelConnectionResult> outward) {
@@ -705,7 +754,7 @@ public final class ClientSettingsService implements AutoCloseable {
             return;
         }
         ToolResult<ResolvedModelProfile> resolved = safely(
-                () -> models.resolve(candidate, metadataSnapshot),
+                () -> models.resolve(candidate, replacement, metadataSnapshot),
                 "invalid_model_config",
                 "Unable to prepare the connection test");
         if (resolved instanceof ToolResult.Failure<ResolvedModelProfile> failure) {

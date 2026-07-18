@@ -61,6 +61,7 @@ final class ModelProfilesConfigLoaderTest {
                 new StringReader(PROFILES), Map.of("OPENROUTER_KEY", "super-secret"))).value();
 
         assertEquals("fast", loaded.config().defaultProfileId());
+        assertEquals(ModelProfilesConfig.SCHEMA_VERSION, loaded.config().schemaVersion());
         assertEquals(List.of("fast", "local"), loaded.config().profiles().stream()
                 .map(ModelProfileDefinition::id).toList());
         ResolvedModelProfile fast = loaded.profiles().getFirst();
@@ -135,7 +136,7 @@ final class ModelProfilesConfigLoaderTest {
         assertInvalid(PROFILES.replace("\"id\": \"local\"", "\"id\": \"fast\""));
         assertInvalid(PROFILES.replace("\"defaultProfileId\": \"fast\"",
                 "\"defaultProfileId\": \"missing\""));
-        assertInvalid(PROFILES.replace("\"schemaVersion\": 1", "\"schemaVersion\": 2"));
+        assertInvalid(PROFILES.replace("\"schemaVersion\": 1", "\"schemaVersion\": 3"));
         assertInvalid(PROFILES.replace("\"displayName\": \"Fast OpenRouter\"",
                 "\"displayName\": \"Fast OpenRouter\", \"surprise\": true"));
     }

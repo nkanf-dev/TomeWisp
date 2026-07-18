@@ -46,11 +46,16 @@ is explicitly stripped by the summary-safe projection.
 - Create: `common/src/main/java/dev/tomewisp/agent/context/ContextProjection.java`
 - Test: `common/src/test/java/dev/tomewisp/agent/context/ToolResultContextReducerTest.java`
 
-- [ ] Write red tests using large recipe-search, inventory, document, explicit failure, unknown-tool, and malformed-result payloads.
-- [ ] Prove old results retain status/output type, stable reference IDs, evidence authority/completeness/capture/source/provenance, and failure code while dropping bulk lists.
-- [ ] Prove messages at or after `protectedFromIndex` and their JSON deep copies are unchanged.
-- [ ] Implement deterministic key allowlisting and structural projection; malformed old results remain explicit reduced failures rather than disappearing.
-- [ ] Run focused tests and commit `feat: reduce historical tool context`.
+- [x] Write red tests using large recipe-search, inventory, document, explicit failure, unknown-tool, and malformed-result payloads.
+- [x] Prove old results retain status/output type, stable reference IDs, evidence authority/completeness/capture/source/provenance, and failure code while dropping bulk lists.
+- [x] Prove messages at or after `protectedFromIndex` and their JSON deep copies are unchanged.
+- [x] Implement deterministic key allowlisting and structural projection; malformed old results remain explicit reduced failures rather than disappearing.
+- [x] Run focused tests and commit `feat: reduce historical tool context`.
+
+The red run failed with five missing-symbol errors. The green context package
+run passed eleven tests in five seconds. The bulk fixture shrinks by more than
+80% while retaining both viewer references, its evidence record, the stable
+Patchouli reference, and craftability conclusion fields.
 
 ### Task 3: Generate and Validate Summary Checkpoints
 

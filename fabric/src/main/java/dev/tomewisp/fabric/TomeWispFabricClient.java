@@ -2,7 +2,7 @@ package dev.tomewisp.fabric;
 
 import dev.tomewisp.TomeWispBootstrap;
 import dev.tomewisp.TomeWispRuntime;
-import dev.tomewisp.client.ClientGuideRuntime;
+import dev.tomewisp.client.ClientModelRuntimeRegistry;
 import com.google.gson.Gson;
 import dev.tomewisp.client.MinecraftGuideContextProvider;
 import dev.tomewisp.client.MinecraftGuideHistoryScope;
@@ -40,15 +40,22 @@ public final class TomeWispFabricClient implements ClientModInitializer {
         java.time.Clock clock = java.time.Clock.systemUTC();
         var dispatcher = (dev.tomewisp.client.ClientEventDispatcher)
                 runnable -> Minecraft.getInstance().execute(runnable);
-        ToolResult<ClientGuideRuntime> guide = ClientGuideRuntime.create(
+        java.nio.file.Path configDirectory =
+                FabricLoader.getInstance().getConfigDir().resolve("tomewisp");
+        ToolResult<ClientModelRuntimeRegistry> guide = ClientModelRuntimeRegistry.create(
                 runtime,
-                FabricLoader.getInstance().getConfigDir().resolve("tomewisp/model.json"),
+                configDirectory.resolve("models.json"),
+                configDirectory.resolve("model.json"),
+                configDirectory.resolve("model-metadata.json"),
                 System.getenv(),
                 dispatcher,
-                bridge.remoteTools());
-        GuideLocalEndpoint local = guide instanceof ToolResult.Success<ClientGuideRuntime> success
+                bridge.remoteTools(),
+                clock);
+        ClientModelRuntimeRegistry modelRegistry =
+                guide instanceof ToolResult.Success<ClientModelRuntimeRegistry> success
                 ? success.value()
                 : null;
+        GuideLocalEndpoint local = modelRegistry;
         RecipeClientRuntime recipeClient = new RecipeClientRuntime(
                 FabricLoader.getInstance().getConfigDir().resolve("tomewisp/recipes.json"));
         var display = new GuideDisplayConfigLoader().load(
@@ -92,7 +99,10 @@ public final class TomeWispFabricClient implements ClientModInitializer {
         ClientLifecycleEvents.CLIENT_STOPPING.register(client ->
                 services.shutdown()
                         .handle((ignored, failure) -> null)
-                        .thenCompose(ignored -> history.closeAsync()));
+                        .thenCompose(ignored -> history.closeAsync())
+                        .thenCompose(ignored -> modelRegistry == null
+                                ? java.util.concurrent.CompletableFuture.completedFuture(null)
+                                : modelRegistry.closeAsync()));
         bridge.onCapabilitiesChanged(() -> {
             var current = services.current();
             if (current != null) current.refreshCapabilities();

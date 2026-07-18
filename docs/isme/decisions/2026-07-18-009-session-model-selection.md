@@ -45,7 +45,9 @@ An explicit `contextWindowTokens` is authoritative. Trusted provider-native
 metadata may fill a missing value in the settings workflow and records source,
 capture time, and upstream model ID. External catalogs may suggest values only
 when explicitly enabled and never silently override explicit configuration.
-Runtime bootstrap does not depend on metadata network availability.
+Under SKMB-2026-07-18-012, startup may load cached metadata and refresh cache
+misses asynchronously, but runtime bootstrap never depends on metadata network
+availability.
 
 If a remembered profile is missing, disabled, malformed, or cannot resolve a
 required context window, submission fails explicitly as `model_not_configured`

@@ -5,6 +5,8 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import dev.tomewisp.guide.GuideFailure;
+import dev.tomewisp.model.metadata.ModelMetadata;
+import dev.tomewisp.model.metadata.OpenRouterMetadataResolver;
 import dev.tomewisp.tool.ToolResult;
 import java.io.IOException;
 import java.io.Reader;
@@ -49,11 +51,19 @@ public final class ModelProfilesConfigLoader {
             Path profilesPath,
             Path legacyPath,
             Map<String, String> environment) {
+        return load(profilesPath, legacyPath, environment, Map.of());
+    }
+
+    public ToolResult<Load> load(
+            Path profilesPath,
+            Path legacyPath,
+            Map<String, String> environment,
+            Map<ModelMetadata.Key, ModelMetadata> metadata) {
         Objects.requireNonNull(profilesPath, "profilesPath");
         Objects.requireNonNull(legacyPath, "legacyPath");
         if (Files.exists(profilesPath)) {
             try (Reader reader = Files.newBufferedReader(profilesPath)) {
-                return load(reader, environment);
+                return load(reader, environment, metadata);
             } catch (IOException failure) {
                 return invalid("Unable to read model profiles configuration");
             }
@@ -71,8 +81,16 @@ public final class ModelProfilesConfigLoader {
     }
 
     public ToolResult<Load> load(Reader reader, Map<String, String> environment) {
+        return load(reader, environment, Map.of());
+    }
+
+    public ToolResult<Load> load(
+            Reader reader,
+            Map<String, String> environment,
+            Map<ModelMetadata.Key, ModelMetadata> metadata) {
         Objects.requireNonNull(reader, "reader");
         Map<String, String> environmentCopy = Map.copyOf(environment);
+        Map<ModelMetadata.Key, ModelMetadata> metadataCopy = Map.copyOf(metadata);
         try {
             JsonElement parsed = JsonParser.parseReader(reader);
             JsonObject root = object(parsed, "Model profiles configuration");
@@ -87,7 +105,7 @@ public final class ModelProfilesConfigLoader {
             ModelProfilesConfig config = new ModelProfilesConfig(
                     schemaVersion, defaultProfileId, definitions);
             List<ResolvedModelProfile> resolved = config.profiles().stream()
-                    .map(profile -> resolve(profile, environmentCopy))
+                    .map(profile -> resolve(profile, environmentCopy, metadataCopy))
                     .toList();
             return new ToolResult.Success<>(new Load(config, resolved, false));
         } catch (RuntimeException failure) {
@@ -123,11 +141,16 @@ public final class ModelProfilesConfigLoader {
 
     private static ResolvedModelProfile resolve(
             ModelProfileDefinition definition,
-            Map<String, String> environment) {
+            Map<String, String> environment,
+            Map<ModelMetadata.Key, ModelMetadata> metadata) {
         if (!definition.enabled()) {
             return failed(definition, "model_disabled", "This model profile is disabled");
         }
-        if (definition.contextWindowTokens() == null) {
+        ModelMetadata discovered = trustedMetadata(definition, metadata);
+        Integer contextWindow = definition.contextWindowTokens() != null
+                ? definition.contextWindowTokens()
+                : discovered == null ? null : discovered.contextWindowTokens();
+        if (contextWindow == null) {
             return failed(
                     definition,
                     "invalid_model_config",
@@ -149,7 +172,7 @@ public final class ModelProfilesConfigLoader {
                             definition.baseUri(),
                             definition.model(),
                             SecretValue.of(secret),
-                            definition.contextWindowTokens(),
+                            contextWindow,
                             definition.maxOutputTokens(),
                             definition.connectTimeout(),
                             definition.requestTimeout()),
@@ -157,6 +180,16 @@ public final class ModelProfilesConfigLoader {
         } catch (RuntimeException failure) {
             return failed(definition, "invalid_model_config", message(failure));
         }
+    }
+
+    private static ModelMetadata trustedMetadata(
+            ModelProfileDefinition definition,
+            Map<ModelMetadata.Key, ModelMetadata> metadata) {
+        if (!OpenRouterMetadataResolver.supports(definition.baseUri())) {
+            return null;
+        }
+        return metadata.get(new ModelMetadata.Key(
+                OpenRouterMetadataResolver.SOURCE, definition.model()));
     }
 
     private static Load legacy(ModelConfig config) {

@@ -32,7 +32,9 @@ public record ResolvedModelProfile(
                 definition.model(),
                 definition.apiKeyEnv(),
                 runtimeConfig != null,
-                definition.contextWindowTokens(),
+                runtimeConfig == null
+                        ? definition.contextWindowTokens()
+                        : runtimeConfig.contextWindowTokens(),
                 definition.maxOutputTokens(),
                 failure);
     }

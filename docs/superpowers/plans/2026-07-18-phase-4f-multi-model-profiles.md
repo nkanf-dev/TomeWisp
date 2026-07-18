@@ -248,44 +248,75 @@ versions fail `history_schema_unsupported` without mutation. Focused history,
 GuideService history, and model-selection suites pass, followed by the complete
 common suite: 245 tests, zero failures/errors, one opt-in skip.
 
-### Task 5: Trusted OpenRouter metadata discovery
+### Task 5: Trusted OpenRouter metadata discovery and cache
 
 **Files:**
 - Create: `common/src/main/java/dev/tomewisp/model/metadata/ModelMetadata.java`
 - Create: `common/src/main/java/dev/tomewisp/model/metadata/ModelMetadataResolver.java`
 - Create: `common/src/main/java/dev/tomewisp/model/metadata/ModelMetadataResolution.java`
 - Create: `common/src/main/java/dev/tomewisp/model/metadata/OpenRouterMetadataResolver.java`
+- Create: `common/src/main/java/dev/tomewisp/model/metadata/ModelMetadataCache.java`
 - Test: `common/src/test/java/dev/tomewisp/model/metadata/OpenRouterMetadataResolverTest.java`
 - Test: `common/src/test/java/dev/tomewisp/model/metadata/ModelMetadataResolutionTest.java`
+- Test: `common/src/test/java/dev/tomewisp/model/metadata/ModelMetadataCacheTest.java`
 
-- [ ] **Step 1: Verify the current official OpenRouter schema**
+- [x] **Step 1: Verify the current official OpenRouter schema**
 
 Use the official OpenRouter API/documentation only. Record the endpoint and
-fields used (`id`, `context_length`, and output limit only when explicitly
+fields used (`id`, `canonical_slug`, `context_length`, and output limit only when explicitly
 published). Do not infer context from pricing, architecture names, or generic
 OpenAI `/models` data.
 
-- [ ] **Step 2: Write red parser/precedence/failure/redaction tests**
+Verified against OpenRouter's official
+[`GET /api/v1/models`](https://openrouter.ai/docs/api/api-reference/models/get-models)
+and [models schema guide](https://openrouter.ai/docs/guides/overview/models) on
+2026-07-18. TomeWisp uses exact `id`, `canonical_slug`, `context_length`, and
+only the explicitly published `top_provider.max_completion_tokens`.
+
+- [x] **Step 2: Write red parser/precedence/failure/redaction tests**
 
 Use deterministic JSON fixtures and an injected HTTP transport. Cover exact
 model match, missing/duplicate IDs, numeric overflow, absent limits, malformed
 payloads, HTTP failure, timeout/cancellation, explicit-value precedence,
-capture-time/source provenance, and diagnostics that contain neither auth
-headers nor response bodies.
+capture-time/source provenance, strict credential-free cache round trips,
+atomic replacement, and diagnostics that contain neither auth headers nor
+response bodies.
 
-- [ ] **Step 3: Implement explicit diagnostic discovery**
+- [x] **Step 3: Implement non-blocking cached discovery**
 
 The resolver uses HTTPS, bounded existing timeout conventions, optional named
-environment auth only when required, and immutable candidates. Discovery is
-called only by settings/diagnostics. Runtime configuration remains usable with
-explicit limits when discovery fails and never performs discovery at startup.
+environment auth only when required, and immutable candidates. Startup cache
+loading and cache-miss refresh run off the Minecraft thread and never block
+runtime creation. Settings can refresh manually. Runtime configuration remains
+usable with explicit limits when discovery fails, and a failed refresh never
+replaces a prior valid cache entry.
 
-- [ ] **Step 4: Run metadata tests and commit**
+- [x] **Step 4: Run metadata tests and commit**
 
 ```bash
 ./gradlew :common:test --tests 'dev.tomewisp.model.metadata.*'
 git commit -m "feat: discover trusted model metadata"
 ```
+
+The implementation uses JDK 25 `HttpClient.sendAsync` behind one shared,
+engine-neutral TomeWisp contract. JDK request/header types do not leak into
+model, metadata, or future tool adapters, so another engine can be added without
+rewriting domain codecs. It does not recreate connection pooling or add a
+second retry loop. Domain adapters retain endpoint, credential, decoding, and
+authority policy; OpenRouter discovery remains configuration I/O and is not an
+Agent tool. Strict async cache tests cover cache miss, cross-launch reuse,
+manual refresh, atomic replacement, malformed-cache preservation, numeric and
+schema failures, explicit-value precedence, canonical identity, and redaction.
+Both loaders now start the same named-profile registry, load cache without
+blocking, refresh OpenRouter cache misses, and close the cache worker at client
+shutdown. The complete common suite passes with 260 tests, zero failures/errors,
+and one opt-in skip. The clean product gate
+`./gradlew clean :common:test :fabric:build :neoforge:build` passes. The
+production artifacts are
+`tomewisp-fabric-26.2-0.1.0-SNAPSHOT.jar`
+(`3107d3939070b04e6b2b60ea8fbbf5f310626c2a62a9a9476c721fdd14bd2a87`)
+and `tomewisp-neoforge-26.2-0.1.0-SNAPSHOT.jar`
+(`33d9d8837a17a563ae3c800004b8d4d8e04b93fa28ad900bb3b2403adddf3564`).
 
 ### Task 6: Native selector, commands, and loader parity
 
@@ -315,7 +346,7 @@ the selected profile's display name. It remains usable during an active request
 and indicates the captured runtime when it differs. All labels/failures are
 localized and credentials/endpoints are never shown in the normal player view.
 
-- [ ] **Step 3: Load one registry on both loaders**
+- [x] **Step 3: Load one registry on both loaders**
 
 Both loaders prefer `config/tomewisp/models.json`, fall back to legacy
 `model.json`, create the same common runtime registry, and pass identical

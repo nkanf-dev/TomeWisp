@@ -62,8 +62,10 @@ The request snapshot records the actually captured selection for diagnostics.
 
 ## Metadata discovery
 
-Metadata discovery is a settings/diagnostics operation, not a runtime bootstrap
-dependency. `ModelMetadataResolver` returns immutable candidates containing the
+Metadata discovery is asynchronous and never a runtime bootstrap dependency.
+Startup reads a strict local cache and may refresh configured trusted-provider
+cache misses in the background; settings can also request a manual refresh.
+`ModelMetadataResolver` returns immutable candidates containing the
 provider source, upstream ID, context window, output limit when known,
 supported parameters, capture time, and diagnostic state.
 
@@ -84,7 +86,15 @@ never authoritative and never overwrites an explicit value.
 Metadata requests use HTTPS, existing timeout conventions, no model API key
 unless the provider requires the same configured environment credential, and
 redacted structured failures. No raw body or authorization value reaches logs,
-history, traces, or GUI text.
+history, traces, or GUI text. Successful validated records are atomically cached
+by source and exact upstream model ID. They do not expire by time alone; a
+manual refresh, cache deletion, or changed model ID causes a new lookup.
+
+The resolver uses the shared engine-neutral HTTP contract defined by
+SKMB-2026-07-18-013; JDK `HttpClient` is only the current engine and does not
+leak into provider/configuration adapters. This is configuration-layer I/O, not an Agent tool. Future
+online knowledge tools may reuse transport mechanics only after separately
+defining tool permissions, domain policy, evidence, and normalization.
 
 ## Persistence
 

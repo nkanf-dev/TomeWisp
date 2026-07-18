@@ -23,6 +23,8 @@ import dev.tomewisp.model.anthropic.AnthropicMessagesClient;
 import dev.tomewisp.model.config.ModelProfilesConfigLoader;
 import dev.tomewisp.model.config.ResolvedModelProfile;
 import dev.tomewisp.model.openai.OpenAiChatClient;
+import dev.tomewisp.model.metadata.ModelMetadataBootstrap;
+import dev.tomewisp.model.metadata.ModelMetadataCache;
 import dev.tomewisp.agent.trace.LiveTraceStore;
 import dev.tomewisp.tool.ToolResult;
 import java.nio.file.Path;
@@ -47,6 +49,7 @@ public final class ClientModelRuntimeRegistry implements GuideLocalEndpoint {
     private final Function<ResolvedModelProfile, ModelClient> modelFactory;
     private final AgentSessionStore sessions = new AgentSessionStore();
     private final AtomicReference<State> state = new AtomicReference<>();
+    private volatile ModelMetadataBootstrap metadata;
 
     ClientModelRuntimeRegistry(
             TomeWispRuntime productRuntime,
@@ -85,6 +88,53 @@ public final class ClientModelRuntimeRegistry implements GuideLocalEndpoint {
         };
         return new ToolResult.Success<>(new ClientModelRuntimeRegistry(
                 runtime, value, gson, dispatcher, extension, factory));
+    }
+
+    public static ToolResult<ClientModelRuntimeRegistry> create(
+            TomeWispRuntime runtime,
+            Path profilesPath,
+            Path legacyPath,
+            Path metadataCachePath,
+            Map<String, String> environment,
+            ClientEventDispatcher dispatcher,
+            AgentToolExecutor extension,
+            java.time.Clock clock) {
+        ToolResult<ClientModelRuntimeRegistry> created = create(
+                runtime, profilesPath, legacyPath, environment, dispatcher, extension);
+        if (created instanceof ToolResult.Failure<ClientModelRuntimeRegistry>) {
+            return created;
+        }
+        ClientModelRuntimeRegistry registry =
+                ((ToolResult.Success<ClientModelRuntimeRegistry>) created).value();
+        ModelMetadataBootstrap bootstrap = new ModelMetadataBootstrap(
+                new ModelMetadataCache(metadataCachePath),
+                profilesPath,
+                legacyPath,
+                environment,
+                registry::replace,
+                clock);
+        registry.metadata = bootstrap;
+        bootstrap.start();
+        return created;
+    }
+
+    public GuideFailure metadataFailure() {
+        ModelMetadataBootstrap captured = metadata;
+        return captured == null ? null : captured.failure();
+    }
+
+    public CompletableFuture<Void> refreshMetadata() {
+        ModelMetadataBootstrap captured = metadata;
+        return captured == null
+                ? CompletableFuture.completedFuture(null)
+                : captured.refreshAll();
+    }
+
+    public CompletableFuture<Void> closeAsync() {
+        ModelMetadataBootstrap captured = metadata;
+        return captured == null
+                ? CompletableFuture.completedFuture(null)
+                : captured.closeAsync();
     }
 
     public synchronized void replace(

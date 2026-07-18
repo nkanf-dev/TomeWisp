@@ -8,11 +8,13 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.google.gson.Gson;
 import dev.tomewisp.tool.ToolResult;
+import dev.tomewisp.model.metadata.ModelMetadata;
 import java.io.StringReader;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
+import java.time.Instant;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -90,6 +92,39 @@ final class ModelProfilesConfigLoaderTest {
                 new StringReader(PROFILES), Map.of())).value();
         assertEquals("model_not_configured", missingSecret.profiles().getFirst().failure().code());
         assertFalse(missingSecret.profiles().getFirst().failure().message().contains("null"));
+    }
+
+    @Test
+    void trustedCacheFillsOnlyMissingOpenRouterContext() {
+        String withoutExplicitContext = PROFILES.replace(
+                "\"contextWindowTokens\": 256000,", "");
+        ModelMetadata metadata = new ModelMetadata(
+                "openrouter",
+                "vendor/model-a",
+                "vendor/model-a-canonical",
+                512_000,
+                64_000,
+                Instant.EPOCH);
+
+        ModelProfilesConfigLoader.Load loaded = success(loader.load(
+                new StringReader(withoutExplicitContext),
+                Map.of("OPENROUTER_KEY", "key"),
+                Map.of(metadata.key(), metadata))).value();
+
+        assertEquals(512_000, loaded.profiles().getFirst()
+                .runtimeConfig().contextWindowTokens());
+        assertEquals(8_192, loaded.profiles().getFirst()
+                .runtimeConfig().maxOutputTokens());
+        assertEquals(512_000, loaded.profiles().getFirst()
+                .diagnosticView().contextWindowTokens());
+
+        String otherProvider = withoutExplicitContext.replace(
+                "https://openrouter.ai/api/v1", "https://provider.example/v1");
+        assertEquals("invalid_model_config", success(loader.load(
+                new StringReader(otherProvider),
+                Map.of("OPENROUTER_KEY", "key"),
+                Map.of(metadata.key(), metadata))).value()
+                .profiles().getFirst().failure().code());
     }
 
     @Test

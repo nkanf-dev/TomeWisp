@@ -34,32 +34,48 @@ development launcher is already headless and must be run without Gradle
 
 ## Client model configuration
 
-The main mode is pure client-side. Put configuration at
-`config/tomewisp/model.json` in the client game directory. Keep the credential
-in an environment variable:
+The main mode is pure client-side. The current format is
+`config/tomewisp/models.json`; `model.json` remains an import path only when the
+new file is absent. Keep every credential in an environment variable:
 
 ```json
 {
-  "enabled": true,
-  "protocol": "anthropic_messages",
-  "baseUrl": "https://provider.example/v1/",
-  "model": "model-id",
-  "apiKeyEnv": "TOMEWISP_API_KEY",
-  "contextWindowTokens": 256000,
-  "maxOutputTokens": 8192,
-  "connectTimeoutSeconds": 30,
-  "requestTimeoutSeconds": 300
+  "schemaVersion": 1,
+  "defaultProfileId": "openrouter-main",
+  "profiles": [
+    {
+      "id": "openrouter-main",
+      "displayName": "OpenRouter Main",
+      "enabled": true,
+      "protocol": "openai_chat",
+      "baseUrl": "https://openrouter.ai/api/v1/",
+      "model": "provider/model-id",
+      "apiKeyEnv": "OPENROUTER_API_KEY",
+      "contextWindowTokens": 256000,
+      "maxOutputTokens": 8192,
+      "connectTimeoutSeconds": 30,
+      "requestTimeoutSeconds": 300
+    }
+  ]
 }
 ```
 
-`openai_chat` is the second protocol. Remote endpoints require HTTPS; HTTP is
-accepted only for loopback development. The API key is redacted from model
-configuration diagnostics and live traces. `contextWindowTokens` is required
-for the selected provider/model unless a trusted metadata adapter resolves it;
-TomeWisp never assumes one universal model window. Its environment override is
-`TOMEWISP_CONTEXT_WINDOW_TOKENS`. The `256000` value above is an example preset,
-not a fallback; use the selected provider/model's documented or discovered
-value.
+`anthropic_messages` is the other protocol. Remote endpoints require HTTPS;
+HTTP is accepted only for loopback development. Inline `apiKey` is invalid in
+the multi-profile format. `contextWindowTokens` is required unless trusted
+provider metadata or its local cache resolves it; an explicit value always
+wins. The `256000` value above is an example, not a fallback.
+
+OpenRouter metadata uses the official `GET /api/v1/models` catalog fields
+`id`, `canonical_slug`, `context_length`, and the optional
+`top_provider.max_completion_tokens`. Startup reads
+`config/tomewisp/model-metadata.json` asynchronously. A cache miss refreshes in
+the background without blocking startup; successful credential-free metadata
+is cached across launches, and a failed refresh leaves explicit configuration
+and prior cache intact. The cache is configuration-layer state, not an Agent
+tool. Model providers and future online knowledge tools reuse the JDK HTTP
+transport mechanics but retain separate credentials, permissions, codecs, and
+evidence policy.
 
 Client recipe visibility and optional viewer preference live separately at
 `config/tomewisp/recipes.json`. A missing file uses the same defaults shown

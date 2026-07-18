@@ -79,8 +79,10 @@ provider or model changes and every future request is rebuilt against its
 selected model budget. Tool details now use scrollable Minecraft-native recipe,
 inventory, and material cards; technical identifiers, evidence internals, and
 normalized data are absent by default and appear only in the local, default-off
-Debug Mode. Multiple named model profiles and their settings UI, history
-management, model-authored rich messages, and the remaining controlled dynamic
+Debug Mode. Multiple named model profiles, per-session runtime switching,
+OpenRouter capability caching, and the shared JDK asynchronous HTTP foundation
+are now implemented; their settings UI, history management, model-authored rich
+messages, and the remaining controlled dynamic
 components remain Phase 4 work. Dynamic
 Ponder generation is deferred beyond Phase 4 because Ponder/Ponderer do not yet
 provide a verified 26.2 runtime target. Phase 3C now provides the native player

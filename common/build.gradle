@@ -32,6 +32,9 @@ dependencies {
 
 tasks.withType(Test).configureEach { useJUnitPlatform() }
 
+configurations.testCompileClasspath.extendsFrom(configurations.compileClasspath)
+configurations.testRuntimeClasspath.extendsFrom(configurations.compileClasspath)
+
 tasks.register('printSqliteProofSupportClasspath') {
     doLast {
         println(sourceSets.test.runtimeClasspath.asPath)

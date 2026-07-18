@@ -31,6 +31,7 @@ import dev.tomewisp.recipe.RecipeKnowledgeService;
 import dev.tomewisp.recipe.RecipeProviderSnapshot;
 import dev.tomewisp.recipe.RecipeUnlockState;
 import dev.tomewisp.recipe.RecipeVisibilityPolicy;
+import dev.tomewisp.recipe.RecipeViewerProviderRegistry;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -176,6 +177,14 @@ public final class ClientContextCapture {
                 return vanillaRecipes(player, client, capturedAt);
             }
         };
+        List<RecipeKnowledgeProvider> providers = new ArrayList<>();
+        providers.add(vanilla);
+        providers.addAll(RecipeViewerProviderRegistry.providers(capturedAt, platform));
+        if (platform.isModLoaded("jei") && providers.stream()
+                .noneMatch(provider -> provider.sourceId().equals("viewer:jei"))) {
+            providers.add(inactiveViewer(
+                    "viewer:jei", "plugin_unavailable", "JEI plugin has not initialized"));
+        }
         return recipeKnowledge.capture(
                 evidence(
                         DataCompleteness.UNKNOWN,
@@ -183,7 +192,22 @@ public final class ClientContextCapture {
                         "tomewisp:recipe_catalog",
                         "tomewisp:recipe_catalog"),
                 RecipeVisibilityPolicy.ALL_KNOWN,
-                List.of(vanilla));
+                providers);
+    }
+
+    private static RecipeKnowledgeProvider inactiveViewer(
+            String sourceId, String code, String message) {
+        return new RecipeKnowledgeProvider() {
+            @Override
+            public String sourceId() {
+                return sourceId;
+            }
+
+            @Override
+            public RecipeProviderSnapshot capture() {
+                return RecipeProviderSnapshot.unavailable(sourceId, code, message);
+            }
+        };
     }
 
     private RecipeProviderSnapshot vanillaRecipes(

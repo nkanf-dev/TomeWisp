@@ -86,15 +86,21 @@ complete authoritative provider. Both use content-derived generations.
 
 ## Task 5: Integrate JEI Through Its Public API
 
-- [ ] Register a minimal `@JeiPlugin` runtime lifecycle bridge.
-- [ ] Enumerate hidden and visible recipes from every category, build layouts
+- [x] Register a minimal `@JeiPlugin` runtime lifecycle bridge.
+- [x] Enumerate hidden and visible recipes from every category, build layouts
   with an empty focus, and detach slot alternatives by role.
-- [ ] Use category recipe identifiers when present and a semantic digest fallback.
-- [ ] Omit unsupported ingredient records with partial diagnostics.
-- [ ] Implement item recipe/usage navigation; advertise exact navigation only
+- [x] Use category recipe identifiers when present and a semantic digest fallback.
+- [x] Omit unsupported ingredient records with partial diagnostics.
+- [x] Implement item recipe/usage navigation; advertise exact navigation only
   where the API can select the exact recipe.
-- [ ] Add fake-public-interface adapter tests and both loader builds.
-- [ ] Commit `feat: integrate jei recipe knowledge`.
+- [x] Add fake-public-interface adapter tests and both loader builds.
+- [x] Commit `feat: integrate jei recipe knowledge`.
+
+Verification on 2026-07-18 passed 167 common tests (166 passed and one opt-in
+skip) and clean Fabric/NeoForge builds. Fake JEI public interfaces prove hidden
+enumeration, slot detachment, generation finalization, and lossy-component
+rejection. Both production JARs contain the TomeWisp JEI plugin but no JEI
+classes or nested viewer artifact.
 
 ## Task 6: Integrate REI Through Its Public API
 

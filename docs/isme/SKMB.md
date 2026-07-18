@@ -15,6 +15,7 @@ accepted and contains explicit approval evidence.
 | SKMB-2026-07-18-005 | accepted | Phase 4 product state | A, B, C, D, E, F, G | decisions/2026-07-18-005-phase-4-product-state.md | ad8ad52 |
 | SKMB-2026-07-18-006 | reviewable_default | Phase 4 durable history execution | A, B, C, E, F, G | decisions/2026-07-18-006-durable-history-execution.md | cb77181 |
 | SKMB-2026-07-18-007 | reviewable_default | Phase 4 recipe provider execution | A, B, D, E, F | decisions/2026-07-18-007-recipe-provider-execution.md | 7e89bed |
+| SKMB-2026-07-18-008 | reviewable_default | Phase 4 context compaction execution | A, B, C, D, E, F | decisions/2026-07-18-008-context-compaction-execution.md | pending |
 
 SKMB-2026-07-18-006 is implemented by `a0eaeff`, `19ab90f`, and `c6ca6bc`.
 Its deterministic clean-build and packaged-driver evidence is recorded in the
@@ -75,6 +76,9 @@ Delight graphical evidence are recorded in the Phase 4C plan and
 | T25 | history_loading | durable load fails | persistence_unavailable | Keep a fresh in-memory service and expose an unsaved diagnostic | SKMB-2026-07-18-006 |
 | T26 | any connection state | graceful disconnect | cancelled then idle | Persist terminal cancellation, detach durable writer completion, and clear only connection state | SKMB-2026-07-18-006 |
 | T27 | recipe provider available | capture succeeds with omitted unsupported records | integration_degraded | Retain representable records, mark provider partial, and publish stable diagnostics | SKMB-2026-07-18-007 |
+| T28 | preparing | deterministic context estimate exceeds configured input budget | compacting | Protect the current request and structural tool pairs, then reduce old tool results | SKMB-2026-07-18-008 |
+| T29 | compacting | deterministic projection still exceeds budget | compacting | Use the same selected model topology to create a source-hashed structured summary checkpoint | SKMB-2026-07-18-008 |
+| T30 | compacting | cancel arrives | cancelled | Cancel summary work, store no successful checkpoint, and suppress primary dispatch | SKMB-2026-07-18-008 |
 
 ## Invariants
 
@@ -114,6 +118,9 @@ Delight graphical evidence are recorded in the Phase 4C plan and
 | I32 | Disconnect cleanup never persists an empty replacement for retained partition history | SKMB-2026-07-18-006 |
 | I33 | Exact recipe references include their provider generation and never bind stale IDs to changed contents | SKMB-2026-07-18-007 |
 | I34 | Viewer and Minecraft recipe objects are detached on the client thread and never enter model workers | SKMB-2026-07-18-007 |
+| I35 | The current request boundary and its tool-use/result pairs are unchanged in every context projection | SKMB-2026-07-18-008 |
+| I36 | Summary generation uses the active request endpoint, credentials, scheduling key, and cancellation signal | SKMB-2026-07-18-008 |
+| I37 | Reasoning is excluded from summary prompts and durable compaction checkpoints | SKMB-2026-07-18-008 |
 
 ## Fail Semantics
 
@@ -138,6 +145,8 @@ Delight graphical evidence are recorded in the Phase 4C plan and
 | F17 | Timeline sequence or tool invocation correlation is missing, duplicated, or inconsistent | Fail the affected request closed; do not guess order or mutate another activity | SKMB-2026-07-18-005 |
 | F18 | A request is submitted before durable hydration finishes | Reject it as `history_loading`; do not queue or invoke a model with incomplete context | SKMB-2026-07-18-006 |
 | F19 | A viewer recipe contains unsupported or malformed ingredients | Omit that record, mark only that provider partial, and retain other provider records | SKMB-2026-07-18-007 |
+| F20 | A summary is malformed, fails, or produces an over-budget projection | Use deterministic reduction only if it fits; otherwise fail `context_compaction_failed` and preserve original history | SKMB-2026-07-18-008 |
+| F21 | A durable checkpoint source hash does not match current same-partition messages | Treat it as stale derived memory and rebuild; never insert it into model context | SKMB-2026-07-18-008 |
 
 ## Statistical Defaults Allowed Temporarily
 
@@ -145,6 +154,7 @@ Delight graphical evidence are recorded in the Phase 4C plan and
 | --- | --- | --- | --- | --- | --- | --- |
 | SKMB-2026-07-18-006 | A, B, C, E, F | durable history execution details | hashed connection discriminator, async single writer, explicit loading rejection, ordered full-partition saves | designer delegated best implementation path; product invariants already accepted | final Phase 4 real-client acceptance | decisions/2026-07-18-006-durable-history-execution.md |
 | SKMB-2026-07-18-007 | A, B, D, E, F | recipe provider execution details | client-thread capture, generation-bearing references, public optional viewer APIs, partial omission diagnostics | designer delegated best implementation path; recipe authority and visibility already accepted | final Phase 4 real-client acceptance | decisions/2026-07-18-007-recipe-provider-execution.md |
+| SKMB-2026-07-18-008 | A, B, C, D, E, F | context compaction execution details | 128k configurable window, conservative UTF-8 estimator, structural prefix summaries, source-hash checkpoint reuse | designer delegated best implementation path; compaction authority and failure semantics already accepted | final Phase 4 real-client acceptance | decisions/2026-07-18-008-context-compaction-execution.md |
 
 ## Open Decisions
 

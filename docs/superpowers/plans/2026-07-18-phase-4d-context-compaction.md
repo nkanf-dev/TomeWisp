@@ -1,0 +1,146 @@
+# Phase 4D Context Reduction and Compaction Implementation Plan
+
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+
+**Goal:** Assemble every model request from a budgeted, provider-neutral context projection that preserves current work and tool structure, reduces old tool results, creates reusable structured summary checkpoints when needed, and fails closed without changing durable history.
+
+**Architecture:** Common code owns immutable budgets, estimates, structural reductions, checkpoint hashes, summary generation, and projections. `GameGuideAgent` invokes this pipeline before the first model turn while keeping the current request boundary protected through all tool continuations. `AgentSessionStore` owns complete in-memory history plus checkpoints; GuideService persists only privacy-safe checkpoint projections and hydrates matching normal-mode message history. Both client and server runtimes derive the same budget from `ModelConfig`; provider adapters remain unchanged.
+
+**Tech Stack:** Java 25 records and sealed content, Gson strict JSON, SHA-256 source hashes, existing `ModelClient`/scheduler/cancellation contracts, SQLite schema migration, JUnit 5 deterministic fake models.
+
+---
+
+## Accepted Boundaries
+
+- This is an internal work package in the single Phase 4, not a separate product phase.
+- SKMB-2026-07-18-005 owns product semantics; SKMB-2026-07-18-008 records reviewable execution defaults.
+- Complete player-visible history remains durable and unchanged. Normal mode does not add full normalized tool inputs/results or reasoning to SQLite.
+- Summary checkpoints are derived memory, never evidence; current game facts still require current evidence or a fresh tool call.
+- No message-count, history-length, checkpoint-count, or database-size cap is introduced.
+
+### Task 1: Define Budget, Estimator, and Structural Units
+
+**Files:**
+- Create: `common/src/main/java/dev/tomewisp/agent/context/ContextBudget.java`
+- Create: `common/src/main/java/dev/tomewisp/agent/context/ContextTokenEstimator.java`
+- Create: `common/src/main/java/dev/tomewisp/agent/context/Utf8ContextTokenEstimator.java`
+- Create: `common/src/main/java/dev/tomewisp/agent/context/ContextStructure.java`
+- Test: `common/src/test/java/dev/tomewisp/agent/context/Utf8ContextTokenEstimatorTest.java`
+- Test: `common/src/test/java/dev/tomewisp/agent/context/ContextStructureTest.java`
+
+- [x] Write red tests for system/tool/JSON accounting, Unicode determinism, invalid budgets, assistant tool-use plus user tool-result grouping, orphan/duplicate result rejection, and reasoning exclusion.
+- [x] Run `./gradlew :common:test --tests 'dev.tomewisp.agent.context.*'` and confirm compilation failure.
+- [x] Implement the immutable budget, conservative UTF-8 estimator, and structural unit validator without provider imports.
+- [x] Run the focused tests and commit `feat: define context budget and structure`.
+
+The red run failed with 19 missing-symbol compilation errors before the context
+domain existed. The green focused run passed all seven estimator/structure
+tests in four seconds. Reasoning remains countable in a live primary request but
+is explicitly stripped by the summary-safe projection.
+
+### Task 2: Reduce Old Tool Results Without Losing Evidence
+
+**Files:**
+- Create: `common/src/main/java/dev/tomewisp/agent/context/ReducedToolResult.java`
+- Create: `common/src/main/java/dev/tomewisp/agent/context/ToolResultContextReducer.java`
+- Create: `common/src/main/java/dev/tomewisp/agent/context/ContextProjection.java`
+- Test: `common/src/test/java/dev/tomewisp/agent/context/ToolResultContextReducerTest.java`
+
+- [ ] Write red tests using large recipe-search, inventory, document, explicit failure, unknown-tool, and malformed-result payloads.
+- [ ] Prove old results retain status/output type, stable reference IDs, evidence authority/completeness/capture/source/provenance, and failure code while dropping bulk lists.
+- [ ] Prove messages at or after `protectedFromIndex` and their JSON deep copies are unchanged.
+- [ ] Implement deterministic key allowlisting and structural projection; malformed old results remain explicit reduced failures rather than disappearing.
+- [ ] Run focused tests and commit `feat: reduce historical tool context`.
+
+### Task 3: Generate and Validate Summary Checkpoints
+
+**Files:**
+- Create: `common/src/main/java/dev/tomewisp/agent/context/ContextCheckpoint.java`
+- Create: `common/src/main/java/dev/tomewisp/agent/context/ContextCheckpointCodec.java`
+- Create: `common/src/main/java/dev/tomewisp/agent/context/ContextCompactor.java`
+- Test: `common/src/test/java/dev/tomewisp/agent/context/ContextCompactorTest.java`
+
+- [ ] Write red fake-model tests for no-op projection, deterministic-only projection, successful same-model summary, malformed summary, transport failure fallback, still-too-large failure, source hash stability, stale checkpoint rejection, and cancellation before/while summary.
+- [ ] Implement a versioned JSON-only summary prompt containing goals, preferences, completed topics, current tasks, decisions, unresolved questions, and evidence references; omit reasoning content before serialization.
+- [ ] Budget summary input, summarize only a structural prefix, prefix inserted memory as derived/non-evidence, validate exact output fields, and retain structured failed checkpoints.
+- [ ] Ensure every primary or summary request uses the original scheduling key and cancellation signal.
+- [ ] Run focused tests and commit `feat: compact model context with checkpoints`.
+
+### Task 4: Integrate Compaction Into the Agent Loop
+
+**Files:**
+- Modify: `common/src/main/java/dev/tomewisp/agent/AgentState.java`
+- Modify: `common/src/main/java/dev/tomewisp/agent/AgentEvent.java`
+- Modify: `common/src/main/java/dev/tomewisp/agent/GameGuideAgent.java`
+- Modify: `common/src/main/java/dev/tomewisp/agent/session/AgentSessionStore.java`
+- Modify: `common/src/main/java/dev/tomewisp/guide/GuideRequestStatus.java`
+- Modify: `common/src/main/java/dev/tomewisp/guide/GuideStateReducer.java`
+- Modify: `common/src/main/java/dev/tomewisp/bridge/protocol/ServerAgentEventCodec.java`
+- Modify: `common/src/test/java/dev/tomewisp/agent/GameGuideAgentTest.java`
+- Modify: `common/src/test/java/dev/tomewisp/guide/GuideStateReducerTest.java`
+- Modify: `common/src/test/java/dev/tomewisp/bridge/protocol/ServerAgentEventCodecTest.java`
+
+- [ ] Write red tests proving `PREPARING -> COMPACTING -> MODEL_WAIT`, checkpoint event correlation, current tool continuation preservation, no primary dispatch after terminal compaction failure, failure leaves old history intact, and cancellation suppresses late summary/primary output.
+- [ ] Add `COMPACTING` state/status and a strict privacy-safe checkpoint event to local and server codecs.
+- [ ] Integrate one compactor call before initial dispatch; carry the protected boundary through later tool turns and retain original complete history on successful completion.
+- [ ] Store checkpoints by session without allowing an old lease or late request to overwrite a replacement.
+- [ ] Run Agent/Guide/bridge tests and commit `feat: compact agent request context`.
+
+### Task 5: Configure the Selected Model Budget on Both Topologies
+
+**Files:**
+- Modify: `common/src/main/java/dev/tomewisp/model/config/ModelConfig.java`
+- Modify: `common/src/main/java/dev/tomewisp/model/config/ModelConfigLoader.java`
+- Modify: `common/src/main/java/dev/tomewisp/client/ClientGuideRuntime.java`
+- Modify: `common/src/main/java/dev/tomewisp/server/ServerGuideRuntime.java`
+- Modify: `common/src/test/java/dev/tomewisp/model/config/ModelConfigLoaderTest.java`
+- Modify direct `ModelConfig` fixtures under `common/src/test/java/dev/tomewisp/model/`
+- Modify: `docs/development.md`
+
+- [ ] Add red config tests for JSON/environment precedence, 128,000 default, positive context window, double-output reserve validation, and redacted diagnostics.
+- [ ] Add `contextWindowTokens` / `TOMEWISP_CONTEXT_WINDOW_TOKENS`, pass the same derived `ContextBudget` into client and server agents, and update the documented sample.
+- [ ] Run model config, Anthropic, OpenAI, client runtime, and server runtime tests.
+- [ ] Commit `feat: configure model context budgets`.
+
+### Task 6: Persist and Recover Privacy-Safe Checkpoints
+
+**Files:**
+- Modify: `common/src/main/java/dev/tomewisp/guide/GuideSessionSnapshot.java`
+- Modify: `common/src/main/java/dev/tomewisp/guide/history/GuideHistoryPartition.java`
+- Modify: `common/src/main/java/dev/tomewisp/guide/history/GuideHistoryCodec.java`
+- Modify: `common/src/main/java/dev/tomewisp/guide/history/SqliteGuideHistoryStore.java`
+- Modify: `common/src/main/java/dev/tomewisp/guide/history/GuideHistoryRepository.java`
+- Modify: `common/src/main/java/dev/tomewisp/guide/GuideLocalEndpoint.java`
+- Modify: `common/src/main/java/dev/tomewisp/guide/GuideService.java`
+- Modify: `common/src/main/java/dev/tomewisp/client/ClientGuideRuntime.java`
+- Test: `common/src/test/java/dev/tomewisp/guide/history/GuideHistoryCodecTest.java`
+- Test: `common/src/test/java/dev/tomewisp/guide/history/SqliteGuideHistoryStoreTest.java`
+- Test: `common/src/test/java/dev/tomewisp/guide/GuideServiceHistoryTest.java`
+
+- [ ] Write red migration/round-trip tests from schema v1 to v2, exact checkpoint fields, normal-mode privacy exclusions, partition isolation, failed checkpoint retention, and stale-hash non-reuse.
+- [ ] Add a transactional v1-to-v2 migration and `compaction_checkpoints` table; never delete the original messages/timeline rows during migration.
+- [ ] Project checkpoint events into the owning session, persist asynchronously in event order, and hydrate only matching-partition message/checkpoint context after durable load.
+- [ ] Reconstruct normal-mode old context from user/completed-assistant messages plus validated checkpoint summaries; never restore capabilities, live evidence, inventory, recipe generations, or active requests.
+- [ ] Run history/recovery/architecture tests and commit `feat: persist context checkpoints`.
+
+### Task 7: Verify Phase 4D and Update Status
+
+**Files:**
+- Modify: `README.md`
+- Modify: `docs/development.md`
+- Modify: `docs/isme/SKMB.md`
+- Modify: `docs/isme/decisions/2026-07-18-008-context-compaction-execution.md`
+- Modify: this plan
+
+- [ ] Run `./gradlew :common:test --tests 'dev.tomewisp.agent.context.*' --tests 'dev.tomewisp.agent.*' --tests 'dev.tomewisp.guide.*' --tests 'dev.tomewisp.bridge.protocol.*'`.
+- [ ] Run `./gradlew clean :common:test :fabric:build :neoforge:build`.
+- [ ] Run `git diff --check`, shell/Python/JSON syntax checks, production-JAR credential scans, and verify no reasoning/full normalized history was added to SQLite fixtures.
+- [ ] Record test counts, artifact hashes, warnings, and commit references in this plan and SKMB-008.
+- [ ] Commit `docs: verify context compaction`.
+
+## Completion Boundary
+
+Phase 4D is complete only when deterministic reduction, same-topology summary,
+checkpoint persistence/recovery, both loaders, and failure/cancellation races
+are proven. Semantic rich messages, settings/developer diagnostics, history
+paging, and final consolidated graphical smoke remain active Phase 4 work.

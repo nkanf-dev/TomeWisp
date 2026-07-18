@@ -52,6 +52,7 @@ public final class TomeWispScreen extends Screen {
     private final GuideService service;
     private final RecipeClientRuntime recipeClient;
     private final GuideDisplayConfig displayConfig;
+    private final Runnable settingsOpener;
     private volatile GuideUiView view;
     private GuideSubscription subscription;
     private GuideUiLayout layout;
@@ -91,10 +92,20 @@ public final class TomeWispScreen extends Screen {
             RecipeClientRuntime recipeClient,
             GuideDisplayConfig displayConfig,
             GuideFailure displayFailure) {
+        this(service, recipeClient, displayConfig, displayFailure, null);
+    }
+
+    public TomeWispScreen(
+            GuideService service,
+            RecipeClientRuntime recipeClient,
+            GuideDisplayConfig displayConfig,
+            GuideFailure displayFailure,
+            Runnable settingsOpener) {
         super(Component.translatable("screen.tomewisp.guide"));
         this.service = java.util.Objects.requireNonNull(service, "service");
         this.recipeClient = java.util.Objects.requireNonNull(recipeClient, "recipeClient");
         this.displayConfig = java.util.Objects.requireNonNull(displayConfig, "displayConfig");
+        this.settingsOpener = settingsOpener;
         this.view = GuideUiView.from(service.snapshot(), displayConfig);
         List<String> startupNotices = new ArrayList<>();
         recipeClient.failure().ifPresent(failure -> startupNotices.add(Component.translatable(
@@ -110,7 +121,7 @@ public final class TomeWispScreen extends Screen {
     protected void init() {
         layout = GuideUiLayout.calculate(width, height, detailOpen());
         GuideUiLayout.Rect top = layout.topBar();
-        int x = top.x() + top.width() - 176;
+        int x = top.x() + top.width() - (settingsOpener == null ? 176 : 200);
         addRenderableWidget(Button.builder(Component.literal("会话"), button -> sessionOverlay = !sessionOverlay)
                 .bounds(x, top.y() + 2, 32, 20).build());
         addRenderableWidget(Button.builder(Component.literal("+"), button -> createSession())
@@ -121,6 +132,13 @@ public final class TomeWispScreen extends Screen {
                 .bounds(x + 100, top.y() + 2, 52, 20).build());
         addRenderableWidget(Button.builder(Component.literal("刷新"), button -> service.refreshCapabilities())
                 .bounds(x + 156, top.y() + 2, 20, 20).build());
+        if (settingsOpener != null) {
+            addRenderableWidget(Button.builder(
+                            Component.translatable("screen.tomewisp.settings.short"),
+                            button -> settingsOpener.run())
+                    .bounds(x + 180, top.y() + 2, 20, 20)
+                    .build());
+        }
 
         GuideUiLayout.Rect area = layout.composer();
         int actionWidth = 54;

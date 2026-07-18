@@ -483,7 +483,7 @@ git commit -m "feat: coordinate native model settings"
 - Create: `common/src/test/java/dev/tomewisp/client/gui/TomeWispSettingsScreenProjectionTest.java`
 - Create: `common/src/test/java/dev/tomewisp/client/gui/settings/SettingsLayoutTest.java`
 
-- [ ] **Step 1: Write projection/layout/interaction tests before rendering code**
+- [x] **Step 1: Write projection/layout/interaction tests before rendering code**
 
 Test wide/narrow layout thresholds, top-level section order, profile ordering,
 dirty drafts, save/reload confirmation, delete confirmation, environment
@@ -505,13 +505,13 @@ void modelProjectionNeverContainsEnvironmentValue() {
 }
 ```
 
-- [ ] **Step 2: Run UI projection tests and verify missing screen/layout types**
+- [x] **Step 2: Run UI projection tests and verify missing screen/layout types**
 
 ```bash
 ./gradlew :common:test --tests 'dev.tomewisp.client.gui.*Settings*'
 ```
 
-- [ ] **Step 3: Implement the screen shell and Models page**
+- [x] **Step 3: Implement the screen shell and Models page**
 
 Use native buttons, edit boxes, scroll lists, narration, and scissor regions.
 Wide layout renders section rail + profile list + editor; narrow layout renders
@@ -522,7 +522,7 @@ The existing Guide screen settings button must call a supplied opener instead
 of constructing the settings service. Returning from settings reopens the same
 GuideService view without clearing selection or request state.
 
-- [ ] **Step 4: Run GUI tests and commit**
+- [x] **Step 4: Run GUI tests and commit**
 
 ```bash
 ./gradlew :common:test --tests 'dev.tomewisp.client.gui.*' \

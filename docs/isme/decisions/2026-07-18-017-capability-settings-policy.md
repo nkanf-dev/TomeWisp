@@ -56,7 +56,9 @@ whose declared allowed tool is disabled is a conflict; TomeWisp rejects the
 candidate and asks the player to keep the tool enabled or also disable the
 Skill. It never silently re-enables a tool or disables a Skill. The per-runtime
 Skill view exposes only enabled Skills, and its `load_skill` tool resolves only
-that immutable view.
+that immutable view. `load_skill` is derived internal plumbing rather than a
+separately persisted player Tool toggle: it is present when the captured view
+contains at least one enabled Skill and absent when no Skill can be loaded.
 
 Every client Agent request captures one immutable capability snapshot at
 submission: visible tool definitions, executable tool map, enabled Skill

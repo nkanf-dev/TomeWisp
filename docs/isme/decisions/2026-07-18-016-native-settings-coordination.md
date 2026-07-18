@@ -47,11 +47,14 @@ failure leaves the prior file and runtime unchanged. Domains are not combined
 into one transaction: a model-profile save cannot accidentally rewrite
 capability, recipe-tool, or display preferences.
 
-The settings service permits one mutating settings operation at a time. It
-does not queue hidden future writes. A conflicting save, reload, metadata
-refresh, or history action fails visibly as `settings_busy`; the player may
-retry after the current operation ends. The live model probe follows its more
-specific SKMB-2026-07-18-015 busy/cancellation rules.
+The settings service permits one foreground settings operation at a time,
+including a live probe. It does not queue hidden future writes. A conflicting
+save, reload, manual metadata refresh, history action, or probe fails visibly
+as `settings_busy`/`connection_test_busy`; the player may retry after the
+current operation ends. Startup metadata refresh remains an independent cache
+operation, but it cannot publish a model runtime from a stale profile snapshot:
+the settings service reconciles a validated cache result against the current
+profile generation before preparing any replacement.
 
 All file, provider, and SQLite work runs off Minecraft-owned threads. Snapshot
 publication and screen callbacks return through the client dispatcher. A

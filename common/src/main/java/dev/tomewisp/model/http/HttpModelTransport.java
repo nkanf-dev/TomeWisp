@@ -11,7 +11,11 @@ import dev.tomewisp.net.HttpTransportPolicy;
 import dev.tomewisp.net.JdkHttpTransport;
 import java.io.IOException;
 import java.io.InputStream;
+import java.net.http.HttpTimeoutException;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeoutException;
 
 public final class HttpModelTransport {
     @FunctionalInterface
@@ -41,11 +45,19 @@ public final class HttpModelTransport {
             if (cause instanceof ModelClientException exception) {
                 result.completeExceptionally(exception);
             } else {
+                boolean cancelled = cancellation.isCancelled()
+                        || cause instanceof java.util.concurrent.CancellationException;
+                boolean timedOut = cause instanceof HttpTimeoutException
+                        || cause instanceof TimeoutException;
                 result.completeExceptionally(new ModelClientException(new ModelFailure(
-                        cancellation.isCancelled()
+                        cancelled
                                 ? "agent_cancelled"
-                                : "model_transport_error",
-                        safeMessage(cause),
+                                : timedOut ? "model_timeout" : "model_transport_error",
+                        cancelled
+                                ? "Model request was cancelled"
+                                : timedOut
+                                        ? "Model request timed out"
+                                        : "Model transport is unavailable",
                         null)));
             }
         });
@@ -53,17 +65,11 @@ public final class HttpModelTransport {
     }
 
     private static Throwable unwrap(Throwable throwable) {
-        if (throwable instanceof java.util.concurrent.CompletionException completion
-                && completion.getCause() != null) {
-            return completion.getCause();
+        Throwable current = throwable;
+        while ((current instanceof CompletionException || current instanceof ExecutionException)
+                && current.getCause() != null) {
+            current = current.getCause();
         }
-        return throwable;
-    }
-
-    private static String safeMessage(Throwable throwable) {
-        String message = throwable.getMessage();
-        return message == null || message.isBlank()
-                ? throwable.getClass().getSimpleName()
-                : message;
+        return current;
     }
 }

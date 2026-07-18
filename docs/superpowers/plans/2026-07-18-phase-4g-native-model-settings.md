@@ -290,7 +290,7 @@ git commit -m "fix: reconcile metadata against current profiles"
 - Modify: `common/src/main/java/dev/tomewisp/model/http/ModelHttpErrors.java`
 - Create: `common/src/test/java/dev/tomewisp/model/http/ModelHttpErrorsTest.java`
 
-- [ ] **Step 1: Write failing probe contract tests**
+- [x] **Step 1: Write failing probe contract tests**
 
 Prove the request is non-streaming, has one fixed user message, no Tools, an
 isolated session key, output config capped at 64, and no provider content is
@@ -315,14 +315,14 @@ void sendsOneContextFreeRequestAndDiscardsAssistantText() {
 }
 ```
 
-- [ ] **Step 2: Run the probe tests and verify failure**
+- [x] **Step 2: Run the probe tests and verify failure**
 
 ```bash
 ./gradlew :common:test --tests 'dev.tomewisp.settings.model.ModelConnectionProbeTest' \
   --tests 'dev.tomewisp.model.http.ModelHttpErrorsTest'
 ```
 
-- [ ] **Step 3: Implement the probe and safe HTTP classification**
+- [x] **Step 3: Implement the probe and safe HTTP classification**
 
 ```java
 public sealed interface ModelConnectionResult {
@@ -362,7 +362,7 @@ exception type/status. Refactor `ModelHttpErrors` so generic model calls may
 retain the existing redacted status message but never append provider error
 text; this closes the current raw upstream message leak for all callers.
 
-- [ ] **Step 4: Run model transport/redaction tests and commit**
+- [x] **Step 4: Run model transport/redaction tests and commit**
 
 ```bash
 ./gradlew :common:test --tests 'dev.tomewisp.settings.model.*' \

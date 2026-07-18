@@ -66,6 +66,24 @@ final class SkillRepositoryTest {
         assertEquals("required_mod_unavailable", repository.diagnostics().getFirst().code());
     }
 
+    @Test
+    void snapshotFiltersDisabledSkillsAndDoesNotObserveLaterReload() {
+        SkillRepository repository = repository();
+        assertTrue(repository.reload(java.util.List.of(
+                valid("original-skill", "original"),
+                valid("disabled-skill", "disabled")), Set.of()));
+
+        SkillCatalogSnapshot snapshot = repository.snapshot(Set.of("disabled-skill"));
+        assertTrue(repository.reload(
+                java.util.List.of(valid("replacement-skill", "replacement")), Set.of()));
+
+        assertTrue(snapshot.find("original-skill").isPresent());
+        assertTrue(snapshot.find("disabled-skill").isEmpty());
+        assertTrue(snapshot.find("replacement-skill").isEmpty());
+        assertFalse(snapshot.metadataPrompt().contains("disabled-skill"));
+        assertTrue(repository.find("replacement-skill").isPresent());
+    }
+
     private static SkillRepository repository() {
         return new SkillRepository(new SkillParser(), Set.of("tomewisp:find_recipes"));
     }

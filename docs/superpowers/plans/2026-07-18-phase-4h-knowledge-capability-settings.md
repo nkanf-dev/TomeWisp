@@ -189,7 +189,7 @@ git commit -m "feat: persist local capability policy"
 - Modify: `common/src/test/java/dev/tomewisp/skill/LoadSkillToolTest.java`
 - Modify: `common/src/test/java/dev/tomewisp/agent/tool/LocalAgentToolExecutorTest.java`
 
-- [ ] **Step 1: Write failing snapshot/authority tests**
+- [x] **Step 1: Write failing snapshot/authority tests**
 
 Prove provider identities survive snapshotting, filtered Tools disappear from
 definitions/required context/execution, Skill documents are immutable, a
@@ -216,7 +216,7 @@ void skillSnapshotDoesNotObserveLaterRepositoryReload() {
 }
 ```
 
-- [ ] **Step 2: Run registry/executor/Skill tests and verify missing APIs**
+- [x] **Step 2: Run registry/executor/Skill tests and verify missing APIs**
 
 ```bash
 ./gradlew :common:test --tests 'dev.tomewisp.tool.ToolRegistryTest' \
@@ -224,7 +224,7 @@ void skillSnapshotDoesNotObserveLaterRepositoryReload() {
   --tests 'dev.tomewisp.skill.*'
 ```
 
-- [ ] **Step 3: Implement public immutable registration and filtered catalogs**
+- [x] **Step 3: Implement public immutable registration and filtered catalogs**
 
 ```java
 public record RegisteredTool(String providerId, Tool<?, ?> tool) {
@@ -253,7 +253,7 @@ names, and returns a stable `tool_unavailable` failure for a name outside that
 captured catalog. `LoadSkillTool` depends on `SkillCatalog`, allowing the server
 to keep the repository and the client to use a snapshot.
 
-- [ ] **Step 4: Run tests and commit**
+- [x] **Step 4: Run tests and commit**
 
 ```bash
 ./gradlew :common:test --tests 'dev.tomewisp.tool.*' \

@@ -38,4 +38,35 @@ final class LoadSkillToolTest {
                 tool.invoke(ToolInvocationContext.developmentConsole("test"),
                         new LoadSkillTool.Input("missing")));
     }
+
+    @Test
+    void cannotLoadSkillExcludedFromCapturedCatalog() {
+        SkillRepository repository = new SkillRepository(new SkillParser(), Set.of());
+        repository.reload(java.util.List.of(new SkillSource(
+                "pack",
+                "guide/skill.md",
+                Map.of("guide/skill.md", """
+                        ---
+                        name: guide
+                        description: Guide the player
+                        required-mods: []
+                        allowed-tools: []
+                        references: []
+                        ---
+                        Follow evidence.
+                        """))), Set.of());
+        LoadSkillTool tool = new LoadSkillTool(repository.snapshot(Set.of("guide")));
+
+        ToolResult.Failure<LoadSkillTool.Output> failure = assertInstanceOf(
+                ToolResult.Failure.class,
+                tool.invoke(ToolInvocationContext.developmentConsole("test"),
+                        new LoadSkillTool.Input("guide")));
+
+        assertEquals("skill_not_found", failure.code());
+        assertInstanceOf(
+                ToolResult.Success.class,
+                new LoadSkillTool(repository).invoke(
+                        ToolInvocationContext.developmentConsole("test"),
+                        new LoadSkillTool.Input("guide")));
+    }
 }

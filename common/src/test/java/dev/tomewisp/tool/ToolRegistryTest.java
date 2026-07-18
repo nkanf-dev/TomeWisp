@@ -1,9 +1,9 @@
 package dev.tomewisp.tool;
 
-import dev.tomewisp.context.ToolInvocationContext;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
+import dev.tomewisp.context.ToolInvocationContext;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 
@@ -26,6 +26,17 @@ final class ToolRegistryTest {
                 IllegalStateException.class,
                 () -> registry.register("provider-b", List.of(alpha)));
         assertEquals(alpha, registry.find("test:alpha").orElseThrow());
+        assertEquals(
+                List.of("provider-a", "provider-a"),
+                registry.registrations().stream().map(RegisteredTool::providerId).toList());
+        assertEquals(
+                List.of("test:alpha", "test:beta"),
+                registry.registrations().stream()
+                        .map(registered -> registered.tool().descriptor().id())
+                        .toList());
+        assertThrows(
+                UnsupportedOperationException.class,
+                () -> registry.registrations().add(registry.registrations().getFirst()));
     }
 
     private static Tool<Input, Output> tool(String id) {

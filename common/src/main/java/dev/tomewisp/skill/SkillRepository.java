@@ -8,7 +8,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.TreeMap;
 
-public final class SkillRepository {
+public final class SkillRepository implements SkillCatalog {
     private final SkillParser parser;
     private final Set<String> availableTools;
     private volatile Map<String, SkillDocument> skills = Map.of();
@@ -68,12 +68,14 @@ public final class SkillRepository {
         return diagnostics;
     }
 
-    public String metadataPrompt() {
-        StringBuilder prompt = new StringBuilder("Available Skills (load only when relevant):\n");
-        for (SkillMetadata metadata : metadata()) {
-            prompt.append("- ").append(metadata.name()).append(": ")
-                    .append(metadata.description()).append('\n');
+    public SkillCatalogSnapshot snapshot(Set<String> disabledSkills) {
+        Set<String> disabled = Set.copyOf(disabledSkills);
+        Map<String, SkillDocument> captured = new TreeMap<>();
+        for (Map.Entry<String, SkillDocument> entry : skills.entrySet()) {
+            if (!disabled.contains(entry.getKey())) {
+                captured.put(entry.getKey(), entry.getValue());
+            }
         }
-        return prompt.toString();
+        return new SkillCatalogSnapshot(captured);
     }
 }

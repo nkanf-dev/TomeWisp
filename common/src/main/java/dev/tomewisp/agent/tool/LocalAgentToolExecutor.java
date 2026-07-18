@@ -19,13 +19,18 @@ import java.util.concurrent.CompletableFuture;
 import java.util.stream.Collectors;
 
 public final class LocalAgentToolExecutor implements AgentToolExecutor {
-    private final ToolRegistry tools;
+    private final ToolRuntimeCatalog tools;
     private final ToolNameCodec names;
     private final ToolArgumentCodec arguments;
     private final ToolResultNormalizer normalizer;
     private final List<ModelToolDefinition> definitions;
 
     public LocalAgentToolExecutor(ToolRegistry tools, Gson gson) {
+        this(ToolRuntimeCatalog.from(
+                Objects.requireNonNull(tools, "tools").registrations(), Set.of()), gson);
+    }
+
+    public LocalAgentToolExecutor(ToolRuntimeCatalog tools, Gson gson) {
         this.tools = Objects.requireNonNull(tools, "tools");
         List<ToolDescriptor<?, ?>> descriptors = tools.descriptors();
         names = new ToolNameCodec(descriptors.stream().map(ToolDescriptor::id).toList());
@@ -60,8 +65,15 @@ public final class LocalAgentToolExecutor implements AgentToolExecutor {
             CancellationSignal cancellation) {
         try {
             cancellation.throwIfCancelled();
-            String toolId = names.decode(modelToolName);
-            Tool<?, ?> tool = tools.find(toolId).orElseThrow();
+            String toolId = tools.knownToolId(modelToolName).orElse(modelToolName);
+            Tool<?, ?> tool = tools.find(toolId).orElse(null);
+            if (tool == null) {
+                ToolResult.Failure<Object> unavailable = new ToolResult.Failure<>(
+                        "tool_unavailable", "Tool is unavailable in this request");
+                return CompletableFuture.completedFuture(new AgentToolResult(
+                        toolId, normalizer.normalize(unavailable, Object.class), true));
+            }
+            names.decode(modelToolName);
             ToolResult<?> decoded = arguments.decode(rawArguments, tool.descriptor().inputType());
             ToolResult<?> result;
             if (decoded instanceof ToolResult.Success<?> success) {

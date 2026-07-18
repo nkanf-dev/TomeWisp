@@ -4,6 +4,9 @@ import dev.tomewisp.capability.CapabilityChildPage;
 import dev.tomewisp.capability.CapabilityKind;
 import dev.tomewisp.capability.CapabilityPolicy;
 import dev.tomewisp.client.gui.settings.CapabilitySettingsProjection;
+import dev.tomewisp.client.gui.settings.DiagnosticsSettingsProjection;
+import dev.tomewisp.client.gui.settings.GeneralSettingsProjection;
+import dev.tomewisp.client.gui.settings.HistorySettingsProjection;
 import dev.tomewisp.client.gui.settings.ModelProfileDraft;
 import dev.tomewisp.client.gui.settings.RecipeSettingsProjection;
 import dev.tomewisp.client.gui.settings.SettingsLayout;
@@ -17,6 +20,8 @@ import dev.tomewisp.settings.ClientSettingsService;
 import dev.tomewisp.settings.ClientSettingsSnapshot;
 import dev.tomewisp.settings.SettingsNotice;
 import dev.tomewisp.settings.SettingsOperation;
+import dev.tomewisp.settings.diagnostics.SettingsDiagnosticCard;
+import dev.tomewisp.settings.diagnostics.SettingsDiagnosticsSnapshot;
 import dev.tomewisp.settings.model.ModelConnectionResult;
 import dev.tomewisp.settings.model.ModelProfileSettingsView;
 import dev.tomewisp.tool.ToolResult;
@@ -46,7 +51,7 @@ public final class TomeWispSettingsScreen extends Screen {
     private volatile ClientSettingsSnapshot snapshot;
     private AutoCloseable listener;
     private SettingsLayout layout;
-    private SettingsSection section = SettingsSection.MODELS;
+    private SettingsSection section = SettingsSection.GENERAL;
     private String selectedProfileId;
     private ModelProfileDraft draft;
     private Confirmation confirmation = Confirmation.NONE;
@@ -61,6 +66,9 @@ public final class TomeWispSettingsScreen extends Screen {
     private String renderedCapabilityFilter = "";
     private CapabilityKind capabilityKindFilter;
     private int capabilityScroll;
+    private int pageScroll;
+    private int pageContentHeight;
+    private ClientSettingsService.HistoryConfirmationToken historyConfirmation;
     private boolean restoreCapabilityFilterFocus;
     private EditBox capabilityFilter;
     private EditBox id;
@@ -96,6 +104,10 @@ public final class TomeWispSettingsScreen extends Screen {
             addModelsPage();
         } else if (section == SettingsSection.KNOWLEDGE_AND_CAPABILITIES) {
             addKnowledgePage();
+        } else if (section == SettingsSection.GENERAL) {
+            addGeneralPage();
+        } else if (section == SettingsSection.HISTORY) {
+            addHistoryPage();
         }
         addFooterActions();
     }
@@ -108,6 +120,9 @@ public final class TomeWispSettingsScreen extends Screen {
             }
             ClientSettingsSnapshot previous = snapshot;
             snapshot = next;
+            if (previous.generation() != next.generation()) {
+                historyConfirmation = null;
+            }
             if (!previous.models().config().equals(next.models().config())
                     || completedReload(
                             previous, next, SettingsOperation.Kind.RELOADING_MODELS)) {
@@ -140,6 +155,7 @@ public final class TomeWispSettingsScreen extends Screen {
     @Override
     public void removed() {
         service.cancelConnectionTest();
+        historyConfirmation = null;
         if (listener != null) {
             try {
                 listener.close();
@@ -164,6 +180,7 @@ public final class TomeWispSettingsScreen extends Screen {
     @Override
     public void tick() {
         super.tick();
+        service.refreshRuntimeState();
         if (section == SettingsSection.KNOWLEDGE_AND_CAPABILITIES
                 && capabilityRoute == null
                 && !renderedCapabilityFilter.equals(capabilityFilterText)) {
@@ -191,6 +208,14 @@ public final class TomeWispSettingsScreen extends Screen {
             editorScroll = net.minecraft.util.Mth.clamp(
                     editorScroll - (int) Math.round(scrollY * 22), 0, maximum);
             rebuildWidgets();
+            return true;
+        }
+        if ((section == SettingsSection.DIAGNOSTICS
+                        || section == SettingsSection.HISTORY)
+                && layout.content().contains(mouseX, mouseY)) {
+            int maximum = Math.max(0, pageContentHeight - layout.content().height() + 18);
+            pageScroll = net.minecraft.util.Mth.clamp(
+                    pageScroll - (int) Math.round(scrollY * 24), 0, maximum);
             return true;
         }
         if (section == SettingsSection.KNOWLEDGE_AND_CAPABILITIES
@@ -223,6 +248,12 @@ public final class TomeWispSettingsScreen extends Screen {
             renderModels(graphics);
         } else if (section == SettingsSection.KNOWLEDGE_AND_CAPABILITIES) {
             renderKnowledge(graphics);
+        } else if (section == SettingsSection.GENERAL) {
+            renderGeneral(graphics);
+        } else if (section == SettingsSection.HISTORY) {
+            renderHistory(graphics);
+        } else if (section == SettingsSection.DIAGNOSTICS) {
+            renderDiagnostics(graphics);
         } else {
             renderPlaceholder(graphics);
         }
@@ -268,6 +299,46 @@ public final class TomeWispSettingsScreen extends Screen {
             addProfileList();
         }
         addEditor();
+    }
+
+    private void addGeneralPage() {
+        GeneralSettingsProjection general = project(snapshot).general();
+        SettingsLayout.Rect area = layout.editor();
+        int x = area.x() + 10;
+        int y = area.y() + 42;
+        int width = Math.min(280, Math.max(120, area.width() - 20));
+        Button debug = addRenderableWidget(Button.builder(
+                        Component.translatable(
+                                general.debugLabelKey()).copy().append(" · ")
+                                .append(Component.translatable(general.debugStatusKey())),
+                        ignored -> accept(service.saveDisplay(general.toggleDebug())))
+                .bounds(x, y, width, 22)
+                .build());
+        debug.setTooltip(Tooltip.create(
+                Component.translatable(general.debugDescriptionKey())));
+        debug.active = snapshot.operation().kind() == SettingsOperation.Kind.IDLE;
+    }
+
+    private void addHistoryPage() {
+        HistorySettingsProjection history = project(snapshot).history();
+        SettingsLayout.Rect area = layout.editor();
+        int x = area.x() + 10;
+        int y = area.y() + 64 - pageScroll;
+        int width = Math.min(360, Math.max(140, area.width() - 20));
+        for (HistorySettingsProjection.ActionRow row : history.actions()) {
+            Button button = Button.builder(
+                            historyActionLabel(row),
+                            ignored -> activateHistory(row.action()))
+                    .bounds(x, y, width, 22)
+                    .build();
+            button.setTooltip(Tooltip.create(Component.translatable(row.descriptionKey())));
+            button.active = row.enabled();
+            if (y >= area.y() + 48 && y + 22 <= area.bottom() - 4) {
+                addRenderableWidget(button);
+            }
+            y += 30;
+        }
+        pageContentHeight = Math.max(0, y + pageScroll - area.y());
     }
 
     private void addProfileList() {
@@ -479,19 +550,7 @@ public final class TomeWispSettingsScreen extends Screen {
     }
 
     private void addFooterActions() {
-        List<Action> actions = section == SettingsSection.MODELS
-                ? List.of(
-                        new Action("screen.tomewisp.settings.save", this::saveCurrent),
-                        new Action(reloadKey(), this::reloadCurrent),
-                        new Action(deleteKey(), this::delete),
-                        new Action("screen.tomewisp.settings.models.default", this::makeDefault),
-                        new Action(testKey(), this::testConnection),
-                        new Action("screen.tomewisp.settings.cancel", this::cancel),
-                        new Action("screen.tomewisp.settings.models.refresh", this::refreshMetadata),
-                        new Action("screen.tomewisp.settings.done", this::onClose))
-                : section == SettingsSection.KNOWLEDGE_AND_CAPABILITIES
-                        ? knowledgeActions()
-                        : List.of(new Action("screen.tomewisp.settings.done", this::onClose));
+        List<Action> actions = footerActions();
         int gap = 4;
         int columns = Math.min(4, actions.size());
         int available = layout.footer().width() - 12;
@@ -509,6 +568,28 @@ public final class TomeWispSettingsScreen extends Screen {
                     .build());
             button.active = actionEnabled(action.translationKey());
         }
+    }
+
+    private List<Action> footerActions() {
+        return switch (section) {
+            case MODELS -> List.of(
+                    new Action("screen.tomewisp.settings.save", this::saveCurrent),
+                    new Action(reloadKey(), this::reloadCurrent),
+                    new Action(deleteKey(), this::delete),
+                    new Action("screen.tomewisp.settings.models.default", this::makeDefault),
+                    new Action(testKey(), this::testConnection),
+                    new Action("screen.tomewisp.settings.cancel", this::cancel),
+                    new Action("screen.tomewisp.settings.models.refresh", this::refreshMetadata),
+                    new Action("screen.tomewisp.settings.done", this::onClose));
+            case KNOWLEDGE_AND_CAPABILITIES -> knowledgeActions();
+            case GENERAL -> List.of(
+                    new Action(
+                            "screen.tomewisp.settings.reload",
+                            () -> accept(service.reloadDisplay())),
+                    new Action("screen.tomewisp.settings.done", this::onClose));
+            case HISTORY, DIAGNOSTICS ->
+                    List.of(new Action("screen.tomewisp.settings.done", this::onClose));
+        };
     }
 
     private boolean actionEnabled(String key) {
@@ -562,6 +643,208 @@ public final class TomeWispSettingsScreen extends Screen {
                     profile.definition().apiKeyEnv());
             graphics.text(font, status, x, statusY, color, false);
         });
+    }
+
+    private void renderGeneral(GuiGraphicsExtractor graphics) {
+        GeneralSettingsProjection general = project(snapshot).general();
+        SettingsLayout.Rect area = layout.editor();
+        graphics.text(
+                font,
+                Component.translatable(general.titleKey()),
+                area.x() + 10,
+                area.y() + 12,
+                ACCENT,
+                false);
+        List<net.minecraft.util.FormattedCharSequence> lines = font.split(
+                Component.translatable(general.debugDescriptionKey()),
+                Math.max(80, area.width() - 20));
+        int y = area.y() + 72;
+        for (net.minecraft.util.FormattedCharSequence line : lines) {
+            graphics.text(font, line, area.x() + 10, y, MUTED, false);
+            y += 10;
+        }
+        pageContentHeight = y - area.y();
+    }
+
+    private void renderHistory(GuiGraphicsExtractor graphics) {
+        HistorySettingsProjection history = project(snapshot).history();
+        SettingsLayout.Rect area = layout.editor();
+        graphics.text(
+                font,
+                Component.translatable(history.titleKey()),
+                area.x() + 10,
+                area.y() + 12,
+                ACCENT,
+                false);
+        Component status = Component.translatable(history.scopeLabelKey())
+                .copy().append(" · ")
+                .append(Component.translatable(history.statusKey()));
+        graphics.text(font, status, area.x() + 10, area.y() + 31, MUTED, false);
+        int actionsBottom = area.y() + 64 - pageScroll + history.actions().size() * 30;
+        pageContentHeight = Math.max(0, actionsBottom + pageScroll - area.y());
+    }
+
+    private void renderDiagnostics(GuiGraphicsExtractor graphics) {
+        DiagnosticsSettingsProjection diagnostics = project(snapshot).diagnostics();
+        SettingsLayout.Rect area = layout.editor();
+        graphics.enableScissor(area.x(), area.y(), area.right(), area.bottom());
+        int x = area.x() + 8;
+        int width = Math.max(80, area.width() - 16);
+        int y = area.y() + 10 - pageScroll;
+        y = settingsHeading(
+                graphics,
+                Component.translatable(diagnostics.titleKey()),
+                x,
+                y,
+                width,
+                ACCENT);
+        for (DiagnosticsSettingsProjection.CardRow card : diagnostics.cards()) {
+            int cardHeight = 34 + card.metrics().size() * 11;
+            graphics.fill(x, y, x + width, y + cardHeight, PANEL_ALT);
+            graphics.text(
+                    font,
+                    Component.literal(card.statusIcon() + " ")
+                            .append(Component.translatable(card.titleKey())),
+                    x + 7,
+                    y + 6,
+                    TEXT,
+                    false);
+            graphics.text(
+                    font,
+                    Component.translatable(card.statusTextKey()),
+                    x + 7,
+                    y + 18,
+                    MUTED,
+                    false);
+            int metricY = y + 30;
+            for (SettingsDiagnosticCard.Metric metric : card.metrics()) {
+                graphics.text(
+                        font,
+                        Component.translatable(metric.labelKey(), metric.value()),
+                        x + 12,
+                        metricY,
+                        MUTED,
+                        false);
+                metricY += 11;
+            }
+            y += cardHeight + 6;
+        }
+        if (diagnostics.debug().isPresent()) {
+            y = renderDebugDiagnostics(
+                    graphics, diagnostics.debug().orElseThrow(), x, y + 4, width);
+        }
+        pageContentHeight = Math.max(0, y + pageScroll - area.y() + 8);
+        graphics.disableScissor();
+    }
+
+    private int renderDebugDiagnostics(
+            GuiGraphicsExtractor graphics,
+            DiagnosticsSettingsProjection.DebugSection section,
+            int x,
+            int y,
+            int width) {
+        SettingsDiagnosticsSnapshot.DebugSettingsDiagnostics debug = section.diagnostics();
+        y = settingsHeading(
+                graphics,
+                Component.translatable(section.titleKey()),
+                x,
+                y,
+                width,
+                0xFFFFD479);
+        y = debugLine(graphics, x, y, width,
+                "screen.tomewisp.settings.diagnostics.debug.settings_generation",
+                Long.toString(debug.settingsGeneration()));
+        y = debugLine(graphics, x, y, width,
+                "screen.tomewisp.settings.diagnostics.debug.database_schema",
+                Integer.toString(debug.databaseSchema()));
+        for (SettingsDiagnosticsSnapshot.DebugModelProfile model : debug.models()) {
+            String value = model.profileId() + " · " + model.protocol()
+                    + " · " + model.endpointAuthority() + " · " + model.modelId()
+                    + " · context=" + model.effectiveContextWindowTokens()
+                    + " · credential=" + model.credentialPresent();
+            y = debugLine(graphics, x, y, width,
+                    "screen.tomewisp.settings.diagnostics.debug.model", value);
+        }
+        SettingsDiagnosticsSnapshot.DebugCapabilities capabilities = debug.capabilities();
+        y = debugLine(graphics, x, y, width,
+                "screen.tomewisp.settings.diagnostics.debug.capabilities",
+                capabilities.catalogEntries() + "/" + capabilities.enabledEntries()
+                        + " · sources=" + capabilities.knowledgeSources()
+                        + " · tools=" + capabilities.tools()
+                        + " · skills=" + capabilities.skills());
+        if (debug.guide().isPresent()) {
+            SettingsDiagnosticsSnapshot.DebugGuide guide = debug.guide().orElseThrow();
+            y = debugLine(graphics, x, y, width,
+                    "screen.tomewisp.settings.diagnostics.debug.guide",
+                    guide.scopeKind() + " · session=" + guide.selectedSessionId()
+                            + " · " + guide.modelMode()
+                            + " · persistence=" + guide.persistenceState()
+                            + " · generations=" + guide.committedGeneration()
+                            + "/" + guide.submittedGeneration()
+                            + " · pending=" + guide.pendingWrites()
+                            + " · active=" + guide.activeRequestCount());
+            if (guide.request().isPresent()) {
+                SettingsDiagnosticsSnapshot.DebugRequest request =
+                        guide.request().orElseThrow();
+                y = debugLine(graphics, x, y, width,
+                        "screen.tomewisp.settings.diagnostics.debug.request",
+                        request.requestId() + " · " + request.topology()
+                                + " · " + request.status()
+                                + " · retryMs=" + request.retryAfterMillis()
+                                + " · tools=" + request.toolCount()
+                                + " · sources=" + request.sourceCount());
+            }
+            y = debugLine(graphics, x, y, width,
+                    "screen.tomewisp.settings.diagnostics.debug.context",
+                    "checkpoints=" + guide.context().checkpointCount()
+                            + " · failed=" + guide.context().failedCheckpoints()
+                            + " · estimatedTokens="
+                            + guide.context().estimatedProjectionTokens());
+        }
+        for (SettingsDiagnosticsSnapshot.DebugSource source : debug.sources()) {
+            y = debugLine(graphics, x, y, width,
+                    "screen.tomewisp.settings.diagnostics.debug.source",
+                    source.sourceId() + " · " + source.state()
+                            + " · generation=" + source.generation()
+                            + " · count=" + source.itemCount()
+                            + (source.failureCode() == null
+                                    ? ""
+                                    : " · failure=" + source.failureCode()));
+        }
+        for (String code : debug.failureCodes()) {
+            y = debugLine(graphics, x, y, width,
+                    "screen.tomewisp.settings.diagnostics.debug.failure", code);
+        }
+        return y;
+    }
+
+    private int settingsHeading(
+            GuiGraphicsExtractor graphics,
+            Component text,
+            int x,
+            int y,
+            int width,
+            int color) {
+        for (net.minecraft.util.FormattedCharSequence line : font.split(text, width)) {
+            graphics.text(font, line, x, y, color, false);
+            y += 11;
+        }
+        return y + 4;
+    }
+
+    private int debugLine(
+            GuiGraphicsExtractor graphics,
+            int x,
+            int y,
+            int width,
+            String labelKey,
+            String value) {
+        Component line = Component.translatable(labelKey).copy().append(": ").append(value);
+        for (net.minecraft.util.FormattedCharSequence wrapped : font.split(line, width - 8)) {
+            graphics.text(font, wrapped, x + 4, y, MUTED, false);
+            y += 10;
+        }
+        return y + 2;
     }
 
     private void renderPlaceholder(GuiGraphicsExtractor graphics) {
@@ -697,6 +980,82 @@ public final class TomeWispSettingsScreen extends Screen {
             return;
         }
         onClose();
+    }
+
+    private Component historyActionLabel(HistorySettingsProjection.ActionRow row) {
+        if (historyConfirmation == null
+                || historyConfirmation.action() != serviceHistoryAction(row.action())) {
+            return Component.translatable(row.labelKey());
+        }
+        if (row.action() == HistorySettingsProjection.Action.RESET_DATABASE
+                && historyConfirmation.stage()
+                        == ClientSettingsService.ConfirmationStage.FIRST) {
+            return Component.translatable(
+                    "screen.tomewisp.settings.history.confirm_reset_again");
+        }
+        return Component.translatable("screen.tomewisp.settings.confirm");
+    }
+
+    private void activateHistory(HistorySettingsProjection.Action action) {
+        ClientSettingsService.HistoryAction serviceAction = serviceHistoryAction(action);
+        if (historyConfirmation == null
+                || historyConfirmation.action() != serviceAction
+                || historyConfirmation.generation() != snapshot.generation()) {
+            ToolResult<ClientSettingsService.HistoryConfirmationToken> requested =
+                    service.requestHistoryConfirmation(serviceAction);
+            if (requested instanceof ToolResult.Success<
+                    ClientSettingsService.HistoryConfirmationToken> success) {
+                historyConfirmation = success.value();
+                localNotice = Component.translatable(
+                        action == HistorySettingsProjection.Action.RESET_DATABASE
+                                ? "screen.tomewisp.settings.history.confirm_reset"
+                                : "screen.tomewisp.settings.history.confirm_delete")
+                        .getString();
+                rebuildWidgets();
+            } else {
+                ToolResult.Failure<ClientSettingsService.HistoryConfirmationToken> failure =
+                        (ToolResult.Failure<ClientSettingsService.HistoryConfirmationToken>) requested;
+                localNotice = failure.message();
+            }
+            return;
+        }
+        if (action == HistorySettingsProjection.Action.RESET_DATABASE
+                && historyConfirmation.stage()
+                        == ClientSettingsService.ConfirmationStage.FIRST) {
+            ToolResult<ClientSettingsService.HistoryConfirmationToken> second =
+                    service.confirmHistoryReset(historyConfirmation);
+            if (second instanceof ToolResult.Success<
+                    ClientSettingsService.HistoryConfirmationToken> success) {
+                historyConfirmation = success.value();
+                localNotice = Component.translatable(
+                        "screen.tomewisp.settings.history.confirm_reset_again_notice")
+                        .getString();
+                rebuildWidgets();
+            } else {
+                historyConfirmation = null;
+                localNotice = ((ToolResult.Failure<
+                        ClientSettingsService.HistoryConfirmationToken>) second).message();
+            }
+            return;
+        }
+
+        ClientSettingsService.HistoryConfirmationToken confirmed = historyConfirmation;
+        historyConfirmation = null;
+        confirmation = Confirmation.NONE;
+        accept(switch (action) {
+            case DELETE_CURRENT -> service.deleteCurrentHistory(confirmed);
+            case DELETE_ACTOR -> service.deleteActorHistory(confirmed);
+            case RESET_DATABASE -> service.resetHistoryDatabase(confirmed);
+        });
+    }
+
+    private static ClientSettingsService.HistoryAction serviceHistoryAction(
+            HistorySettingsProjection.Action action) {
+        return switch (action) {
+            case DELETE_CURRENT -> ClientSettingsService.HistoryAction.DELETE_CURRENT;
+            case DELETE_ACTOR -> ClientSettingsService.HistoryAction.DELETE_ACTOR;
+            case RESET_DATABASE -> ClientSettingsService.HistoryAction.RESET_DATABASE;
+        };
     }
 
     private CapabilitySettingsProjection capabilityProjection() {
@@ -970,6 +1329,9 @@ public final class TomeWispSettingsScreen extends Screen {
         section = replacement;
         editorScroll = 0;
         capabilityScroll = 0;
+        pageScroll = 0;
+        pageContentHeight = 0;
+        historyConfirmation = null;
         if (replacement != SettingsSection.KNOWLEDGE_AND_CAPABILITIES) {
             capabilityRoute = null;
         }
@@ -1120,6 +1482,7 @@ public final class TomeWispSettingsScreen extends Screen {
         return new Projection(
                 SettingsSection.topLevel(),
                 cards,
+                GeneralSettingsProjection.from(snapshot.display()),
                 CapabilitySettingsProjection.from(
                         snapshot.capabilities(),
                         snapshot.capabilities().policy(),
@@ -1128,6 +1491,11 @@ public final class TomeWispSettingsScreen extends Screen {
                         snapshot.recipes(),
                         snapshot.recipes().config(),
                         snapshot.display().debugMode()),
+                HistorySettingsProjection.from(
+                        snapshot.history(),
+                        snapshot.display().debugMode(),
+                        snapshot.operation()),
+                DiagnosticsSettingsProjection.from(snapshot.diagnostics()),
                 snapshot.operation(),
                 snapshot.notice());
     }
@@ -1135,15 +1503,21 @@ public final class TomeWispSettingsScreen extends Screen {
     record Projection(
             List<SettingsSection> sections,
             List<ModelCard> models,
+            GeneralSettingsProjection general,
             CapabilitySettingsProjection capabilities,
             RecipeSettingsProjection recipes,
+            HistorySettingsProjection history,
+            DiagnosticsSettingsProjection diagnostics,
             SettingsOperation operation,
             SettingsNotice notice) {
         Projection {
             sections = List.copyOf(sections);
             models = List.copyOf(models);
+            Objects.requireNonNull(general, "general");
             Objects.requireNonNull(capabilities, "capabilities");
             Objects.requireNonNull(recipes, "recipes");
+            Objects.requireNonNull(history, "history");
+            Objects.requireNonNull(diagnostics, "diagnostics");
         }
     }
 

@@ -51,6 +51,14 @@ final class TomeWispSettingsScreenProjectionTest {
                 .anyMatch(section -> section.name().equals("RECIPES")));
         assertEquals(0, projection.capabilities().cards().size());
         assertEquals(0, projection.recipes().sources().size());
+        assertFalse(projection.general().debugMode());
+        assertTrue(projection.history().actions().stream()
+                .noneMatch(dev.tomewisp.client.gui.settings.HistorySettingsProjection.ActionRow::enabled));
+        assertTrue(projection.diagnostics().debug().isEmpty());
+        assertTrue(dev.tomewisp.client.gui.settings.SettingsLayout
+                .calculate(960, 600).wide());
+        assertTrue(dev.tomewisp.client.gui.settings.SettingsLayout
+                .calculate(480, 320).showBack());
     }
 
     private static ModelProfileDefinition profile(String id) {

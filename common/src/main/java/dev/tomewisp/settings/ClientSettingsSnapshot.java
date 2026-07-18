@@ -5,6 +5,7 @@ import dev.tomewisp.settings.model.ModelProfileSettingsView;
 import dev.tomewisp.settings.capability.CapabilitySettingsView;
 import dev.tomewisp.settings.capability.RecipeSettingsView;
 import dev.tomewisp.settings.diagnostics.SettingsDiagnosticsSnapshot;
+import dev.tomewisp.settings.history.HistorySettingsView;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
@@ -16,6 +17,7 @@ public record ClientSettingsSnapshot(
         ModelProfileSettingsView models,
         CapabilitySettingsView capabilities,
         RecipeSettingsView recipes,
+        HistorySettingsView history,
         SettingsDiagnosticsSnapshot diagnostics,
         SettingsOperation operation,
         SettingsNotice notice) {
@@ -27,6 +29,7 @@ public record ClientSettingsSnapshot(
         Objects.requireNonNull(models, "models");
         Objects.requireNonNull(capabilities, "capabilities");
         Objects.requireNonNull(recipes, "recipes");
+        Objects.requireNonNull(history, "history");
         Objects.requireNonNull(diagnostics, "diagnostics");
         Objects.requireNonNull(operation, "operation");
     }
@@ -45,6 +48,7 @@ public record ClientSettingsSnapshot(
                 models,
                 capabilities,
                 recipes,
+                HistorySettingsView.disconnected(),
                 new SettingsDiagnosticsSnapshot(List.of(), Optional.empty()),
                 operation,
                 notice);
@@ -62,6 +66,7 @@ public record ClientSettingsSnapshot(
                 models,
                 CapabilitySettingsView.defaults(),
                 RecipeSettingsView.defaults(),
+                HistorySettingsView.disconnected(),
                 new SettingsDiagnosticsSnapshot(List.of(), Optional.empty()),
                 operation,
                 notice);

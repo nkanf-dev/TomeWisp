@@ -12,6 +12,11 @@ public record SettingsOperation(Kind kind, String targetId, boolean cancellable)
         RELOADING_CAPABILITIES,
         SAVING_RECIPES,
         RELOADING_RECIPES,
+        SAVING_DISPLAY,
+        RELOADING_DISPLAY,
+        DELETING_CURRENT_HISTORY,
+        DELETING_ACTOR_HISTORY,
+        RESETTING_HISTORY_DATABASE,
         REFRESHING_METADATA,
         TESTING_CONNECTION
     }

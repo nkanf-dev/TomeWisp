@@ -420,7 +420,7 @@ git commit -m "feat: expose redacted settings diagnostics"
 - Modify: `common/src/main/resources/assets/tomewisp/lang/en_us.json`
 - Modify: `common/src/main/resources/assets/tomewisp/lang/zh_cn.json`
 
-- [ ] **Step 1: Write confirmation/accessibility/normal-debug UI tests**
+- [x] **Step 1: Write confirmation/accessibility/normal-debug UI tests**
 
 Test Debug Mode default/toggle, current partition vs actor-all labels,
 busy-disabled actions, first confirmation, distinct reset second confirmation,
@@ -440,13 +440,13 @@ void wholeDatabaseResetRequiresDebugModeAndFreshSecondConfirmation() {
 }
 ```
 
-- [ ] **Step 2: Run settings UI tests and verify missing pages**
+- [x] **Step 2: Run settings UI tests and verify missing pages**
 
 ```bash
 ./gradlew :common:test --tests 'dev.tomewisp.client.gui.*Settings*'
 ```
 
-- [ ] **Step 3: Implement native pages and one-use confirmation tokens**
+- [x] **Step 3: Implement native pages and one-use confirmation tokens**
 
 General renders only implemented presentation settings. History renders
 friendly persistence health and actor-scoped actions. Diagnostics renders card
@@ -460,7 +460,7 @@ returns `history_delete_confirmation_required` unless the reset token is the
 fresh second-stage token for the current snapshot and Debug Mode remains on;
 only then may it call `GuideServiceManager.resetHistoryDatabase()`.
 
-- [ ] **Step 4: Run GUI/localization/privacy tests and commit**
+- [x] **Step 4: Run GUI/localization/privacy tests and commit**
 
 ```bash
 ./gradlew :common:test --tests 'dev.tomewisp.client.gui.*' \

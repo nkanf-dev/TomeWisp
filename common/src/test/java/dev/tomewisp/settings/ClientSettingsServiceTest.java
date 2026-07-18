@@ -6,7 +6,13 @@ import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import dev.tomewisp.guide.GuideFailure;
+import dev.tomewisp.guide.GuideMessage;
+import dev.tomewisp.guide.GuideModelMode;
+import dev.tomewisp.guide.GuidePersistenceSnapshot;
+import dev.tomewisp.guide.GuideSessionSnapshot;
+import dev.tomewisp.guide.GuideSnapshot;
 import dev.tomewisp.guide.ui.GuideDisplayConfig;
+import dev.tomewisp.guide.history.GuideHistoryActivity;
 import dev.tomewisp.capability.CapabilityCatalogSnapshot;
 import dev.tomewisp.capability.CapabilityPolicy;
 import dev.tomewisp.recipe.config.RecipeClientConfig;
@@ -24,6 +30,7 @@ import dev.tomewisp.settings.model.ModelConnectionResult;
 import dev.tomewisp.settings.model.ModelProfileSettingsView;
 import dev.tomewisp.settings.capability.CapabilitySettingsView;
 import dev.tomewisp.settings.capability.RecipeSettingsView;
+import dev.tomewisp.settings.diagnostics.SettingsDiagnosticsAggregator;
 import dev.tomewisp.tool.ToolResult;
 import java.net.URI;
 import java.time.Duration;
@@ -32,7 +39,9 @@ import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
+import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -284,6 +293,160 @@ final class ClientSettingsServiceTest {
         assertEquals("recipes_reloaded", service.snapshot().notice().code());
     }
 
+    @Test
+    void displaySavePublishesDebugProjectionOnlyAfterBackendSuccess() {
+        FakeModels models = new FakeModels(state(config("alpha")));
+        FakeDomains domains = new FakeDomains();
+        FakeDisplay display = new FakeDisplay(GuideDisplayConfig.defaults());
+        FakeHistory history = new FakeHistory();
+        ClientSettingsService service = service(
+                models, domains, display, history, Runnable::run);
+
+        assertSuccess(service.saveDisplay(new GuideDisplayConfig(1, true)).join());
+
+        assertTrue(service.snapshot().display().debugMode());
+        assertTrue(service.snapshot().diagnostics().debug().isPresent());
+        assertEquals(1, display.saves);
+        assertFalse(service.snapshot().toString().contains(
+                history.state.guide().orElseThrow().actorId().toString()));
+    }
+
+    @Test
+    void failedDisplaySaveRetainsNormalProjection() {
+        FakeModels models = new FakeModels(state(config("alpha")));
+        FakeDomains domains = new FakeDomains();
+        FakeDisplay display = new FakeDisplay(GuideDisplayConfig.defaults());
+        display.failure = new ToolResult.Failure<>(
+                "settings_write_failed", "Unable to save settings");
+        ClientSettingsService service = service(
+                models, domains, display, new FakeHistory(), Runnable::run);
+
+        assertFailure(service.saveDisplay(new GuideDisplayConfig(1, true)).join(),
+                "settings_write_failed");
+
+        assertFalse(service.snapshot().display().debugMode());
+        assertTrue(service.snapshot().diagnostics().debug().isEmpty());
+    }
+
+    @Test
+    void wholeDatabaseResetRequiresDebugModeAndFreshSecondConfirmation() {
+        FakeModels models = new FakeModels(state(config("alpha")));
+        FakeDomains domains = new FakeDomains();
+        FakeDisplay display = new FakeDisplay(new GuideDisplayConfig(1, true));
+        FakeHistory history = new FakeHistory();
+        ClientSettingsService service = service(
+                models, domains, display, history, Runnable::run);
+
+        ClientSettingsService.HistoryConfirmationToken first = successValue(
+                service.requestHistoryConfirmation(
+                        ClientSettingsService.HistoryAction.RESET_DATABASE));
+        assertFailure(service.resetHistoryDatabase(first).join(),
+                "history_delete_confirmation_required");
+        ClientSettingsService.HistoryConfirmationToken second = successValue(
+                service.confirmHistoryReset(first));
+
+        ClientSettingsService.HistoryConfirmationToken staleFirst = successValue(
+                service.requestHistoryConfirmation(
+                        ClientSettingsService.HistoryAction.RESET_DATABASE));
+        assertSuccess(service.saveDisplay(new GuideDisplayConfig(1, true)).join());
+        assertFailure(service.confirmHistoryReset(staleFirst),
+                "history_delete_confirmation_required");
+        assertFailure(service.resetHistoryDatabase(second).join(),
+                "history_delete_confirmation_required");
+
+        ClientSettingsService.HistoryConfirmationToken freshFirst = successValue(
+                service.requestHistoryConfirmation(
+                        ClientSettingsService.HistoryAction.RESET_DATABASE));
+        ClientSettingsService.HistoryConfirmationToken freshSecond = successValue(
+                service.confirmHistoryReset(freshFirst));
+        assertSuccess(service.resetHistoryDatabase(freshSecond).join());
+        assertFailure(service.resetHistoryDatabase(freshSecond).join(),
+                "history_delete_confirmation_required");
+        assertEquals(1, history.databaseResets);
+    }
+
+    @Test
+    void databaseResetIsUnrequestableWhileDebugModeIsOff() {
+        FakeModels models = new FakeModels(state(config("alpha")));
+        FakeDomains domains = new FakeDomains();
+        FakeDisplay display = new FakeDisplay(GuideDisplayConfig.defaults());
+        FakeHistory history = new FakeHistory();
+        ClientSettingsService service = service(
+                models, domains, display, history, Runnable::run);
+
+        assertFailure(service.requestHistoryConfirmation(
+                ClientSettingsService.HistoryAction.RESET_DATABASE),
+                "history_delete_confirmation_required");
+        assertEquals(0, history.databaseResets);
+    }
+
+    @Test
+    void historyConfirmationIsActionBoundAndOneUse() {
+        FakeModels models = new FakeModels(state(config("alpha")));
+        FakeDomains domains = new FakeDomains();
+        FakeDisplay display = new FakeDisplay(GuideDisplayConfig.defaults());
+        FakeHistory history = new FakeHistory();
+        ClientSettingsService service = service(
+                models, domains, display, history, Runnable::run);
+        ClientSettingsService.HistoryConfirmationToken current = successValue(
+                service.requestHistoryConfirmation(
+                        ClientSettingsService.HistoryAction.DELETE_CURRENT));
+
+        assertFailure(service.deleteActorHistory(current).join(),
+                "history_delete_confirmation_required");
+        assertSuccess(service.deleteCurrentHistory(current).join());
+        assertFailure(service.deleteCurrentHistory(current).join(),
+                "history_delete_confirmation_required");
+        assertEquals(1, history.currentDeletes);
+        assertEquals(0, history.actorDeletes);
+    }
+
+    @Test
+    void historyBusyStateRejectsConfirmationWithoutCallingBackend() {
+        FakeModels models = new FakeModels(state(config("alpha")));
+        FakeDomains domains = new FakeDomains();
+        FakeDisplay display = new FakeDisplay(GuideDisplayConfig.defaults());
+        FakeHistory history = new FakeHistory();
+        history.state = new ClientSettingsService.HistoryRuntimeState(
+                true,
+                history.state.guide(),
+                new GuideHistoryActivity(1, false),
+                history.state.scopeKind());
+        ClientSettingsService service = service(
+                models, domains, display, history, Runnable::run);
+
+        assertFailure(service.requestHistoryConfirmation(
+                ClientSettingsService.HistoryAction.DELETE_CURRENT),
+                "history_delete_busy");
+        assertEquals(0, history.currentDeletes);
+    }
+
+    @Test
+    void listenerDetachDuringConfirmedHistoryDeleteDoesNotCancelCommit() throws Exception {
+        FakeModels models = new FakeModels(state(config("alpha")));
+        FakeDomains domains = new FakeDomains();
+        FakeDisplay display = new FakeDisplay(GuideDisplayConfig.defaults());
+        FakeHistory history = new FakeHistory();
+        history.currentResult = new CompletableFuture<>();
+        ClientSettingsService service = service(
+                models, domains, display, history, Runnable::run);
+        List<ClientSettingsSnapshot> seen = new ArrayList<>();
+        AutoCloseable listener = service.listen(seen::add);
+        ClientSettingsService.HistoryConfirmationToken confirmation = successValue(
+                service.requestHistoryConfirmation(
+                        ClientSettingsService.HistoryAction.DELETE_CURRENT));
+
+        CompletableFuture<ToolResult<Boolean>> deleting =
+                service.deleteCurrentHistory(confirmation);
+        listener.close();
+        history.currentResult.complete(new ToolResult.Success<>(Boolean.TRUE));
+
+        assertSuccess(deleting.join());
+        assertEquals(1, history.currentDeletes);
+        assertEquals(2, seen.size());
+        assertEquals("history_current_deleted", service.snapshot().notice().code());
+    }
+
     private static ClientSettingsService service(FakeModels models, Set<String> environment) {
         return service(models, environment, Runnable::run);
     }
@@ -312,6 +475,29 @@ final class ClientSettingsServiceTest {
                 domains,
                 domains.recipes,
                 domains,
+                Runnable::run,
+                worker,
+                null);
+    }
+
+    private static ClientSettingsService service(
+            FakeModels models,
+            FakeDomains domains,
+            FakeDisplay display,
+            FakeHistory history,
+            Executor worker) {
+        return new ClientSettingsService(
+                display.current,
+                display,
+                models.current,
+                Set.of("ALPHA_KEY"),
+                models,
+                models,
+                domains.capabilities,
+                domains,
+                domains.recipes,
+                domains,
+                history,
                 Runnable::run,
                 worker,
                 null);
@@ -382,6 +568,11 @@ final class ClientSettingsServiceTest {
 
     private static void assertFailure(ToolResult<?> result, String code) {
         assertEquals(code, assertInstanceOf(ToolResult.Failure.class, result).code());
+    }
+
+    private static <T> T successValue(ToolResult<T> result) {
+        assertInstanceOf(ToolResult.Success.class, result);
+        return ((ToolResult.Success<T>) result).value();
     }
 
     private static final class FakeModels
@@ -517,6 +708,81 @@ final class ClientSettingsServiceTest {
         public ToolResult<RecipeSettingsView> reloadRecipes() {
             recipeReloads++;
             return new ToolResult.Success<>(recipes);
+        }
+    }
+
+    private static final class FakeDisplay implements ClientSettingsService.DisplayActions {
+        private GuideDisplayConfig current;
+        private ToolResult.Failure<GuideDisplayConfig> failure;
+        private int saves;
+
+        private FakeDisplay(GuideDisplayConfig current) {
+            this.current = current;
+        }
+
+        @Override
+        public ToolResult<GuideDisplayConfig> saveDisplay(GuideDisplayConfig candidate) {
+            saves++;
+            if (failure != null) {
+                return failure;
+            }
+            current = candidate;
+            return new ToolResult.Success<>(candidate);
+        }
+
+        @Override
+        public ToolResult<GuideDisplayConfig> reloadDisplay() {
+            return new ToolResult.Success<>(current);
+        }
+    }
+
+    private static final class FakeHistory implements ClientSettingsService.HistoryActions {
+        private ClientSettingsService.HistoryRuntimeState state = availableHistory();
+        private CompletableFuture<ToolResult<Boolean>> currentResult =
+                CompletableFuture.completedFuture(new ToolResult.Success<>(Boolean.TRUE));
+        private int currentDeletes;
+        private int actorDeletes;
+        private int databaseResets;
+
+        @Override
+        public ClientSettingsService.HistoryRuntimeState state() {
+            return state;
+        }
+
+        @Override
+        public CompletableFuture<ToolResult<Boolean>> deleteCurrentHistory() {
+            currentDeletes++;
+            return currentResult;
+        }
+
+        @Override
+        public CompletableFuture<ToolResult<Boolean>> deleteActorHistory() {
+            actorDeletes++;
+            return CompletableFuture.completedFuture(new ToolResult.Success<>(Boolean.TRUE));
+        }
+
+        @Override
+        public CompletableFuture<ToolResult<Boolean>> resetHistoryDatabase() {
+            databaseResets++;
+            return CompletableFuture.completedFuture(new ToolResult.Success<>(Boolean.TRUE));
+        }
+
+        private static ClientSettingsService.HistoryRuntimeState availableHistory() {
+            GuideSnapshot guide = new GuideSnapshot(
+                    UUID.fromString("21876009-3d3e-4092-952a-dd7212046fe8"),
+                    "main",
+                    GuideModelMode.CLIENT,
+                    true,
+                    false,
+                    GuidePersistenceSnapshot.available(0),
+                    List.of(new GuideSessionSnapshot(
+                            "main", List.<GuideMessage>of(), List.of())),
+                    Instant.EPOCH);
+            return new ClientSettingsService.HistoryRuntimeState(
+                    true,
+                    Optional.of(guide),
+                    GuideHistoryActivity.idle(),
+                    SettingsDiagnosticsAggregator.HistoryScopeKind.MULTIPLAYER_SERVER);
         }
     }
 

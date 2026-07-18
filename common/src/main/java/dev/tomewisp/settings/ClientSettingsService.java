@@ -3,6 +3,8 @@ package dev.tomewisp.settings;
 import dev.tomewisp.capability.CapabilityPolicy;
 import dev.tomewisp.client.ClientEventDispatcher;
 import dev.tomewisp.guide.GuideFailure;
+import dev.tomewisp.guide.GuidePersistenceSnapshot;
+import dev.tomewisp.guide.GuideSnapshot;
 import dev.tomewisp.guide.history.GuideHistoryActivity;
 import dev.tomewisp.guide.history.GuideHistoryPartition;
 import dev.tomewisp.guide.ui.GuideDisplayConfig;
@@ -17,18 +19,21 @@ import dev.tomewisp.settings.model.ModelProfileSettingsView;
 import dev.tomewisp.settings.capability.CapabilitySettingsView;
 import dev.tomewisp.settings.capability.RecipeSettingsView;
 import dev.tomewisp.settings.diagnostics.SettingsDiagnosticsAggregator;
+import dev.tomewisp.settings.history.HistorySettingsView;
 import dev.tomewisp.recipe.config.RecipeClientConfig;
 import dev.tomewisp.tool.ToolResult;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
 import java.util.TreeSet;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.Executor;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 
@@ -71,6 +76,104 @@ public final class ClientSettingsService implements AutoCloseable {
         ToolResult<RecipeSettingsView> reloadRecipes();
     }
 
+    public interface DisplayActions {
+        ToolResult<GuideDisplayConfig> saveDisplay(GuideDisplayConfig candidate);
+
+        ToolResult<GuideDisplayConfig> reloadDisplay();
+    }
+
+    public interface HistoryActions {
+        HistoryRuntimeState state();
+
+        CompletableFuture<ToolResult<Boolean>> deleteCurrentHistory();
+
+        CompletableFuture<ToolResult<Boolean>> deleteActorHistory();
+
+        CompletableFuture<ToolResult<Boolean>> resetHistoryDatabase();
+    }
+
+    public enum HistoryAction {
+        DELETE_CURRENT,
+        DELETE_ACTOR,
+        RESET_DATABASE
+    }
+
+    public enum ConfirmationStage {
+        FIRST,
+        SECOND
+    }
+
+    public static final class HistoryConfirmationToken {
+        private final HistoryAction action;
+        private final ConfirmationStage stage;
+        private final long generation;
+        private final AtomicBoolean consumed = new AtomicBoolean();
+
+        private HistoryConfirmationToken(
+                HistoryAction action, ConfirmationStage stage, long generation) {
+            this.action = Objects.requireNonNull(action, "action");
+            this.stage = Objects.requireNonNull(stage, "stage");
+            if (generation < 0) {
+                throw new IllegalArgumentException("confirmation generation must not be negative");
+            }
+            this.generation = generation;
+        }
+
+        public HistoryAction action() {
+            return action;
+        }
+
+        public ConfirmationStage stage() {
+            return stage;
+        }
+
+        public long generation() {
+            return generation;
+        }
+
+        private boolean consume(
+                HistoryAction expectedAction,
+                ConfirmationStage expectedStage,
+                long expectedGeneration) {
+            return action == expectedAction
+                    && stage == expectedStage
+                    && generation == expectedGeneration
+                    && consumed.compareAndSet(false, true);
+        }
+
+        @Override
+        public String toString() {
+            return "HistoryConfirmationToken[action=" + action
+                    + ", stage=" + stage
+                    + ", generation=" + generation + "]";
+        }
+    }
+
+    public record HistoryRuntimeState(
+            boolean configured,
+            Optional<GuideSnapshot> guide,
+            GuideHistoryActivity activity,
+            SettingsDiagnosticsAggregator.HistoryScopeKind scopeKind) {
+        public HistoryRuntimeState {
+            guide = Objects.requireNonNull(guide, "guide");
+            Objects.requireNonNull(activity, "activity");
+            Objects.requireNonNull(scopeKind, "scopeKind");
+            if (guide.isEmpty()
+                    != (scopeKind == SettingsDiagnosticsAggregator.HistoryScopeKind.NONE)) {
+                throw new IllegalArgumentException(
+                        "history scope kind must match current Guide availability");
+            }
+        }
+
+        public static HistoryRuntimeState disconnected() {
+            return new HistoryRuntimeState(
+                    false,
+                    Optional.empty(),
+                    GuideHistoryActivity.idle(),
+                    SettingsDiagnosticsAggregator.HistoryScopeKind.NONE);
+        }
+    }
+
     public record ModelState(
             ModelProfilesConfig config,
             List<ModelProfileSettingsView.Resolution> profiles) {
@@ -96,12 +199,14 @@ public final class ClientSettingsService implements AutoCloseable {
     }
 
     private final Object lock = new Object();
-    private final GuideDisplayConfig display;
+    private GuideDisplayConfig display;
+    private final DisplayActions displayActions;
     private final Set<String> presentEnvironmentNames;
     private final ModelActions models;
     private final MetadataActions metadataActions;
     private final CapabilityActions capabilityActions;
     private final RecipeActions recipeActions;
+    private final HistoryActions historyActions;
     private final ClientEventDispatcher dispatcher;
     private final Executor worker;
     private final CopyOnWriteArrayList<Consumer<ClientSettingsSnapshot>> listeners =
@@ -113,6 +218,7 @@ public final class ClientSettingsService implements AutoCloseable {
     private ModelState modelState;
     private CapabilitySettingsView capabilityState;
     private RecipeSettingsView recipeState;
+    private HistoryRuntimeState historyState;
     private long modelGeneration;
     private long metadataGeneration;
     private Map<ModelMetadata.Key, ModelMetadata> metadata = Map.of();
@@ -184,7 +290,40 @@ public final class ClientSettingsService implements AutoCloseable {
             ClientEventDispatcher dispatcher,
             Executor worker,
             SettingsNotice initialNotice) {
+        this(
+                display,
+                defaultDisplayActions(),
+                initialModels,
+                presentEnvironmentNames,
+                models,
+                metadataActions,
+                initialCapabilities,
+                capabilityActions,
+                initialRecipes,
+                recipeActions,
+                defaultHistoryActions(),
+                dispatcher,
+                worker,
+                initialNotice);
+    }
+
+    public ClientSettingsService(
+            GuideDisplayConfig display,
+            DisplayActions displayActions,
+            ModelState initialModels,
+            Set<String> presentEnvironmentNames,
+            ModelActions models,
+            MetadataActions metadataActions,
+            CapabilitySettingsView initialCapabilities,
+            CapabilityActions capabilityActions,
+            RecipeSettingsView initialRecipes,
+            RecipeActions recipeActions,
+            HistoryActions historyActions,
+            ClientEventDispatcher dispatcher,
+            Executor worker,
+            SettingsNotice initialNotice) {
         this.display = Objects.requireNonNull(display, "display");
+        this.displayActions = Objects.requireNonNull(displayActions, "displayActions");
         this.modelState = Objects.requireNonNull(initialModels, "initialModels");
         this.presentEnvironmentNames = Collections.unmodifiableSet(
                 new TreeSet<>(presentEnvironmentNames));
@@ -194,6 +333,8 @@ public final class ClientSettingsService implements AutoCloseable {
         this.capabilityActions = Objects.requireNonNull(capabilityActions, "capabilityActions");
         this.recipeState = Objects.requireNonNull(initialRecipes, "initialRecipes");
         this.recipeActions = Objects.requireNonNull(recipeActions, "recipeActions");
+        this.historyActions = Objects.requireNonNull(historyActions, "historyActions");
+        this.historyState = safeHistoryState(historyActions);
         this.dispatcher = Objects.requireNonNull(dispatcher, "dispatcher");
         this.worker = Objects.requireNonNull(worker, "worker");
         this.notice = initialNotice;
@@ -342,6 +483,102 @@ public final class ClientSettingsService implements AutoCloseable {
                     reservation.id(), loaded, result, "recipes_reloaded"));
         });
         return result;
+    }
+
+    public CompletableFuture<ToolResult<Boolean>> saveDisplay(GuideDisplayConfig candidate) {
+        Objects.requireNonNull(candidate, "candidate");
+        Reservation reservation = reserve(SettingsOperation.domain(
+                SettingsOperation.Kind.SAVING_DISPLAY));
+        if (!reservation.accepted()) {
+            return CompletableFuture.completedFuture(failed(reservation.failureCode()));
+        }
+        CompletableFuture<ToolResult<Boolean>> result = new CompletableFuture<>();
+        worker.execute(() -> {
+            ToolResult<GuideDisplayConfig> saved = safely(
+                    () -> displayActions.saveDisplay(candidate),
+                    "settings_save_failed",
+                    "Unable to save display settings");
+            dispatcher.execute(() -> finishDisplay(
+                    reservation.id(), saved, result, "display_saved"));
+        });
+        return result;
+    }
+
+    public CompletableFuture<ToolResult<Boolean>> reloadDisplay() {
+        Reservation reservation = reserve(SettingsOperation.domain(
+                SettingsOperation.Kind.RELOADING_DISPLAY));
+        if (!reservation.accepted()) {
+            return CompletableFuture.completedFuture(failed(reservation.failureCode()));
+        }
+        CompletableFuture<ToolResult<Boolean>> result = new CompletableFuture<>();
+        worker.execute(() -> {
+            ToolResult<GuideDisplayConfig> loaded = safely(
+                    displayActions::reloadDisplay,
+                    "settings_reload_failed",
+                    "Unable to reload display settings");
+            dispatcher.execute(() -> finishDisplay(
+                    reservation.id(), loaded, result, "display_reloaded"));
+        });
+        return result;
+    }
+
+    public void refreshRuntimeState() {
+        HistoryRuntimeState refreshed = safeHistoryState(historyActions);
+        synchronized (lock) {
+            if (closed || refreshed.equals(historyState)) {
+                return;
+            }
+            historyState = refreshed;
+            publishLocked();
+        }
+    }
+
+    public ToolResult<HistoryConfirmationToken> requestHistoryConfirmation(
+            HistoryAction action) {
+        Objects.requireNonNull(action, "action");
+        synchronized (lock) {
+            GuideFailure failure = confirmationFailureLocked(action);
+            if (failure != null) {
+                return new ToolResult.Failure<>(failure.code(), failure.message());
+            }
+            return new ToolResult.Success<>(new HistoryConfirmationToken(
+                    action, ConfirmationStage.FIRST, snapshot.generation()));
+        }
+    }
+
+    public ToolResult<HistoryConfirmationToken> confirmHistoryReset(
+            HistoryConfirmationToken first) {
+        synchronized (lock) {
+            GuideFailure failure = confirmationFailureLocked(HistoryAction.RESET_DATABASE);
+            if (failure != null) {
+                return new ToolResult.Failure<>(failure.code(), failure.message());
+            }
+            if (first == null || !first.consume(
+                    HistoryAction.RESET_DATABASE,
+                    ConfirmationStage.FIRST,
+                    snapshot.generation())) {
+                return confirmationRequired();
+            }
+            return new ToolResult.Success<>(new HistoryConfirmationToken(
+                    HistoryAction.RESET_DATABASE,
+                    ConfirmationStage.SECOND,
+                    snapshot.generation()));
+        }
+    }
+
+    public CompletableFuture<ToolResult<Boolean>> deleteCurrentHistory(
+            HistoryConfirmationToken confirmation) {
+        return administerHistory(HistoryAction.DELETE_CURRENT, confirmation);
+    }
+
+    public CompletableFuture<ToolResult<Boolean>> deleteActorHistory(
+            HistoryConfirmationToken confirmation) {
+        return administerHistory(HistoryAction.DELETE_ACTOR, confirmation);
+    }
+
+    public CompletableFuture<ToolResult<Boolean>> resetHistoryDatabase(
+            HistoryConfirmationToken confirmation) {
+        return administerHistory(HistoryAction.RESET_DATABASE, confirmation);
     }
 
     public CompletableFuture<ToolResult<Boolean>> refreshMetadata() {
@@ -614,6 +851,117 @@ public final class ClientSettingsService implements AutoCloseable {
         outward.complete(result);
     }
 
+    private void finishDisplay(
+            long operationId,
+            ToolResult<GuideDisplayConfig> completed,
+            CompletableFuture<ToolResult<Boolean>> outward,
+            String successCode) {
+        ToolResult<Boolean> result;
+        synchronized (lock) {
+            if (!isCurrentLocked(operationId)) {
+                return;
+            }
+            operation = SettingsOperation.idle();
+            if (completed instanceof ToolResult.Success<GuideDisplayConfig> success) {
+                display = success.value();
+                notice = SettingsNotice.success(
+                        successCode,
+                        successCode.equals("display_reloaded")
+                                ? "Display settings reloaded"
+                                : "Display settings saved");
+                result = new ToolResult.Success<>(Boolean.TRUE);
+            } else {
+                ToolResult.Failure<GuideDisplayConfig> failure =
+                        (ToolResult.Failure<GuideDisplayConfig>) completed;
+                notice = SettingsNotice.failure(failure.code(), failure.message());
+                result = new ToolResult.Failure<>(failure.code(), failure.message());
+            }
+            publishLocked();
+        }
+        outward.complete(result);
+    }
+
+    private CompletableFuture<ToolResult<Boolean>> administerHistory(
+            HistoryAction action,
+            HistoryConfirmationToken confirmation) {
+        Objects.requireNonNull(action, "action");
+        Reservation reservation;
+        synchronized (lock) {
+            GuideFailure failure = confirmationFailureLocked(action);
+            if (failure != null) {
+                return CompletableFuture.completedFuture(
+                        new ToolResult.Failure<>(failure.code(), failure.message()));
+            }
+            ConfirmationStage stage = action == HistoryAction.RESET_DATABASE
+                    ? ConfirmationStage.SECOND
+                    : ConfirmationStage.FIRST;
+            if (confirmation == null || !confirmation.consume(
+                    action, stage, snapshot.generation())) {
+                return CompletableFuture.completedFuture(confirmationRequired());
+            }
+            reservation = reserveLocked(historyOperation(action));
+        }
+
+        CompletableFuture<ToolResult<Boolean>> result = new CompletableFuture<>();
+        CompletableFuture<ToolResult<Boolean>> operationFuture;
+        try {
+            operationFuture = switch (action) {
+                case DELETE_CURRENT -> historyActions.deleteCurrentHistory();
+                case DELETE_ACTOR -> historyActions.deleteActorHistory();
+                case RESET_DATABASE -> historyActions.resetHistoryDatabase();
+            };
+            Objects.requireNonNull(operationFuture, "history action future");
+        } catch (RuntimeException failure) {
+            operationFuture = CompletableFuture.completedFuture(new ToolResult.Failure<>(
+                    "history_delete_failed", "Unable to update Guide history"));
+        }
+        operationFuture.whenComplete((completed, thrown) -> dispatcher.execute(() ->
+                finishHistory(
+                        reservation.id(),
+                        completed,
+                        thrown,
+                        action,
+                        result)));
+        return result;
+    }
+
+    private void finishHistory(
+            long operationId,
+            ToolResult<Boolean> completed,
+            Throwable thrown,
+            HistoryAction action,
+            CompletableFuture<ToolResult<Boolean>> outward) {
+        HistoryRuntimeState refreshed = safeHistoryState(historyActions);
+        ToolResult<Boolean> result;
+        synchronized (lock) {
+            if (!isCurrentLocked(operationId)) {
+                return;
+            }
+            operation = SettingsOperation.idle();
+            historyState = refreshed;
+            if (thrown == null && completed instanceof ToolResult.Success<Boolean>) {
+                String code = switch (action) {
+                    case DELETE_CURRENT -> "history_current_deleted";
+                    case DELETE_ACTOR -> "history_actor_deleted";
+                    case RESET_DATABASE -> "history_database_reset";
+                };
+                notice = SettingsNotice.success(code, "Guide history updated");
+                result = new ToolResult.Success<>(Boolean.TRUE);
+            } else {
+                ToolResult.Failure<Boolean> failure =
+                        thrown == null && completed instanceof ToolResult.Failure<Boolean> value
+                                ? value
+                                : new ToolResult.Failure<>(
+                                        "history_delete_failed",
+                                        "Unable to update Guide history");
+                notice = SettingsNotice.failure(failure.code(), failure.message());
+                result = new ToolResult.Failure<>(failure.code(), failure.message());
+            }
+            publishLocked();
+        }
+        outward.complete(result);
+    }
+
     private void reconcileMetadata(
             long expectedGeneration,
             long expectedMetadataGeneration,
@@ -682,12 +1030,16 @@ public final class ClientSettingsService implements AutoCloseable {
             if (operation.kind() != SettingsOperation.Kind.IDLE) {
                 return Reservation.rejected("settings_busy");
             }
-            long id = operationIds.incrementAndGet();
-            operation = requested;
-            notice = null;
-            publishLocked();
-            return Reservation.accepted(id);
+            return reserveLocked(requested);
         }
+    }
+
+    private Reservation reserveLocked(SettingsOperation requested) {
+        long id = operationIds.incrementAndGet();
+        operation = Objects.requireNonNull(requested, "requested");
+        notice = null;
+        publishLocked();
+        return Reservation.accepted(id);
     }
 
     private boolean isCurrent(long id) {
@@ -719,12 +1071,14 @@ public final class ClientSettingsService implements AutoCloseable {
                 presentEnvironmentNames,
                 metadataFailure,
                 connectionResult);
+        HistorySettingsView historyView = historyView(historyState);
         return new ClientSettingsSnapshot(
                 generation,
                 display,
                 modelView,
                 capabilityState,
                 recipeState,
+                historyView,
                 diagnostics.snapshot(
                         display.debugMode(),
                         new SettingsDiagnosticsAggregator.DiagnosticsInputs(
@@ -732,13 +1086,117 @@ public final class ClientSettingsService implements AutoCloseable {
                                 modelView,
                                 capabilityState,
                                 recipeState,
-                                java.util.Optional.empty(),
-                                GuideHistoryActivity.idle(),
-                                SettingsDiagnosticsAggregator.HistoryScopeKind.NONE,
+                                historyState.guide(),
+                                historyState.activity(),
+                                historyState.scopeKind(),
                                 GuideHistoryPartition.SCHEMA_VERSION,
                                 List.of())),
                 operation,
                 notice);
+    }
+
+    private GuideFailure confirmationFailureLocked(HistoryAction action) {
+        if (closed) {
+            return new GuideFailure("settings_closed", "Settings are closed");
+        }
+        if (operation.kind() != SettingsOperation.Kind.IDLE) {
+            return new GuideFailure(
+                    "settings_busy", "Another settings operation is already running");
+        }
+        if (action == HistoryAction.RESET_DATABASE && !display.debugMode()) {
+            return new GuideFailure(
+                    "history_delete_confirmation_required",
+                    "Debug Mode and a fresh second confirmation are required");
+        }
+        return historyFailure(historyState, action);
+    }
+
+    private static GuideFailure historyFailure(
+            HistoryRuntimeState state, HistoryAction action) {
+        if (!state.configured() || state.guide().isEmpty()) {
+            return new GuideFailure(
+                    "history_unavailable", "Durable Guide history is unavailable");
+        }
+        GuideSnapshot guide = state.guide().orElseThrow();
+        long active = activeRequestCount(guide);
+        if (!state.activity().idleForDeletion()
+                || active > 0
+                || guide.persistence().state() == GuidePersistenceSnapshot.State.SAVING) {
+            return new GuideFailure("history_delete_busy", "Guide history is busy");
+        }
+        if (guide.persistence().state() == GuidePersistenceSnapshot.State.LOADING) {
+            return new GuideFailure(
+                    "history_loading", "Durable Guide history is still loading");
+        }
+        if (action != HistoryAction.RESET_DATABASE
+                && guide.persistence().state() != GuidePersistenceSnapshot.State.AVAILABLE) {
+            return new GuideFailure(
+                    "history_unavailable", "Durable Guide history is unavailable");
+        }
+        return null;
+    }
+
+    private static HistorySettingsView historyView(HistoryRuntimeState state) {
+        if (state.guide().isEmpty()) {
+            return HistorySettingsView.disconnected();
+        }
+        GuideSnapshot guide = state.guide().orElseThrow();
+        long active = activeRequestCount(guide);
+        boolean busy = !state.activity().idleForDeletion()
+                || active > 0
+                || guide.persistence().state() == GuidePersistenceSnapshot.State.SAVING;
+        HistorySettingsView.Health health = !state.configured()
+                ? HistorySettingsView.Health.UNAVAILABLE
+                : switch (guide.persistence().state()) {
+                    case AVAILABLE -> busy
+                            ? HistorySettingsView.Health.WORKING
+                            : HistorySettingsView.Health.READY;
+                    case LOADING, SAVING -> HistorySettingsView.Health.WORKING;
+                    case DISABLED -> HistorySettingsView.Health.ATTENTION;
+                    case UNAVAILABLE -> HistorySettingsView.Health.UNAVAILABLE;
+                };
+        boolean normalAvailable = state.configured()
+                && !busy
+                && guide.persistence().state() == GuidePersistenceSnapshot.State.AVAILABLE;
+        boolean resetAvailable = state.configured()
+                && !busy
+                && guide.persistence().state() != GuidePersistenceSnapshot.State.LOADING;
+        return new HistorySettingsView(
+                switch (state.scopeKind()) {
+                    case NONE -> HistorySettingsView.ConnectionKind.NONE;
+                    case SINGLEPLAYER_WORLD ->
+                            HistorySettingsView.ConnectionKind.SINGLEPLAYER_WORLD;
+                    case MULTIPLAYER_SERVER ->
+                            HistorySettingsView.ConnectionKind.MULTIPLAYER_SERVER;
+                },
+                health,
+                state.activity().pendingWrites(),
+                state.activity().deleting(),
+                active,
+                normalAvailable,
+                normalAvailable,
+                resetAvailable);
+    }
+
+    private static long activeRequestCount(GuideSnapshot guide) {
+        return guide.sessions().stream()
+                .flatMap(session -> session.requests().stream())
+                .filter(request -> !request.terminal())
+                .count();
+    }
+
+    private static SettingsOperation historyOperation(HistoryAction action) {
+        return SettingsOperation.domain(switch (action) {
+            case DELETE_CURRENT -> SettingsOperation.Kind.DELETING_CURRENT_HISTORY;
+            case DELETE_ACTOR -> SettingsOperation.Kind.DELETING_ACTOR_HISTORY;
+            case RESET_DATABASE -> SettingsOperation.Kind.RESETTING_HISTORY_DATABASE;
+        });
+    }
+
+    private static <T> ToolResult<T> confirmationRequired() {
+        return new ToolResult.Failure<>(
+                "history_delete_confirmation_required",
+                "A fresh history confirmation is required");
     }
 
     private static CompletableFuture<ToolResult<Boolean>> discardConfirmation() {
@@ -809,6 +1267,59 @@ public final class ClientSettingsService implements AutoCloseable {
                         "settings_unavailable", "Recipe settings are unavailable");
             }
         };
+    }
+
+    private static DisplayActions defaultDisplayActions() {
+        return new DisplayActions() {
+            @Override
+            public ToolResult<GuideDisplayConfig> saveDisplay(GuideDisplayConfig candidate) {
+                return new ToolResult.Failure<>(
+                        "settings_unavailable", "Display settings are unavailable");
+            }
+
+            @Override
+            public ToolResult<GuideDisplayConfig> reloadDisplay() {
+                return new ToolResult.Failure<>(
+                        "settings_unavailable", "Display settings are unavailable");
+            }
+        };
+    }
+
+    private static HistoryActions defaultHistoryActions() {
+        return new HistoryActions() {
+            @Override
+            public HistoryRuntimeState state() {
+                return HistoryRuntimeState.disconnected();
+            }
+
+            @Override
+            public CompletableFuture<ToolResult<Boolean>> deleteCurrentHistory() {
+                return unavailableHistory();
+            }
+
+            @Override
+            public CompletableFuture<ToolResult<Boolean>> deleteActorHistory() {
+                return unavailableHistory();
+            }
+
+            @Override
+            public CompletableFuture<ToolResult<Boolean>> resetHistoryDatabase() {
+                return unavailableHistory();
+            }
+        };
+    }
+
+    private static CompletableFuture<ToolResult<Boolean>> unavailableHistory() {
+        return CompletableFuture.completedFuture(new ToolResult.Failure<>(
+                "history_unavailable", "Durable Guide history is unavailable"));
+    }
+
+    private static HistoryRuntimeState safeHistoryState(HistoryActions actions) {
+        try {
+            return Objects.requireNonNull(actions.state(), "history state");
+        } catch (RuntimeException failure) {
+            return HistoryRuntimeState.disconnected();
+        }
     }
 
     private record Reservation(long id, String failureCode) {

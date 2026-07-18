@@ -11,12 +11,12 @@ public final class GuideToolPresentation {
     private GuideToolPresentation() {}
 
     public static List<String> lines(String toolId, JsonObject normalized) {
-        if (normalized == null) return List.of("尚无结果");
+        if (normalized == null) return List.of("正在获取结果……");
         if (!"success".equals(string(normalized, "status"))) {
-            return List.of("失败: " + string(normalized, "code"), string(normalized, "message"));
+            return List.of(friendlyFailure(string(normalized, "code")));
         }
         JsonObject value = object(normalized, "value");
-        if (value == null) return List.of(normalized.toString());
+        if (value == null) return List.of("结果暂时无法显示。");
         String name = toolId.substring(toolId.indexOf(':') + 1);
         return switch (name) {
             case "search_recipes" -> withCatalog(recipes(value), object(value, "catalog"));
@@ -24,7 +24,7 @@ public final class GuideToolPresentation {
             case "find_item_usages" -> withCatalog(usages(value), object(value, "catalog"));
             case "inspect_inventory" -> inventory(value);
             case "calculate_craftability" -> craftability(object(value, "result"));
-            default -> List.of(value.toString());
+            default -> List.of("这个工具已经完成。");
         };
     }
 
@@ -34,8 +34,7 @@ public final class GuideToolPresentation {
         for (JsonElement element : array(value, "usages")) {
             JsonObject usage = element.getAsJsonObject();
             JsonObject reference = object(usage, "reference");
-            lines.add("• " + string(usage, "role") + " · "
-                    + string(reference, "sourceId") + " · "
+            lines.add("• " + friendlyRole(string(usage, "role")) + " · "
                     + string(reference, "recipeId"));
         }
         return List.copyOf(lines);
@@ -44,37 +43,24 @@ public final class GuideToolPresentation {
     private static List<String> withCatalog(List<String> content, JsonObject catalog) {
         if (catalog == null) return content;
         List<String> lines = new ArrayList<>(content);
-        lines.add("目录完整性: " + string(catalog, "completeness")
-                + "；记录 " + number(catalog, "recipeCount")
-                + "；语义组 " + number(catalog, "semanticGroupCount"));
+        boolean partial = !"COMPLETE".equals(string(catalog, "completeness"));
         for (JsonElement element : array(catalog, "providers")) {
             JsonObject provider = element.getAsJsonObject();
-            lines.add("来源 " + string(provider, "sourceId")
-                    + " · " + string(provider, "state")
-                    + "/" + string(provider, "completeness")
-                    + " · " + number(provider, "recipeCount")
-                    + " · generation=" + string(provider, "generation"));
-            for (JsonElement diagnostic : array(provider, "diagnostics")) {
-                JsonObject value = diagnostic.getAsJsonObject();
-                lines.add("  ! " + string(value, "code") + ": " + string(value, "message"));
-            }
+            partial |= !"AVAILABLE".equals(string(provider, "state"))
+                    || !"COMPLETE".equals(string(provider, "completeness"));
         }
-        for (JsonElement conflict : array(catalog, "conflicts")) {
-            JsonObject value = conflict.getAsJsonObject();
-            lines.add("冲突 " + string(value, "recipeId") + ": " + string(value, "message"));
-        }
+        if (partial) lines.add("部分配方来源当前不可用，结果可能不完整。");
         return List.copyOf(lines);
     }
 
     private static List<String> recipes(JsonObject value) {
         JsonArray recipes = array(value, "recipes");
         List<String> lines = new ArrayList<>();
-        lines.add("候选配方: " + recipes.size());
+        lines.add(recipes.isEmpty() ? "没有找到匹配的配方。" : "找到 " + recipes.size() + " 个配方：");
         for (JsonElement element : recipes) {
             JsonObject recipe = element.getAsJsonObject();
             JsonObject reference = object(recipe, "reference");
-            lines.add("• " + string(reference, "recipeId") + " · " + string(recipe, "type")
-                    + workstation(recipe));
+            lines.add("• " + string(reference, "recipeId") + workstation(recipe));
             lines.addAll(outputs(array(recipe, "outputs"), "  产出 "));
         }
         return List.copyOf(lines);
@@ -84,14 +70,12 @@ public final class GuideToolPresentation {
         if (recipe == null) return List.of("配方详情不可用");
         List<String> lines = new ArrayList<>();
         JsonObject reference = object(recipe, "reference");
-        lines.add("配方: " + string(reference, "recipeId"));
-        lines.add("类型: " + string(recipe, "type") + workstation(recipe));
+        lines.add("配方: " + string(reference, "recipeId") + workstation(recipe));
         JsonArray ingredients = array(recipe, "ingredients");
         lines.add("材料组: " + ingredients.size());
         for (JsonElement element : ingredients) {
             JsonObject ingredient = element.getAsJsonObject();
-            lines.add("• " + string(ingredient, "key") + " × " + number(ingredient, "count")
-                    + "，候选 " + array(ingredient, "alternatives").size());
+            lines.add("• " + string(ingredient, "key") + " × " + number(ingredient, "count"));
         }
         lines.addAll(outputs(array(recipe, "outputs"), "产出 "));
         lines.addAll(outputs(array(recipe, "byproducts"), "副产物 "));
@@ -107,16 +91,19 @@ public final class GuideToolPresentation {
                     .forEach(entry -> lines.add("• " + entry.getKey() + " × " + entry.getValue().getAsLong()));
         }
         JsonObject inventory = object(value, "inventory");
-        if (inventory != null) lines.add("库存完整: " + bool(inventory, "complete"));
+        if (inventory != null && !bool(inventory, "complete")) {
+            lines.add("背包信息可能不完整。");
+        }
         return List.copyOf(lines);
     }
 
     private static List<String> craftability(JsonObject result) {
         if (result == null) return List.of("可合成性结果不可用");
         List<String> lines = new ArrayList<>();
-        lines.add("可合成: " + bool(result, "craftable") + "；结论完备: " + bool(result, "conclusive"));
-        lines.add("请求次数: " + number(result, "requestedCrafts")
-                + "；当前最多: " + number(result, "maximumCrafts"));
+        lines.add(bool(result, "craftable") ? "材料已经备齐。" : "材料还没有备齐。");
+        if (!bool(result, "conclusive")) lines.add("现有信息不足，结果仅供参考。");
+        lines.add("计划制作 " + number(result, "requestedCrafts")
+                + " 次；当前最多可制作 " + number(result, "maximumCrafts") + " 次。");
         for (JsonElement element : array(result, "allocations")) {
             JsonObject allocation = element.getAsJsonObject();
             lines.add("✓ " + string(allocation, "itemId") + " × " + number(allocation, "count")
@@ -142,6 +129,27 @@ public final class GuideToolPresentation {
     private static String workstation(JsonObject recipe) {
         String value = string(recipe, "workstation");
         return value.isBlank() ? "" : " · " + value;
+    }
+
+    private static String friendlyRole(String role) {
+        return switch (role) {
+            case "INPUT" -> "作为材料";
+            case "CATALYST" -> "作为工具或催化剂";
+            case "OUTPUT" -> "作为产物";
+            case "BYPRODUCT" -> "作为副产物";
+            default -> "相关配方";
+        };
+    }
+
+    private static String friendlyFailure(String code) {
+        return switch (code) {
+            case "stale_reference" -> "这个结果已经过期，请重新查询。";
+            case "capability_unavailable", "tool_unavailable" -> "当前环境暂时无法提供这项信息。";
+            case "player_required" -> "需要进入游戏世界后才能查看这项信息。";
+            case "invalid_arguments" -> "查询条件不完整，请换一种说法再试。";
+            case "unauthorized", "forbidden" -> "当前服务器不允许查看这项信息。";
+            default -> "这次查询没有成功，请稍后重试。";
+        };
     }
 
     private static JsonObject object(JsonObject value, String field) {

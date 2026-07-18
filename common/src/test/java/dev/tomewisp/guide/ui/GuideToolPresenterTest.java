@@ -18,23 +18,23 @@ final class GuideToolPresenterTest {
 
         var lines = GuideToolPresenter.lines("tomewisp:calculate_craftability", normalized);
 
-        assertEquals("可合成: false；结论完备: true", lines.getFirst());
+        assertEquals("材料还没有备齐。", lines.getFirst());
         assertTrue(lines.stream().anyMatch(value -> value.contains("iron_ingot × 4")));
         assertTrue(lines.stream().anyMatch(value -> value.contains("缺少 iron × 5")));
     }
 
     @Test
-    void failurePresentationNeverPretendsToHaveAResult() {
+    void failurePresentationNeverExposesInternalCode() {
         var normalized = JsonParser.parseString(
                 "{\"status\":\"failure\",\"code\":\"stale_reference\",\"message\":\"reload\"}")
                 .getAsJsonObject();
         var lines = GuideToolPresenter.lines("tomewisp:get_recipe", normalized);
-        assertEquals("失败: stale_reference", lines.getFirst());
-        assertEquals("reload", lines.get(1));
+        assertEquals("这个结果已经过期，请重新查询。", lines.getFirst());
+        assertEquals(1, lines.size());
     }
 
     @Test
-    void recipePresentationExposesProviderGenerationAndDiagnostics() {
+    void recipePresentationKeepsProviderDiagnosticsOutOfPlayerHistory() {
         var normalized = JsonParser.parseString("""
                 {"status":"success","value":{"recipes":[],"catalog":{
                   "completeness":"PARTIAL","recipeCount":0,"semanticGroupCount":0,
@@ -46,8 +46,11 @@ final class GuideToolPresenterTest {
 
         var lines = GuideToolPresenter.lines("tomewisp:search_recipes", normalized);
 
-        assertTrue(lines.stream().anyMatch(value -> value.contains("viewer:rei · UNAVAILABLE/UNKNOWN")));
-        assertTrue(lines.stream().anyMatch(value -> value.contains("mod_not_loaded")));
-        assertTrue(lines.stream().anyMatch(value -> value.contains("generation=" + "0".repeat(64))));
+        String visible = String.join("\n", lines);
+        assertTrue(visible.contains("没有找到匹配的配方"));
+        assertTrue(visible.contains("部分配方来源当前不可用"));
+        assertTrue(!visible.contains("UNAVAILABLE"));
+        assertTrue(!visible.contains("mod_not_loaded"));
+        assertTrue(!visible.contains("0".repeat(64)));
     }
 }

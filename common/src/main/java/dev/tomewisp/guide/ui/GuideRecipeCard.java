@@ -12,7 +12,7 @@ public record GuideRecipeCard(
         String workstation,
         List<Output> outputs,
         List<Ingredient> ingredients,
-        List<Output> catalysts,
+        List<Ingredient> catalysts,
         List<Output> byproducts,
         Processing processing) {
     public GuideRecipeCard {

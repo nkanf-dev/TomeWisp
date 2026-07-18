@@ -49,7 +49,48 @@ public final class GuideRecipePresenter {
                 requiredString(reference, "generation"),
                 requiredString(reference, "recipeId"));
         List<GuideRecipeCard.Output> outputs = new ArrayList<>();
-        for (JsonElement element : array(recipe, "outputs")) {
+        outputs.addAll(outputs(recipe, "outputs"));
+        return new GuideRecipeCard(
+                parsed,
+                references(recipe, parsed),
+                requiredString(recipe, "id"),
+                requiredString(recipe, "type"),
+                string(recipe, "workstation"),
+                outputs,
+                ingredients(recipe, "ingredients"),
+                ingredients(recipe, "catalysts"),
+                outputs(recipe, "byproducts"),
+                processing(recipe));
+    }
+
+    private static List<GuideRecipeCard.Ingredient> ingredients(JsonObject recipe, String field) {
+        List<GuideRecipeCard.Ingredient> ingredients = new ArrayList<>();
+        for (JsonElement element : array(recipe, field)) {
+            JsonObject ingredient = requiredObject(element, "recipe ingredient");
+            List<GuideRecipeCard.Alternative> alternatives = new ArrayList<>();
+            for (JsonElement encoded : array(ingredient, "alternatives")) {
+                JsonObject alternative = requiredObject(encoded, "ingredient alternative");
+                List<String> resolvedItems = new ArrayList<>();
+                for (JsonElement item : array(alternative, "resolvedItems")) {
+                    resolvedItems.add(item.getAsString());
+                }
+                alternatives.add(new GuideRecipeCard.Alternative(
+                        requiredString(alternative, "kind"),
+                        requiredString(alternative, "id"),
+                        resolvedItems));
+            }
+            ingredients.add(new GuideRecipeCard.Ingredient(
+                    requiredString(ingredient, "key"),
+                    positiveLong(ingredient, "count"),
+                    bool(ingredient, "consumed", true),
+                    alternatives));
+        }
+        return List.copyOf(ingredients);
+    }
+
+    private static List<GuideRecipeCard.Output> outputs(JsonObject recipe, String field) {
+        List<GuideRecipeCard.Output> outputs = new ArrayList<>();
+        for (JsonElement element : array(recipe, field)) {
             JsonObject output = requiredObject(element, "recipe output");
             JsonObject stack = requiredObject(output, "stack");
             outputs.add(new GuideRecipeCard.Output(
@@ -57,13 +98,16 @@ public final class GuideRecipePresenter {
                     positiveInteger(stack, "count"),
                     string(stack, "displayName")));
         }
-        return new GuideRecipeCard(
-                parsed,
-                references(recipe, parsed),
-                requiredString(recipe, "id"),
-                requiredString(recipe, "type"),
-                string(recipe, "workstation"),
-                outputs);
+        return List.copyOf(outputs);
+    }
+
+    private static GuideRecipeCard.Processing processing(JsonObject recipe) {
+        JsonObject processing = object(recipe, "processing");
+        if (processing == null) return GuideRecipeCard.Processing.unknown();
+        return new GuideRecipeCard.Processing(
+                nullableLong(processing, "durationTicks"),
+                nullableLong(processing, "energy"),
+                nullableDouble(processing, "temperature"));
     }
 
     private static List<RecipeReference> references(
@@ -106,6 +150,31 @@ public final class GuideRecipePresenter {
             throw new IllegalArgumentException(field + " must be positive");
         }
         return result;
+    }
+
+    private static long positiveLong(JsonObject object, String field) {
+        JsonElement value = object.get(field);
+        if (value == null || !value.isJsonPrimitive() || !value.getAsJsonPrimitive().isNumber()) {
+            throw new IllegalArgumentException(field + " must be a number");
+        }
+        long result = value.getAsLong();
+        if (result <= 0) throw new IllegalArgumentException(field + " must be positive");
+        return result;
+    }
+
+    private static Long nullableLong(JsonObject object, String field) {
+        JsonElement value = object.get(field);
+        return value == null || value.isJsonNull() ? null : value.getAsLong();
+    }
+
+    private static Double nullableDouble(JsonObject object, String field) {
+        JsonElement value = object.get(field);
+        return value == null || value.isJsonNull() ? null : value.getAsDouble();
+    }
+
+    private static boolean bool(JsonObject object, String field, boolean fallback) {
+        JsonElement value = object.get(field);
+        return value == null || value.isJsonNull() ? fallback : value.getAsBoolean();
     }
 
     private static JsonObject requiredObject(JsonObject value, String field) {

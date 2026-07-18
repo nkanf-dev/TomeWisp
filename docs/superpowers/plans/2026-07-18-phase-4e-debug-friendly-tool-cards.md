@@ -185,7 +185,7 @@ gaining ingredient, catalyst, byproduct, and processing projections.
 - Test: `common/src/test/java/dev/tomewisp/guide/ui/GuideToolDetailPresenterTest.java`
 - Modify: `common/src/test/java/dev/tomewisp/guide/ui/GuideRecipePresenterTest.java`
 
-- [ ] **Step 1: Write red fixtures for recipe, inventory, craftability, failure, malformed, and unknown tools**
+- [x] **Step 1: Write red fixtures for recipe, inventory, craftability, failure, malformed, and unknown tools**
 
 Use normalized fixtures with:
 
@@ -215,7 +215,7 @@ Assert normal projections contain requirements/items/friendly messages but no
 Assert debug projections retain the already-authorized technical fields in the
 separate `Debug` record.
 
-- [ ] **Step 2: Implement strict known-tool projection**
+- [x] **Step 2: Implement strict known-tool projection**
 
 `GuideToolDetailPresenter.project(activity, debugMode)` handles:
 
@@ -232,14 +232,14 @@ The presenter returns every valid record and does not introduce a count cap.
 Malformed records are omitted only from their typed card, append a friendly
 fallback, and set a redacted validation diagnostic for Debug Mode.
 
-- [ ] **Step 3: Replace technical normal narration in `GuideToolPresentation`**
+- [x] **Step 3: Replace technical normal narration in `GuideToolPresentation`**
 
 Remove provider generation, authority/completeness enums, raw status codes, and
 raw `value.toString()` from normal presentation. Keep technical projection in
 `GuideToolDetailView.Debug`; persisted normal presentation lines remain friendly
 and safe after restart.
 
-- [ ] **Step 4: Run presenter/history privacy tests and commit**
+- [x] **Step 4: Run presenter/history privacy tests and commit**
 
 ```bash
 ./gradlew :common:test \
@@ -250,6 +250,13 @@ and safe after restart.
 git add common/src/main/java/dev/tomewisp/guide common/src/test/java/dev/tomewisp/guide
 git commit -m "feat: project friendly grounded tool cards"
 ```
+
+The red run failed on the intentionally absent presenter. Focused recipe,
+inventory, craftability, failure, malformed/unknown, and privacy tests then
+passed, followed by the guide and durable-history regression suites. Normal
+history no longer stores catalog enums, generation hashes, internal failure
+codes, or normalized JSON; Debug Mode retains a defensive copy in its separate
+projection.
 
 ### Task 4: Render Cards and Gate Diagnostics in the Native Screen
 

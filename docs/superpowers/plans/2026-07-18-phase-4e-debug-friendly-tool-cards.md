@@ -340,20 +340,20 @@ also pass strict JSON parsing.
 - Modify: `common/src/main/java/dev/tomewisp/client/gui/TomeWispScreen.java`
 - Test: `common/src/test/java/dev/tomewisp/client/ClientArchitectureTest.java`
 
-- [ ] **Step 1: Load one common config path on both loaders**
+- [x] **Step 1: Load one common config path on both loaders**
 
 Both loaders create `GuideDisplayConfigLoader` for
 `config/tomewisp/display.json`, retain the last valid/default result, and pass
 its immutable config to the screen constructor. A malformed file shows a
 friendly local notice while keeping Debug Mode off or the last valid value.
 
-- [ ] **Step 2: Prove loader parity and no common loader imports**
+- [x] **Step 2: Prove loader parity and no common loader imports**
 
 Extend architecture tests/search assertions so both loader entrypoints use the
 same common loader/config type and production common code remains free of
 Fabric/NeoForge imports.
 
-- [ ] **Step 3: Compile both loaders and commit**
+- [x] **Step 3: Compile both loaders and commit**
 
 ```bash
 ./gradlew :common:test --tests 'dev.tomewisp.client.ClientArchitectureTest' \
@@ -361,6 +361,13 @@ Fabric/NeoForge imports.
 git add fabric neoforge common/src/test/java/dev/tomewisp/client/ClientArchitectureTest.java
 git commit -m "feat: load debug UI settings on both loaders"
 ```
+
+The parity test failed first because neither loader had loaded the shared
+display configuration. It now passes together with both loader compilations.
+Fabric and NeoForge read the same `config/tomewisp/display.json`, pass the same
+immutable config/failure projection to the common screen, and malformed input
+keeps Debug Mode off with a localized notice. A source-boundary assertion also
+confirms common production code has no Fabric or NeoForge imports.
 
 ### Task 6: Verify the Work Package
 

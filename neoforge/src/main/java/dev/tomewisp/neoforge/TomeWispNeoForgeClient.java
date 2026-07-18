@@ -16,6 +16,7 @@ import dev.tomewisp.guide.e2e.GuideClientE2EConfig;
 import dev.tomewisp.guide.e2e.GuideClientE2EController;
 import dev.tomewisp.client.gui.TomeWispKeyMappings;
 import dev.tomewisp.client.gui.TomeWispScreen;
+import dev.tomewisp.guide.ui.GuideDisplayConfigLoader;
 import dev.tomewisp.tool.ToolResult;
 import dev.tomewisp.recipe.config.RecipeClientRuntime;
 import net.minecraft.client.Minecraft;
@@ -49,6 +50,8 @@ public final class TomeWispNeoForgeClient {
                 : null;
         RecipeClientRuntime recipeClient = new RecipeClientRuntime(
                 FMLPaths.CONFIGDIR.get().resolve("tomewisp/recipes.json"));
+        var display = new GuideDisplayConfigLoader().load(
+                FMLPaths.CONFIGDIR.get().resolve("tomewisp/display.json"));
         MinecraftGuideContextProvider contexts = new MinecraftGuideContextProvider(
                 runtime,
                 Minecraft.getInstance(),
@@ -94,7 +97,8 @@ public final class TomeWispNeoForgeClient {
             if (current != null) current.refreshCapabilities();
         });
         dev.tomewisp.guide.GuideScreenOpener screens = service -> {
-            Minecraft.getInstance().gui.setScreen(new TomeWispScreen(service, recipeClient));
+            Minecraft.getInstance().gui.setScreen(new TomeWispScreen(
+                    service, recipeClient, display.config(), display.failure()));
             return new ToolResult.Success<>(true);
         };
         NeoForgeGuideCommands.register(new GuideCommandFacade(

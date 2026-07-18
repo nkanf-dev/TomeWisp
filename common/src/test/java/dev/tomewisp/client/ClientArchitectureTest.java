@@ -1,6 +1,7 @@
 package dev.tomewisp.client;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.google.gson.Gson;
 import dev.tomewisp.TomeWispRuntime;
@@ -18,6 +19,8 @@ import dev.tomewisp.tool.ToolRegistry;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import org.junit.jupiter.api.Test;
 
 final class ClientArchitectureTest {
@@ -48,6 +51,47 @@ final class ClientArchitectureTest {
         assertEquals(0, delivered.size());
         queued.forEach(Runnable::run);
         assertEquals(4, delivered.size());
+    }
+
+    @Test
+    void bothLoadersUseTheSharedDisplayConfigWithoutLeakingLoaderApisIntoCommon() throws Exception {
+        Path root = repositoryRoot();
+        List<Path> entrypoints = List.of(
+                root.resolve("fabric/src/main/java/dev/tomewisp/fabric/TomeWispFabricClient.java"),
+                root.resolve("neoforge/src/main/java/dev/tomewisp/neoforge/TomeWispNeoForgeClient.java"));
+        for (Path entrypoint : entrypoints) {
+            String source = Files.readString(entrypoint);
+            assertTrue(source.contains("GuideDisplayConfigLoader"), entrypoint::toString);
+            assertTrue(source.contains("tomewisp/display.json"), entrypoint::toString);
+            assertTrue(source.contains("display.config()"), entrypoint::toString);
+        }
+
+        try (var files = Files.walk(root.resolve("common/src/main/java"))) {
+            List<Path> violations = files.filter(path -> path.toString().endsWith(".java"))
+                    .filter(path -> {
+                        try {
+                            String source = Files.readString(path);
+                            return source.contains("import net.fabricmc.")
+                                    || source.contains("import net.neoforged.");
+                        } catch (java.io.IOException failure) {
+                            throw new java.io.UncheckedIOException(failure);
+                        }
+                    })
+                    .toList();
+            assertTrue(violations.isEmpty(), () -> "loader imports in common: " + violations);
+        }
+    }
+
+    private static Path repositoryRoot() {
+        Path current = Path.of("").toAbsolutePath().normalize();
+        if (Files.isDirectory(current.resolve("common"))
+                && Files.isDirectory(current.resolve("fabric"))) {
+            return current;
+        }
+        if (current.getFileName() != null && current.getFileName().toString().equals("common")) {
+            return current.getParent();
+        }
+        throw new IllegalStateException("Unable to locate repository root from " + current);
     }
 
     private static final class FakePlatform implements PlatformService {

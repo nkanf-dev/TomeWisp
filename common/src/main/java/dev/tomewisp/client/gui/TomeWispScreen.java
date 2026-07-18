@@ -1,6 +1,7 @@
 package dev.tomewisp.client.gui;
 
 import dev.tomewisp.guide.GuideModelMode;
+import dev.tomewisp.guide.GuideFailure;
 import dev.tomewisp.guide.GuideRequestSnapshot;
 import dev.tomewisp.guide.GuideRequestStatus;
 import dev.tomewisp.guide.GuideService;
@@ -81,13 +82,27 @@ public final class TomeWispScreen extends Screen {
             GuideService service,
             RecipeClientRuntime recipeClient,
             GuideDisplayConfig displayConfig) {
+        this(service, recipeClient, displayConfig, null);
+    }
+
+    public TomeWispScreen(
+            GuideService service,
+            RecipeClientRuntime recipeClient,
+            GuideDisplayConfig displayConfig,
+            GuideFailure displayFailure) {
         super(Component.translatable("screen.tomewisp.guide"));
         this.service = java.util.Objects.requireNonNull(service, "service");
         this.recipeClient = java.util.Objects.requireNonNull(recipeClient, "recipeClient");
         this.displayConfig = java.util.Objects.requireNonNull(displayConfig, "displayConfig");
         this.view = GuideUiView.from(service.snapshot(), displayConfig);
-        recipeClient.failure().ifPresent(failure -> notice = Component.translatable(
-                "screen.tomewisp.recipe.invalid_config", failure.code()).getString());
+        List<String> startupNotices = new ArrayList<>();
+        recipeClient.failure().ifPresent(failure -> startupNotices.add(Component.translatable(
+                "screen.tomewisp.recipe.invalid_config", failure.code()).getString()));
+        if (displayFailure != null) {
+            startupNotices.add(Component.translatable(
+                    "screen.tomewisp.debug.invalid_config").getString());
+        }
+        notice = String.join(" · ", startupNotices);
     }
 
     @Override

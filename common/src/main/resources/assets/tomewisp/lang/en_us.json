@@ -28,6 +28,7 @@
   "screen.tomewisp.detail.source_link": "View evidence",
   "screen.tomewisp.detail.source_friendly": "This content is supported by in-game evidence. Enable Debug Mode for technical details.",
   "screen.tomewisp.debug.section": "Debug information",
+  "screen.tomewisp.debug.invalid_config": "Debug Mode configuration is invalid; it remains safely disabled.",
   "screen.tomewisp.tool.search_recipes": "Recipe search",
   "screen.tomewisp.tool.get_recipe": "Recipe details",
   "screen.tomewisp.tool.find_item_usages": "Item usages",

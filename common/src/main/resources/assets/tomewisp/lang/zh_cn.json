@@ -28,6 +28,7 @@
   "screen.tomewisp.detail.source_link": "查看依据",
   "screen.tomewisp.detail.source_friendly": "这条内容有游戏内依据支持。开启调试模式可查看技术信息。",
   "screen.tomewisp.debug.section": "调试信息",
+  "screen.tomewisp.debug.invalid_config": "调试模式配置无效；已安全地保持关闭。",
   "screen.tomewisp.tool.search_recipes": "搜索配方",
   "screen.tomewisp.tool.get_recipe": "配方详情",
   "screen.tomewisp.tool.find_item_usages": "物品用途",

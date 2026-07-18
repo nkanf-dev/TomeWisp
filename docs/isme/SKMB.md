@@ -25,7 +25,7 @@ accepted and contains explicit approval evidence.
 | SKMB-2026-07-18-015 | accepted | settings model administration and live connection testing | A, B, C, D, E, F, G | decisions/2026-07-18-015-settings-model-administration.md | f1ba74b; implemented through 6498516 |
 | SKMB-2026-07-18-016 | accepted | native settings coordination and domain config writes | A, B, C, E, F | decisions/2026-07-18-016-native-settings-coordination.md | e7acf43, 507d628; implemented through a3ae197 |
 | SKMB-2026-07-18-017 | accepted | knowledge/capability catalog and local Tool/Skill policy | B, C, D, E, F | decisions/2026-07-18-017-capability-settings-policy.md | e7acf43, 507d628; implemented through 771cc94 |
-| SKMB-2026-07-18-018 | accepted | semantic messages, controlled components, and windowed history | A, B, C, D, E, F | decisions/2026-07-18-018-semantic-history-windowing.md | pending |
+| SKMB-2026-07-18-018 | accepted | semantic messages, controlled components, and windowed history | A, B, C, D, E, F | decisions/2026-07-18-018-semantic-history-windowing.md | 9655dd2 |
 
 SKMB-2026-07-18-006 is implemented by `a0eaeff`, `19ab90f`, and `c6ca6bc`.
 Its deterministic clean-build and packaged-driver evidence is recorded in the

@@ -4,7 +4,7 @@
 - decided_by: designer delegation
 - approval_source: the designer approved the consolidated Phase 4 semantic-rich-message and long-history design, then delegated all remaining Phase 4 implementation decisions to the agent's best judgment
 - date: 2026-07-18
-- commit: pending
+- commit: 9655dd2
 - patterns:
   - A_async_wait
   - B_state_persistence

@@ -119,6 +119,25 @@ final class ToolSettingsBackendTest {
     }
 
     @Test
+    void restoreDefaultsRemovesUserSourcesAndReenablesBuiltIns() {
+        Fixture fixture = fixture(CapabilityPolicy.defaults());
+        ToolSettingsBackend backend = fixture.backend();
+        success(backend.setSourceEnabled(ToolFamilyId.GUIDES, "tomewisp:patchouli", false));
+        success(backend.createSource(
+                ToolFamilyId.GUIDES, local("user:notes", "Notes", "notes")));
+
+        ToolSettingsBackend.State restored =
+                success(backend.restoreDefaults(ToolFamilyId.GUIDES));
+
+        ToolSettingsView.Family guides =
+                restored.view().find(ToolFamilyId.GUIDES).orElseThrow();
+        assertTrue(guides.enabled());
+        assertEquals(1, guides.sources().size());
+        assertTrue(guides.sources().getFirst().enabled());
+        assertFalse(guides.sources().getFirst().editable());
+    }
+
+    @Test
     void invalidCandidateRetainsPriorFileAndPublishedFamily() throws Exception {
         Fixture fixture = fixture(CapabilityPolicy.defaults());
         ToolSettingsBackend backend = fixture.backend();

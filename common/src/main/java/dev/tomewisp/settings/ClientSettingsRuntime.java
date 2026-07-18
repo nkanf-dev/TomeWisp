@@ -301,6 +301,33 @@ public record ClientSettingsRuntime(
                 }
 
                 @Override
+                public ToolResult<ToolSettingsBackend.State> restore(ToolFamilyId family) {
+                    ToolFamilyConfig prior = toolSettings.current(family);
+                    ToolResult<ToolSettingsBackend.State> restored = toolSettings.restoreDefaults(family);
+                    if (restored instanceof ToolResult.Failure<ToolSettingsBackend.State> failure) {
+                        return failure;
+                    }
+                    ToolFamilyConfig candidate = toolSettings.current(family);
+                    ToolResult<Boolean> applied =
+                            applyToolRuntime(candidate, recipes, product, configDirectory);
+                    if (applied instanceof ToolResult.Failure<Boolean> failure) {
+                        rollbackToolRuntime(toolSettings, prior, recipes, product, configDirectory);
+                        return new ToolResult.Failure<>(failure.code(), failure.message());
+                    }
+                    ToolSettingsBackend.State state = toolSettings.currentState();
+                    ToolResult<CapabilitySettingsView> published =
+                            capabilities.publishCapabilities(state.capabilityPolicy());
+                    if (published instanceof ToolResult.Failure<CapabilitySettingsView> failure) {
+                        rollbackToolRuntime(toolSettings, prior, recipes, product, configDirectory);
+                        return new ToolResult.Failure<>(failure.code(), failure.message());
+                    }
+                    CapabilitySettingsView capabilityView =
+                            ((ToolResult.Success<CapabilitySettingsView>) published).value();
+                    return new ToolResult.Success<>(new ToolSettingsBackend.State(
+                            toolSettings.currentView(), capabilityView.policy()));
+                }
+
+                @Override
                 public ToolResult<ToolSettingsBackend.State> reload(ToolFamilyId family) {
                     ToolFamilyConfig prior = toolSettings.current(family);
                     ToolResult<ToolSettingsBackend.State> loaded = toolSettings.reload(family);

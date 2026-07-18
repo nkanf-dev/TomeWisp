@@ -77,6 +77,7 @@
   "screen.tomewisp.settings.general.narration": "Player display settings for Debug Mode and presentation animations.",
   "screen.tomewisp.settings.tools.enable": "Enable Tool",
   "screen.tomewisp.settings.tools.disable": "Disable Tool",
+  "screen.tomewisp.settings.tools.restore": "Restore defaults",
   "screen.tomewisp.settings.tools.source.add_local": "Add local documents",
   "screen.tomewisp.settings.tools.source.local_default": "Local documents",
   "screen.tomewisp.settings.tools.source.name": "Source name",

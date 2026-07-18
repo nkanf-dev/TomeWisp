@@ -422,10 +422,17 @@ public final class TomeWispSettingsScreen extends Screen {
                                 : "screen.tomewisp.settings.tools.enable"),
                         ignored -> accept(service.saveToolSettings(
                                 toolProjection().toggleTool(family.id()))))
-                .bounds(x, y, Math.min(150, width), 22)
+                .bounds(x, y, Math.max(80, (width - 4) / 2), 22)
                 .build());
         enable.active = family.available()
                 && snapshot.operation().kind() == SettingsOperation.Kind.IDLE;
+        int enableWidth = enable.getWidth();
+        Button restore = addRenderableWidget(Button.builder(
+                        Component.translatable("screen.tomewisp.settings.tools.restore"),
+                        ignored -> accept(service.restoreToolSettings(family.id())))
+                .bounds(x + enableWidth + 4, y, width - enableWidth - 4, 22)
+                .build());
+        restore.active = snapshot.operation().kind() == SettingsOperation.Kind.IDLE;
         y += 32;
 
         if (family.id() == ToolFamilyId.RECIPES) {

@@ -118,6 +118,8 @@ public final class ClientSettingsService implements AutoCloseable {
     public interface ToolActions {
         ToolResult<ToolSettingsBackend.State> save(ToolFamilyConfig candidate);
 
+        ToolResult<ToolSettingsBackend.State> restore(ToolFamilyId family);
+
         ToolResult<ToolSettingsBackend.State> reload(ToolFamilyId family);
     }
 
@@ -631,6 +633,25 @@ public final class ClientSettingsService implements AutoCloseable {
         return result;
     }
 
+    public CompletableFuture<ToolResult<Boolean>> restoreToolSettings(ToolFamilyId family) {
+        Objects.requireNonNull(family, "family");
+        Reservation reservation = reserve(SettingsOperation.domain(
+                SettingsOperation.Kind.SAVING_TOOL));
+        if (!reservation.accepted()) {
+            return CompletableFuture.completedFuture(failed(reservation.failureCode()));
+        }
+        CompletableFuture<ToolResult<Boolean>> result = new CompletableFuture<>();
+        worker.execute(() -> {
+            ToolResult<ToolSettingsBackend.State> restored = safely(
+                    () -> toolActions.restore(family),
+                    "tool_settings_restore_failed",
+                    "Unable to restore default Tool settings");
+            dispatcher.execute(() -> finishTools(
+                    reservation.id(), restored, result, "tool_settings_restored"));
+        });
+        return result;
+    }
+
     public CompletableFuture<ToolResult<Boolean>> saveSkillOverride(
             String name, String markdown) {
         Objects.requireNonNull(name, "name");
@@ -1091,9 +1112,11 @@ public final class ClientSettingsService implements AutoCloseable {
                         capabilityState.unknownDisabledSkills());
                 notice = SettingsNotice.success(
                         successCode,
-                        successCode.equals("tool_settings_reloaded")
-                                ? "Tool settings reloaded"
-                                : "Tool settings saved");
+                        switch (successCode) {
+                            case "tool_settings_reloaded" -> "Tool settings reloaded";
+                            case "tool_settings_restored" -> "Default Tool settings restored";
+                            default -> "Tool settings saved";
+                        });
                 result = new ToolResult.Success<>(Boolean.TRUE);
             } else {
                 ToolResult.Failure<ToolSettingsBackend.State> failure =
@@ -1582,6 +1605,12 @@ public final class ClientSettingsService implements AutoCloseable {
         return new ToolActions() {
             @Override
             public ToolResult<ToolSettingsBackend.State> save(ToolFamilyConfig candidate) {
+                return new ToolResult.Failure<>(
+                        "settings_unavailable", "Tool settings are unavailable");
+            }
+
+            @Override
+            public ToolResult<ToolSettingsBackend.State> restore(ToolFamilyId family) {
                 return new ToolResult.Failure<>(
                         "settings_unavailable", "Tool settings are unavailable");
             }

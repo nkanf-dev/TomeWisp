@@ -77,6 +77,7 @@
   "screen.tomewisp.settings.general.narration": "调试模式与展示动画的玩家显示设置。",
   "screen.tomewisp.settings.tools.enable": "启用工具",
   "screen.tomewisp.settings.tools.disable": "停用工具",
+  "screen.tomewisp.settings.tools.restore": "恢复默认",
   "screen.tomewisp.settings.tools.source.add_local": "添加本地文档来源",
   "screen.tomewisp.settings.tools.source.local_default": "本地文档",
   "screen.tomewisp.settings.tools.source.name": "来源名称",

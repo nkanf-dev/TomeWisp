@@ -94,7 +94,7 @@ untouched while the runtime receives the safe default with Debug Mode off.
 - Modify: `common/src/main/java/dev/tomewisp/guide/ui/GuideRecipeCard.java`
 - Test: `common/src/test/java/dev/tomewisp/guide/ui/GuideToolDetailViewTest.java`
 
-- [ ] **Step 1: Write failing immutability and normal/debug separation tests**
+- [x] **Step 1: Write failing immutability and normal/debug separation tests**
 
 ```java
 @Test
@@ -113,7 +113,7 @@ void debugProjectionIsSeparateAndDefensivelyCopied() {
 }
 ```
 
-- [ ] **Step 2: Define card records without Minecraft classes**
+- [x] **Step 2: Define card records without Minecraft classes**
 
 ```java
 public record GuideItemView(String itemId, String displayName, long count) {}
@@ -162,13 +162,19 @@ copy lists, and deep-copy JSON. `GuideRecipeCard` gains immutable ingredient,
 catalyst, byproduct, and processing projections using `GuideItemView` and
 alternative item IDs.
 
-- [ ] **Step 3: Run the card-domain tests and commit**
+- [x] **Step 3: Run the card-domain tests and commit**
 
 ```bash
 ./gradlew :common:test --tests 'dev.tomewisp.guide.ui.GuideToolDetailViewTest'
 git add common/src/main/java/dev/tomewisp/guide/ui common/src/test/java/dev/tomewisp/guide/ui/GuideToolDetailViewTest.java
 git commit -m "feat: define player tool detail cards"
 ```
+
+The red run failed only on the missing card-domain symbols. The green run
+passed both the new immutability/debug-separation tests and the existing recipe
+presenter tests. All card lists are copied, debug JSON is deep-copied on input
+and access, and recipe cards retain their compatibility constructor while
+gaining ingredient, catalyst, byproduct, and processing projections.
 
 ### Task 3: Known-Tool Card Projection and Friendly Fallback
 

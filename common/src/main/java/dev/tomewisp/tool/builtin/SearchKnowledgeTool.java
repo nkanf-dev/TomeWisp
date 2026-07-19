@@ -5,7 +5,6 @@ import dev.tomewisp.context.ToolInvocationContext;
 import dev.tomewisp.context.EvidenceBearing;
 import dev.tomewisp.context.EvidenceMetadata;
 import dev.tomewisp.knowledge.KnowledgeRegistry;
-import dev.tomewisp.knowledge.search.KnowledgeIndex;
 import dev.tomewisp.knowledge.search.KnowledgeSearchResult;
 import dev.tomewisp.tool.Tool;
 import dev.tomewisp.tool.ToolAccess;
@@ -29,7 +28,7 @@ public final class SearchKnowledgeTool
 
     private static final ToolDescriptor<Input, Output> DESCRIPTOR = new ToolDescriptor<>(
             "tomewisp:search_knowledge",
-            "Search indexed in-game guide books and visible quest knowledge with provenance",
+            "Search indexed in-game guides and visible quests by resource ID, alias, heading, or text",
             Input.class,
             Output.class,
             ToolAccess.READ_ONLY);
@@ -47,11 +46,11 @@ public final class SearchKnowledgeTool
             return new ToolResult.Failure<>("invalid_arguments", "query must not be blank");
         }
         try {
-            var snapshot = registry.snapshot();
+            var search = registry.search(input.query(), input.limit());
             return new ToolResult.Success<>(new Output(
                     input.query(),
-                    new KnowledgeIndex(snapshot).search(input.query(), input.limit()),
-                    snapshot.evidence()));
+                    search.results(),
+                    search.evidence()));
         } catch (IllegalArgumentException failure) {
             return new ToolResult.Failure<>("invalid_arguments", failure.getMessage());
         }

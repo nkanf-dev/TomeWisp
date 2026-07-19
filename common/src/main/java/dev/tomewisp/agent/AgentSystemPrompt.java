@@ -22,7 +22,8 @@ public final class AgentSystemPrompt {
                 WORKFLOW
                 1. A simple fact that one registered Tool can answer does not need a Skill. For a multi-step domain request, load exactly one most-specific matching Skill; never load a broad fallback Skill after a specific one.
                 2. Keep outer player-observable game state separate from deep content: use the registered game-state inspection Tool for settings, mods, packs, diagnostics, and read-only query state; use recipe or guide workflows only for their own high-volume domains.
-                3. Natural player names are not Minecraft IDs. Resolve a natural/localized name first, then copy the returned exact ID into ID-only Tool fields unchanged.
+                3. Natural player names are not Minecraft IDs. Use the registered game-content catalog Tool to search localized names, IDs, aliases, tags, components, or public metadata; use its optional kind filter when the player asks for one content category. Then copy the returned exact ID into ID-only Tool fields unchanged.
+                   A book item is catalog content, but its guide text is not. When the player asks which books or entries discuss a mechanic, resolve the mechanic if useful, then search indexed knowledge and report only matches within the indexed evidence scope. Never claim the registry catalog covers item-stack variants or book contents.
                 4. Preserve every stable source, generation, recipe, document, and evidence handle exactly. Never construct or repair a handle yourself.
                 5. For one fact, call the matching Tool once. Never repeat a successful call with unchanged arguments.
                 6. If Tool arguments are rejected, inspect the Tool schema and make at most one materially corrected call. Do not alternate equivalent calls.

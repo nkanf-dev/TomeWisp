@@ -15,7 +15,13 @@ final class RecipeViewerApiCompatibilityTest {
         assertSymbols("mezz.jei.api.runtime.IJeiRuntime", "getRecipeManager", "getRecipesGui");
         assertSymbols("mezz.jei.api.recipe.IRecipeManager", "createRecipeCategoryLookup");
         assertSymbols("mezz.jei.api.recipe.IRecipeCategoriesLookup", "includeHidden", "get");
-        assertSymbols("mezz.jei.api.gui.IRecipeLayoutDrawable", "getRecipeSlotsView");
+        assertSymbols(
+                "mezz.jei.api.gui.IRecipeLayoutDrawable",
+                "getRecipeSlotsView",
+                "setPosition",
+                "drawRecipe",
+                "drawOverlays",
+                "tick");
         assertSymbols("mezz.jei.api.gui.ingredient.IRecipeSlotDrawablesView", "getSlots");
         assertSymbols("mezz.jei.api.runtime.IRecipesGui", "show");
     }
@@ -38,6 +44,16 @@ final class RecipeViewerApiCompatibilityTest {
                 "addRecipesFor",
                 "addUsagesFor",
                 "open");
+        assertSymbols(
+                "me.shedaniel.rei.api.client.registry.category.CategoryRegistry",
+                "getInstance",
+                "tryGet");
+        assertSymbols(
+                "me.shedaniel.rei.api.client.registry.display.DisplayCategoryView",
+                "setupDisplay");
+        assertSymbols(
+                "me.shedaniel.rei.api.client.gui.widgets.Widget",
+                "extractRenderState");
     }
 
     @Test

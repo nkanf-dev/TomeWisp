@@ -19,6 +19,8 @@ import dev.tomewisp.guide.history.GuideHistoryContextRequest;
 import dev.tomewisp.guide.history.GuideHistoryContextSeed;
 import dev.tomewisp.guide.history.GuideHistoryMutation;
 import dev.tomewisp.guide.history.GuideHistoryScope;
+import dev.tomewisp.guide.export.GuideSessionExportCollector;
+import dev.tomewisp.guide.export.GuideSessionExportSnapshot;
 import dev.tomewisp.tool.ToolResult;
 import java.time.Clock;
 import java.time.Instant;
@@ -233,6 +235,54 @@ public final class GuideService implements GuideHistoryAdministration {
             }
             publish();
             result.complete(new ToolResult.Success<>(true));
+        });
+        return result;
+    }
+
+    /** Captures the selected session without exposing a history path or mutating its viewport. */
+    public CompletableFuture<ToolResult<GuideSessionExportSnapshot>>
+            captureSelectedSessionForExport() {
+        CompletableFuture<ToolResult<GuideSessionExportSnapshot>> result =
+                new CompletableFuture<>();
+        dispatcher.execute(() -> {
+            if (disconnected) {
+                result.complete(new ToolResult.Failure<>(
+                        "history_export_unavailable", "Guide session export is unavailable"));
+                return;
+            }
+            SessionState session = sessions.get(selectedSession);
+            if (session == null) {
+                result.complete(new ToolResult.Failure<>(
+                        "invalid_session", "Guide session does not exist"));
+                return;
+            }
+            try {
+                String capturedSession = session.id;
+                Instant capturedAt = clock.instant();
+                List<GuideSessionExportCollector.SequencedRequest> captured =
+                        session.requests.stream().map(request ->
+                                new GuideSessionExportCollector.SequencedRequest(
+                                        Objects.requireNonNull(
+                                                session.requestSequences.get(request.requestId()),
+                                                "request sequence"),
+                                        request)).toList();
+                GuideSessionExportCollector collector =
+                        new GuideSessionExportCollector(historyScope, history);
+                collector.collect(capturedSession, captured, capturedAt)
+                        .whenComplete((export, failure) -> dispatcher.execute(() -> {
+                            if (failure == null) {
+                                result.complete(new ToolResult.Success<>(export));
+                            } else {
+                                result.complete(new ToolResult.Failure<>(
+                                        "history_export_failed",
+                                        "Unable to read the complete guide session for export"));
+                            }
+                        }));
+            } catch (RuntimeException failure) {
+                result.complete(new ToolResult.Failure<>(
+                        "history_export_failed",
+                        "Unable to read the complete guide session for export"));
+            }
         });
         return result;
     }

@@ -9,6 +9,12 @@ import java.util.List;
 
 /** Pure semantic block flattening and width-aware wrapping. */
 public final class SemanticLayoutEngine {
+    private static final int TABLE_BORDER = 1;
+    private static final int TABLE_PADDING_X = 4;
+    private static final int TABLE_PADDING_Y = 3;
+    private static final int MIN_GRID_COLUMN_WIDTH = 48;
+    private static final int CARD_GAP = 4;
+
     public interface Measurer {
         int width(String text, SemanticLayout.Style style);
         int lineHeight(SemanticLayout.Kind kind);
@@ -98,12 +104,10 @@ public final class SemanticLayoutEngine {
                 }
             }
             case SemanticBlock.Table value -> {
-                tableRow(value.nodeId() + "-head", value.header(), indent, width, measurer, output);
-                int index = 0;
-                for (SemanticBlock.TableRow row : value.rows()) {
-                    tableRow(value.nodeId() + "-row-" + index++, row,
-                            indent, width, measurer, output);
-                }
+                SemanticLayout.TableBox table = table(value, Math.max(1, width - indent), measurer);
+                output.add(new SemanticLayout.Line(
+                        value.nodeId(), SemanticLayout.Kind.TABLE, indent,
+                        table.height(), List.of(), null, table));
             }
             case SemanticBlock.ThematicBreak value -> output.add(new SemanticLayout.Line(
                     value.nodeId(), SemanticLayout.Kind.RULE, indent,
@@ -114,19 +118,212 @@ public final class SemanticLayoutEngine {
         }
     }
 
-    private void tableRow(
-            String nodeId,
-            SemanticBlock.TableRow row,
-            int indent,
+    private SemanticLayout.TableBox table(
+            SemanticBlock.Table table,
             int width,
-            Measurer measurer,
-            List<SemanticLayout.Line> output) {
-        ArrayList<SemanticLayout.Run> values = new ArrayList<>();
-        for (int index = 0; index < row.cells().size(); index++) {
-            if (index > 0) values.add(new SemanticLayout.Run(" | ", SemanticLayout.Style.CODE, null));
-            values.addAll(runs(row.cells().get(index).content(), SemanticLayout.Style.NORMAL));
+            Measurer measurer) {
+        int columns = Math.max(
+                table.header().cells().size(),
+                table.rows().stream().mapToInt(row -> row.cells().size()).max().orElse(0));
+        if (columns == 0) {
+            throw new IllegalArgumentException("semantic table has no columns");
         }
-        addWrapped(nodeId, SemanticLayout.Kind.TABLE, indent, values, width, measurer, output);
+        return width >= columns * MIN_GRID_COLUMN_WIDTH
+                ? gridTable(table, columns, width, measurer)
+                : cardTable(table, columns, width, measurer);
+    }
+
+    private SemanticLayout.TableBox gridTable(
+            SemanticBlock.Table table,
+            int columns,
+            int availableWidth,
+            Measurer measurer) {
+        List<SemanticBlock.TableRow> sourceRows = new ArrayList<>();
+        sourceRows.add(table.header());
+        sourceRows.addAll(table.rows());
+        int[] desired = new int[columns];
+        java.util.Arrays.fill(desired, MIN_GRID_COLUMN_WIDTH);
+        for (SemanticBlock.TableRow row : sourceRows) {
+            for (int column = 0; column < row.cells().size(); column++) {
+                List<SemanticLayout.Run> values = runs(
+                        row.cells().get(column).content(), SemanticLayout.Style.NORMAL);
+                desired[column] = Math.max(desired[column],
+                        runWidth(values, measurer) + TABLE_PADDING_X * 2 + TABLE_BORDER);
+            }
+        }
+        int[] widths = distributeColumns(desired, availableWidth);
+        int lineHeight = measurer.lineHeight(SemanticLayout.Kind.TABLE);
+        ArrayList<SemanticLayout.TableRow> rows = new ArrayList<>();
+        int rowY = 0;
+        for (int rowIndex = 0; rowIndex < sourceRows.size(); rowIndex++) {
+            SemanticBlock.TableRow source = sourceRows.get(rowIndex);
+            boolean header = rowIndex == 0;
+            ArrayList<List<SemanticLayout.CellLine>> wrapped = new ArrayList<>();
+            int rowHeight = lineHeight + TABLE_PADDING_Y * 2 + TABLE_BORDER;
+            for (int column = 0; column < columns; column++) {
+                SemanticBlock.TableCell cell = cell(source, column);
+                List<SemanticLayout.CellLine> lines = cellLines(
+                        cell.content(),
+                        header ? SemanticLayout.Style.STRONG : SemanticLayout.Style.NORMAL,
+                        Math.max(1, widths[column] - TABLE_PADDING_X * 2 - TABLE_BORDER),
+                        lineHeight,
+                        measurer);
+                wrapped.add(lines);
+                rowHeight = Math.max(rowHeight,
+                        lines.size() * lineHeight + TABLE_PADDING_Y * 2 + TABLE_BORDER);
+            }
+            ArrayList<SemanticLayout.TableCell> cells = new ArrayList<>();
+            int cellX = 0;
+            for (int column = 0; column < columns; column++) {
+                SemanticBlock.TableCell sourceCell = cell(source, column);
+                cells.add(new SemanticLayout.TableCell(
+                        column, cellX, rowY, widths[column], rowHeight,
+                        sourceCell.alignment(), List.of(), wrapped.get(column)));
+                cellX += widths[column];
+            }
+            rows.add(new SemanticLayout.TableRow(header, rowY, rowHeight, cells));
+            rowY += rowHeight;
+        }
+        return new SemanticLayout.TableBox(
+                SemanticLayout.TableBox.Mode.GRID,
+                java.util.Arrays.stream(widths).sum(), rowY, lineHeight, rows);
+    }
+
+    private SemanticLayout.TableBox cardTable(
+            SemanticBlock.Table table,
+            int columns,
+            int width,
+            Measurer measurer) {
+        int lineHeight = measurer.lineHeight(SemanticLayout.Kind.TABLE);
+        List<SemanticBlock.TableRow> dataRows = table.rows().isEmpty()
+                ? List.of(table.header()) : table.rows();
+        ArrayList<SemanticLayout.TableRow> rows = new ArrayList<>();
+        int cardY = 0;
+        for (int rowIndex = 0; rowIndex < dataRows.size(); rowIndex++) {
+            SemanticBlock.TableRow source = dataRows.get(rowIndex);
+            ArrayList<SemanticLayout.TableCell> cells = new ArrayList<>();
+            int cellY = cardY + TABLE_PADDING_Y + TABLE_BORDER;
+            for (int column = 0; column < columns; column++) {
+                SemanticBlock.TableCell value = cell(source, column);
+                SemanticBlock.TableCell header = cell(table.header(), column);
+                int innerWidth = Math.max(1, width - TABLE_PADDING_X * 2 - TABLE_BORDER * 2);
+                List<SemanticLayout.CellLine> labels = cellLines(
+                        header.content(), SemanticLayout.Style.STRONG,
+                        innerWidth, lineHeight, measurer);
+                List<SemanticLayout.CellLine> values = cellLines(
+                        value.content(), SemanticLayout.Style.NORMAL,
+                        innerWidth, lineHeight, measurer);
+                int cellHeight = (labels.size() + values.size()) * lineHeight + TABLE_PADDING_Y;
+                cells.add(new SemanticLayout.TableCell(
+                        column,
+                        TABLE_BORDER + TABLE_PADDING_X,
+                        cellY,
+                        innerWidth,
+                        cellHeight,
+                        value.alignment(),
+                        labels,
+                        values));
+                cellY += cellHeight;
+            }
+            int cardHeight = cellY - cardY + TABLE_PADDING_Y;
+            rows.add(new SemanticLayout.TableRow(false, cardY, cardHeight, cells));
+            cardY += cardHeight + (rowIndex + 1 < dataRows.size() ? CARD_GAP : 0);
+        }
+        return new SemanticLayout.TableBox(
+                SemanticLayout.TableBox.Mode.KEY_VALUE_CARDS,
+                width, cardY, lineHeight, rows);
+    }
+
+    private static SemanticBlock.TableCell cell(SemanticBlock.TableRow row, int column) {
+        return column < row.cells().size()
+                ? row.cells().get(column)
+                : new SemanticBlock.TableCell(SemanticBlock.Alignment.NONE, List.of());
+    }
+
+    private static int[] distributeColumns(int[] desired, int available) {
+        int[] widths = new int[desired.length];
+        java.util.Arrays.fill(widths, MIN_GRID_COLUMN_WIDTH);
+        int remaining = available - MIN_GRID_COLUMN_WIDTH * desired.length;
+        int totalExtra = java.util.Arrays.stream(desired)
+                .map(value -> Math.max(0, value - MIN_GRID_COLUMN_WIDTH)).sum();
+        for (int index = 0; index < widths.length && remaining > 0; index++) {
+            int extra = totalExtra == 0
+                    ? remaining / (widths.length - index)
+                    : (int) ((long) remaining
+                            * Math.max(0, desired[index] - MIN_GRID_COLUMN_WIDTH)
+                            / totalExtra);
+            extra = Math.min(remaining, extra);
+            widths[index] += extra;
+            remaining -= extra;
+            totalExtra -= Math.max(0, desired[index] - MIN_GRID_COLUMN_WIDTH);
+        }
+        if (remaining > 0) widths[widths.length - 1] += remaining;
+        return widths;
+    }
+
+    private static List<SemanticLayout.CellLine> cellLines(
+            List<SemanticInline> content,
+            SemanticLayout.Style inherited,
+            int width,
+            int lineHeight,
+            Measurer measurer) {
+        List<List<SemanticLayout.Run>> wrapped = wrapRuns(runs(content, inherited), width, measurer);
+        ArrayList<SemanticLayout.CellLine> result = new ArrayList<>();
+        for (int index = 0; index < wrapped.size(); index++) {
+            List<SemanticLayout.Run> line = wrapped.get(index);
+            result.add(new SemanticLayout.CellLine(
+                    index * lineHeight, runWidth(line, measurer), line));
+        }
+        return List.copyOf(result);
+    }
+
+    private static int runWidth(List<SemanticLayout.Run> runs, Measurer measurer) {
+        return runs.stream().mapToInt(run -> measurer.width(run.text(), run.style())).sum();
+    }
+
+    private static List<List<SemanticLayout.Run>> wrapRuns(
+            List<SemanticLayout.Run> runs, int width, Measurer measurer) {
+        ArrayList<List<SemanticLayout.Run>> output = new ArrayList<>();
+        ArrayList<SemanticLayout.Run> line = new ArrayList<>();
+        int used = 0;
+        for (SemanticLayout.Run run : runs) {
+            StringBuilder chunk = new StringBuilder();
+            for (int offset = 0; offset < run.text().length();) {
+                int codePoint = run.text().codePointAt(offset);
+                String value = new String(Character.toChars(codePoint));
+                if (codePoint == '\n') {
+                    flushChunk(line, chunk, run);
+                    output.add(List.copyOf(line));
+                    line = new ArrayList<>();
+                    used = 0;
+                    offset += Character.charCount(codePoint);
+                    continue;
+                }
+                int valueWidth = Math.max(1, measurer.width(value, run.style()));
+                if (used + valueWidth > width && (!line.isEmpty() || !chunk.isEmpty())) {
+                    flushChunk(line, chunk, run);
+                    output.add(List.copyOf(line));
+                    line = new ArrayList<>();
+                    used = 0;
+                }
+                chunk.append(value);
+                used += valueWidth;
+                offset += Character.charCount(codePoint);
+            }
+            flushChunk(line, chunk, run);
+        }
+        if (!line.isEmpty() || output.isEmpty()) output.add(List.copyOf(line));
+        return List.copyOf(output);
+    }
+
+    private static void flushChunk(
+            List<SemanticLayout.Run> line,
+            StringBuilder chunk,
+            SemanticLayout.Run source) {
+        if (chunk.isEmpty()) return;
+        line.add(new SemanticLayout.Run(
+                chunk.toString(), source.style(), source.reference()));
+        chunk.setLength(0);
     }
 
     private void addWrapped(
@@ -245,7 +442,7 @@ public final class SemanticLayoutEngine {
         int line = measurer.lineHeight(SemanticLayout.Kind.COMPONENT);
         return switch (component) {
             case RichComponent.ItemRow value -> Math.max(22, 22 * value.items().size());
-            case RichComponent.RecipeGrid ignored -> Math.max(54, line * 5);
+            case RichComponent.RecipeGrid ignored -> Math.max(136, line * 13);
             case RichComponent.IngredientCheck value -> Math.max(22, 22 * value.ingredients().size());
             case RichComponent.CraftabilitySummary ignored -> 40;
             case RichComponent.ProgressSteps value -> 12 * (value.steps().size() + 1);

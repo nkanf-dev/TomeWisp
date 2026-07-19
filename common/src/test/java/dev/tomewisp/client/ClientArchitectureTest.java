@@ -156,6 +156,7 @@ final class ClientArchitectureTest {
         assertTrue(source.contains("RecipeViewerProviderRegistry.register("), path::toString);
         assertTrue(source.contains("\"" + sourceId + "\""), path::toString);
         assertTrue(source.contains("RecipeViewerNavigatorRegistry.register("), path::toString);
+        assertTrue(source.contains("NativeDomainViewProviderRegistry.register("), path::toString);
     }
 
     private static Path repositoryRoot() {

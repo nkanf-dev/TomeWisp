@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import dev.tomewisp.context.DataCompleteness;
+import dev.tomewisp.context.RecipeReference;
 import dev.tomewisp.platform.PlatformService;
 import dev.tomewisp.recipe.RecipeProviderSnapshot;
 import dev.tomewisp.recipe.RecipeProviderState;
@@ -77,6 +78,24 @@ final class JeiRecipeProviderTest {
         assertEquals(64, snapshot.generation().length());
         assertTrue(hiddenCategories.get());
         assertTrue(hiddenRecipes.get());
+    }
+
+    @Test
+    void nativeEmbeddingRejectsAStaleProviderGeneration() {
+        IJeiRuntime runtime = runtime(
+                List.of(
+                        slot(RecipeIngredientRole.INPUT, new ItemStack(Items.IRON_INGOT, 9)),
+                        slot(RecipeIngredientRole.OUTPUT, new ItemStack(Items.IRON_BLOCK))),
+                new AtomicBoolean(),
+                new AtomicBoolean());
+        RecipeProviderSnapshot snapshot = new JeiRecipeProvider(
+                runtime, Instant.EPOCH, platform()).capture();
+        RecipeReference current = snapshot.recipes().getFirst().reference();
+        RecipeReference stale = new RecipeReference(
+                current.sourceId(), "b".repeat(64), current.recipeId());
+
+        assertTrue(JeiNativeRecipeViewProvider.currentGenerationContains(snapshot, current));
+        assertTrue(!JeiNativeRecipeViewProvider.currentGenerationContains(snapshot, stale));
     }
 
     @Test

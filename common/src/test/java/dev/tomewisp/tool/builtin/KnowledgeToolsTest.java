@@ -7,9 +7,15 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import dev.tomewisp.context.RecipeEntrySnapshot;
 import dev.tomewisp.context.ToolInvocationContext;
+import dev.tomewisp.knowledge.KnowledgeDocument;
+import dev.tomewisp.knowledge.KnowledgeKind;
+import dev.tomewisp.knowledge.KnowledgeLoad;
+import dev.tomewisp.knowledge.KnowledgeRegistry;
+import dev.tomewisp.knowledge.KnowledgeSourceProvider;
 import dev.tomewisp.testing.GroundedTestFixtures;
 import dev.tomewisp.tool.ToolResult;
 import java.util.List;
+import java.util.Set;
 import org.junit.jupiter.api.Test;
 
 final class KnowledgeToolsTest {
@@ -85,6 +91,33 @@ final class KnowledgeToolsTest {
                         ToolInvocationContext.developmentConsole("test"),
                         new FindRecipesTool.Input("minecraft:iron_block")));
         assertEquals("missing_context", missing.code());
+    }
+
+    @Test
+    void knowledgeSectionHitRoundTripsThroughExactDocumentIdentity() {
+        KnowledgeDocument document = new KnowledgeDocument(
+                "guide", "machine", KnowledgeKind.GUIDE_ENTRY, "Machine",
+                "# Setup\nUse a wrench.\n# Power\nNeeds stress units.", "example",
+                Set.of(), Set.of(), null, true, "fixture:guide");
+        KnowledgeRegistry registry = new KnowledgeRegistry();
+        assertTrue(registry.reload(List.of(new KnowledgeSourceProvider() {
+            @Override public String sourceId() { return "guide"; }
+            @Override public KnowledgeLoad load() { return KnowledgeLoad.of(List.of(document)); }
+        })));
+
+        ToolResult.Success<SearchKnowledgeTool.Output> search = assertInstanceOf(
+                ToolResult.Success.class,
+                new SearchKnowledgeTool(registry).invoke(
+                        fullContext(), new SearchKnowledgeTool.Input("stress units", null)));
+        var hit = search.value().results().getFirst();
+        ToolResult.Success<GetKnowledgeDocumentTool.Output> exact = assertInstanceOf(
+                ToolResult.Success.class,
+                new GetKnowledgeDocumentTool(registry).invoke(
+                        fullContext(), new GetKnowledgeDocumentTool.Input(hit.sourceId(), hit.documentId())));
+
+        assertEquals("power", hit.sectionId());
+        assertEquals(document, exact.value().document());
+        assertEquals(document.evidence(), hit.evidence());
     }
 
     private static ToolInvocationContext fullContext() {

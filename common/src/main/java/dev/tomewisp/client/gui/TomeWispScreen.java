@@ -32,10 +32,16 @@ import dev.tomewisp.guide.ui.GuideViewportAnchor;
 import dev.tomewisp.guide.ui.SemanticLayout;
 import dev.tomewisp.guide.ui.SemanticLayoutCache;
 import dev.tomewisp.guide.ui.SemanticLayoutEngine;
+import dev.tomewisp.client.gui.nativeview.NativeDomainView;
+import dev.tomewisp.client.gui.nativeview.NativeDomainViewBinding;
+import dev.tomewisp.client.gui.nativeview.NativeDomainViewBindings;
+import dev.tomewisp.client.gui.nativeview.NativeDomainViewRegistry;
+import dev.tomewisp.client.gui.export.GuideSessionExporter;
 import dev.tomewisp.recipe.RecipeNavigationResult;
 import dev.tomewisp.recipe.config.RecipeClientRuntime;
 import dev.tomewisp.tool.ToolResult;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
@@ -45,10 +51,13 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Executor;
 import net.minecraft.ChatFormatting;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.MultiLineEditBox;
+import net.minecraft.client.gui.screens.ConfirmScreen;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.input.KeyEvent;
 import net.minecraft.client.input.MouseButtonEvent;
@@ -69,6 +78,9 @@ public final class TomeWispScreen extends Screen {
     private static final int TEXT = 0xFFE8EDF2;
     private static final int MUTED = 0xFFA9B3BE;
     private static final int ERROR = 0xFFFF7D7D;
+    private static final Executor EXPORT_EXECUTOR = command -> Thread.ofVirtual()
+            .name("tomewisp-session-export")
+            .start(command);
     private final GuideService service;
     private final RecipeClientRuntime recipeClient;
     private final Supplier<GuideDisplayConfig> display;
@@ -82,6 +94,8 @@ public final class TomeWispScreen extends Screen {
     private Button stop;
     private Button retry;
     private Button model;
+    private Button export;
+    private GuideUiLayout.Rect modelSelectorButton;
     private String draft = "";
     private String notice = "";
     private int scroll;
@@ -89,14 +103,21 @@ public final class TomeWispScreen extends Screen {
     private int detailContentHeight;
     private int activeProgressRenderFrames;
     private boolean sessionOverlay;
+    private boolean modelSelectorOpen;
+    private boolean exportRunning;
+    private int modelSelectorScroll;
+    private int modelSelectorCursor;
     private GuideUiRow.Tool selectedTool;
     private GuideSource selectedSource;
+    private String selectedSourceFocusId;
     private final List<Hit> hits = new ArrayList<>();
     private final GuideTranscriptVirtualizer virtualizer = new GuideTranscriptVirtualizer();
     private final SemanticLayoutCache semanticLayouts = new SemanticLayoutCache();
     private final MinecraftSemanticRenderer semanticRenderer =
             new MinecraftSemanticRenderer(new MinecraftSemanticResolver());
+    private NativeDomainViewRegistry nativeViews = new NativeDomainViewRegistry();
     private final Map<String, Integer> semanticHashes = new LinkedHashMap<>();
+    private final StableRowHeights stableRowHeights = new StableRowHeights();
     private boolean followBottom = true;
     private String focusedContentId;
     private GuideDisplayConfig projectedDisplay;
@@ -174,22 +195,32 @@ public final class TomeWispScreen extends Screen {
     protected void init() {
         layout = GuideUiLayout.calculate(width, height, detailOpen());
         GuideUiLayout.Rect top = layout.topBar();
-        int x = top.x() + top.width() - (settingsOpener == null ? 252 : 276);
+        int modelWidth = top.width() < 400 ? 88 : 128;
+        int controlsWidth = modelWidth + (settingsOpener == null ? 164 : 188);
+        int x = top.x() + top.width() - controlsWidth;
         addRenderableWidget(Button.builder(Component.literal("会话"), button -> sessionOverlay = !sessionOverlay)
                 .bounds(x, top.y() + 2, 32, 20).build());
         addRenderableWidget(Button.builder(Component.literal("+"), button -> createSession())
                 .bounds(x + 36, top.y() + 2, 24, 20).build());
         addRenderableWidget(Button.builder(Component.literal("×"), button -> closeSession())
                 .bounds(x + 64, top.y() + 2, 32, 20).build());
-        model = addRenderableWidget(Button.builder(modelLabel(), button -> cycleModel())
-                .bounds(x + 100, top.y() + 2, 128, 20).build());
+        export = addRenderableWidget(Button.builder(
+                        Component.translatable("screen.tomewisp.action.export"),
+                        button -> exportSession())
+                .bounds(x + 100, top.y() + 2, 36, 20).build());
+        modelSelectorButton = new GuideUiLayout.Rect(x + 140, top.y() + 2, modelWidth, 20);
+        model = addRenderableWidget(Button.builder(modelLabel(), button -> {
+                    modelSelectorOpen = !modelSelectorOpen;
+                    if (modelSelectorOpen) revealSelectedModel();
+                })
+                .bounds(x + 140, top.y() + 2, modelWidth, 20).build());
         addRenderableWidget(Button.builder(Component.literal("刷新"), button -> service.refreshCapabilities())
-                .bounds(x + 232, top.y() + 2, 20, 20).build());
+                .bounds(x + 144 + modelWidth, top.y() + 2, 20, 20).build());
         if (settingsOpener != null) {
             addRenderableWidget(Button.builder(
                             Component.translatable("screen.tomewisp.settings.short"),
                             button -> settingsOpener.run())
-                    .bounds(x + 256, top.y() + 2, 20, 20)
+                    .bounds(x + 168 + modelWidth, top.y() + 2, 20, 20)
                     .build());
         }
 
@@ -223,7 +254,13 @@ public final class TomeWispScreen extends Screen {
 
     @Override
     public void added() {
+        // Minecraft may return to this same Screen instance from a native confirmation.
+        // A removed screen releases every provider view, so each attachment gets a fresh owner.
+        nativeViews = new NativeDomainViewRegistry();
         subscription = service.subscribe(pendingSnapshots::offer);
+        // A newly-created Screen is also the return path from settings. Refresh after
+        // subscribing so the latest profile/runtime projection cannot be missed.
+        service.refreshCapabilities();
     }
 
     @Override
@@ -233,6 +270,7 @@ public final class TomeWispScreen extends Screen {
             subscription.close();
             subscription = null;
         }
+        nativeViews.close();
     }
 
     @Override
@@ -252,6 +290,7 @@ public final class TomeWispScreen extends Screen {
     @Override
     public void tick() {
         presentationTicks++;
+        nativeViews.tick();
         applyPendingProjection();
         if (layout != null) requestViewportHistory(layout.transcript());
         updateControls();
@@ -259,6 +298,25 @@ public final class TomeWispScreen extends Screen {
 
     @Override
     public boolean keyPressed(KeyEvent event) {
+        if (modelSelectorOpen && event.key() == GLFW.GLFW_KEY_ESCAPE) {
+            modelSelectorOpen = false;
+            return true;
+        }
+        if (modelSelectorOpen
+                && (event.key() == GLFW.GLFW_KEY_UP || event.key() == GLFW.GLFW_KEY_DOWN)) {
+            moveModelSelectorCursor(event.key() == GLFW.GLFW_KEY_UP ? -1 : 1);
+            return true;
+        }
+        if (modelSelectorOpen && event.isConfirmation()) {
+            int choices = view.modelChoices().size();
+            if (choices == 0) {
+                modelSelectorOpen = false;
+            } else {
+                modelSelectorCursor = Mth.clamp(modelSelectorCursor, 0, choices - 1);
+                selectModel(view.modelChoices().get(modelSelectorCursor));
+            }
+            return true;
+        }
         ComposerKeyAction composerAction = composerKeyAction(
                 composer != null && getFocused() == composer,
                 event.isConfirmation(),
@@ -303,6 +361,18 @@ public final class TomeWispScreen extends Screen {
 
     @Override
     public boolean mouseScrolled(double x, double y, double scrollX, double scrollY) {
+        GuideUiLayout.Rect modelMenu = modelSelectorBounds();
+        if (modelSelectorOpen && modelMenu != null && modelMenu.contains(x, y)) {
+            int maximum = Math.max(0, view.modelChoices().size() - visibleModelChoiceCount());
+            modelSelectorScroll = Mth.clamp(
+                    modelSelectorScroll - (int) Math.signum(scrollY), 0, maximum);
+            modelSelectorCursor = Mth.clamp(
+                    modelSelectorCursor,
+                    modelSelectorScroll,
+                    Math.min(view.modelChoices().size() - 1,
+                            modelSelectorScroll + visibleModelChoiceCount() - 1));
+            return true;
+        }
         if (detailOpen() && layout.detail().contains(x, y)) {
             int maximum = Math.max(0, detailContentHeight - layout.detail().height() + 34);
             detailScroll = Mth.clamp(detailScroll - (int) Math.round(scrollY * 24), 0, maximum);
@@ -321,6 +391,24 @@ public final class TomeWispScreen extends Screen {
     @Override
     public boolean mouseClicked(MouseButtonEvent event, boolean doubleClick) {
         if (event.button() == 0) {
+            if (modelSelectorOpen
+                    && (modelSelectorButton == null
+                            || !modelSelectorButton.contains(event.x(), event.y()))
+                    && (modelSelectorBounds() == null
+                            || !modelSelectorBounds().contains(event.x(), event.y()))) {
+                modelSelectorOpen = false;
+            }
+            if (modelSelectorOpen) {
+                for (Hit hit : List.copyOf(hits)) {
+                    if (hit.kind() == HitKind.MODEL
+                            && hit.rect().contains(event.x(), event.y())) {
+                        focusedContentId = hit.focusId();
+                        clearFocus();
+                        hit.action().run();
+                        return true;
+                    }
+                }
+            }
             if (detailOpen()) {
                 List<Hit> detailHits = hits.stream()
                         .filter(hit -> hit.kind() == HitKind.DETAIL)
@@ -340,6 +428,7 @@ public final class TomeWispScreen extends Screen {
                 if (route.kind() == GuideUiClickRoute.Kind.DISMISS_DETAIL) {
                     selectedTool = null;
                     selectedSource = null;
+                    selectedSourceFocusId = null;
                     detailScroll = 0;
                     rebuildForDetail();
                     return true;
@@ -375,6 +464,7 @@ public final class TomeWispScreen extends Screen {
         renderProgress(graphics);
         renderDetail(graphics, mouseX, mouseY);
         super.extractRenderState(graphics, mouseX, mouseY, a);
+        renderModelSelector(graphics);
     }
 
     private void renderTop(GuiGraphicsExtractor graphics) {
@@ -492,14 +582,21 @@ public final class TomeWispScreen extends Screen {
             graphics.text(font, "还没有对话。输入问题，TomeWisp 会先查证再回答。",
                     area.x() + 9, contentTop, MUTED, false);
         }
-        for (int index = window.fromIndex(); index < window.toIndexExclusive(); index++) {
-            int y = contentTop - scroll + virtualizer.offset(index);
-            renderRow(graphics, view.rows().get(index), area.x() + 9, y, textWidth, mouseX, mouseY);
+        nativeViews.beginFrame();
+        try {
+            for (int index = window.fromIndex(); index < window.toIndexExclusive(); index++) {
+                int y = contentTop - scroll + virtualizer.offset(index);
+                renderRow(
+                        graphics, view.rows().get(index), area.x() + 9, y,
+                        textWidth, mouseX, mouseY);
+            }
+        } finally {
+            nativeViews.endFrame();
         }
         hits.removeIf(hit -> hit.kind() == HitKind.CONTENT && !intersects(hit.rect(), area));
         hits.stream()
                 .filter(hit -> hit.kind() == HitKind.CONTENT
-                        && java.util.Objects.equals(hit.focusId(), focusedContentId))
+                        && isFocused(focusedContentId, hit.focusId()))
                 .findFirst()
                 .ifPresent(hit -> graphics.outline(
                         hit.rect().x(), hit.rect().y(), hit.rect().width(), hit.rect().height(),
@@ -517,12 +614,14 @@ public final class TomeWispScreen extends Screen {
             int mouseY) {
         if (row instanceof GuideUiRow.User user) {
             graphics.text(font, "你", x, y, ACCENT, false);
+            renderCopyAction(graphics, row, user.text(), x, y, width);
             y += 11;
             y = renderWrapped(graphics, GuideMarkup.paragraphs(user.text()), x + 6, y, width - 6, TEXT);
             return y + 8;
         }
         if (row instanceof GuideUiRow.Assistant assistant) {
             graphics.text(font, assistant.streaming() ? "书灵 · 思索中" : "书灵", x, y, ACCENT, false);
+            renderCopyAction(graphics, row, assistant.text(), x, y, width);
             y += 11;
             if (assistant.text().isBlank()) {
                 graphics.text(font, "正在准备证据…", x + 6, y, MUTED, false);
@@ -532,9 +631,19 @@ public final class TomeWispScreen extends Screen {
                 MinecraftSemanticRenderer.Result rendered = semanticRenderer.render(
                         graphics, font, semantic, x + 6, y, width - 6,
                         mouseX, mouseY, projectedDisplay.animationsEnabled(),
-                        presentationTicks);
+                        presentationTicks,
+                        (nativeGraphics, nativeFont, component, bounds,
+                                nativeMouseX, nativeMouseY, ticks) -> renderNativeRecipe(
+                                        assistant,
+                                        nativeGraphics,
+                                        nativeFont,
+                                        component,
+                                        bounds,
+                                        nativeMouseX,
+                                        nativeMouseY,
+                                        ticks));
                 for (MinecraftSemanticRenderer.Hit hit : rendered.hits()) {
-                    String focusId = "semantic:" + hit.intent();
+                    String focusId = "semantic:" + rowId(assistant) + ":" + hit.intent();
                     hits.add(new Hit(
                             hit.bounds(), HitKind.CONTENT,
                             () -> semanticIntent(hit.intent()), focusId,
@@ -542,12 +651,19 @@ public final class TomeWispScreen extends Screen {
                 }
                 y = rendered.bottom();
             }
-            for (GuideSource source : assistant.sources()) {
+            for (int sourceIndex = 0; sourceIndex < assistant.sources().size(); sourceIndex++) {
+                GuideSource source = assistant.sources().get(sourceIndex);
                 int sourceY = y;
                 String label = sourceLabel(source, projectedDisplay.debugMode());
+                String sourceFocusId = sourceFocusId(assistant, source, sourceIndex);
+                boolean selected = isFocused(selectedSourceFocusId, sourceFocusId);
+                if (selected) {
+                    graphics.fill(x + 4, sourceY - 2, x + width - 4, sourceY + 10, 0xFF31453F);
+                }
                 graphics.text(font, label, x + 6, sourceY, ACCENT, false);
                 hits.add(new Hit(new GuideUiLayout.Rect(x + 4, sourceY - 2, width - 8, 12),
-                        HitKind.CONTENT, () -> open(source)));
+                        HitKind.CONTENT, () -> open(source, sourceFocusId),
+                        sourceFocusId, label));
                 y += 12;
             }
             return y + 8;
@@ -562,7 +678,13 @@ public final class TomeWispScreen extends Screen {
                 case SUCCEEDED -> "✓";
                 case FAILED -> "!";
             };
-            graphics.fill(x + 2, y - 2, x + width - 2, y + rowHeight - 6, PANEL_ALT);
+            boolean selected = selectedTool != null
+                    && toolFocusId(selectedTool).equals(toolFocusId(tool));
+            graphics.fill(x + 2, y - 2, x + width - 2, y + rowHeight - 6,
+                    selected ? 0xFF31453F : PANEL_ALT);
+            if (selected) {
+                graphics.outline(x + 2, y - 2, width - 4, rowHeight - 4, ACCENT);
+            }
             graphics.text(font, Component.literal(icon + " ").append(friendlyTool(activity.toolId())),
                     x + 7, y + 2, color, false);
             int summaryY = y + 14;
@@ -572,7 +694,8 @@ public final class TomeWispScreen extends Screen {
             }
             hits.add(new Hit(new GuideUiLayout.Rect(
                             x + 2, y - 2, width - 4, rowHeight - 4),
-                    HitKind.CONTENT, () -> open(tool)));
+                    HitKind.CONTENT, () -> open(tool), toolFocusId(tool),
+                    friendlyTool(activity.toolId()).getString()));
             return y + rowHeight;
         }
         if (row instanceof GuideUiRow.Persistence persistence) {
@@ -599,8 +722,11 @@ public final class TomeWispScreen extends Screen {
     private void updateVirtualRows(int width) {
         ArrayList<GuideTranscriptVirtualizer.Row> measured = new ArrayList<>();
         Map<String, Integer> nextHashes = new LinkedHashMap<>();
+        HashSet<String> retainedIds = new HashSet<>();
+        stableRowHeights.begin(width);
         for (GuideUiRow row : view.rows()) {
             String id = rowId(row);
+            retainedIds.add(id);
             if (row instanceof GuideUiRow.Assistant assistant) {
                 int hash = assistant.semantic().hashCode();
                 nextHashes.put(id, hash);
@@ -608,8 +734,12 @@ public final class TomeWispScreen extends Screen {
                     semanticLayouts.invalidateRow(id);
                 }
             }
-            measured.add(new GuideTranscriptVirtualizer.Row(id, measureRow(row, width)));
+            boolean stabilize = row instanceof GuideUiRow.Assistant assistant
+                    && assistant.streaming();
+            measured.add(new GuideTranscriptVirtualizer.Row(
+                    id, stableRowHeights.retain(id, measureRow(row, width), stabilize)));
         }
+        stableRowHeights.retainOnly(retainedIds);
         semanticHashes.clear();
         semanticHashes.putAll(nextHashes);
         virtualizer.update(measured);
@@ -710,8 +840,14 @@ public final class TomeWispScreen extends Screen {
         GuideSessionSnapshot session = service.snapshot().sessions().stream()
                 .filter(value -> value.sessionId().equals(view.selectedSession()))
                 .findFirst().orElse(null);
-        if (session == null || session.historyWindow().state() != GuideHistoryPageState.IDLE
-                || session.historyWindow().totalRequests() == 0) return;
+        // Paging mutates the head of the transcript. Defer every paging direction while a
+        // request is active so streaming deltas cannot race a history replacement and move the
+        // visible conversation between the top and bottom of the viewport.
+        if (!mayPageHistory(
+                session != null,
+                view.progress() != null,
+                session == null ? null : session.historyWindow().state(),
+                session == null ? 0 : session.historyWindow().totalRequests())) return;
         int count = Math.max(1, area.height() / 20 * 2);
         if (session.requests().isEmpty()) {
             service.requestHistoryWindow(
@@ -722,6 +858,17 @@ public final class TomeWispScreen extends Screen {
                     session.sessionId(), GuideHistoryPageRequest.Direction.BEFORE,
                     session.historyWindow().firstLoaded(), count);
         }
+    }
+
+    static boolean mayPageHistory(
+            boolean sessionPresent,
+            boolean requestRunning,
+            GuideHistoryPageState state,
+            long totalRequests) {
+        return sessionPresent
+                && !requestRunning
+                && state == GuideHistoryPageState.IDLE
+                && totalRequests > 0;
     }
 
     private void semanticIntent(MinecraftSemanticRenderer.Intent intent) {
@@ -1176,12 +1323,18 @@ public final class TomeWispScreen extends Screen {
     private void open(GuideUiRow.Tool tool) {
         selectedTool = tool;
         selectedSource = null;
+        selectedSourceFocusId = null;
         detailScroll = 0;
         rebuildForDetail();
     }
 
     private void open(GuideSource source) {
+        open(source, "source-detail:" + source.evidence().sourceId());
+    }
+
+    private void open(GuideSource source, String focusId) {
         selectedSource = source;
+        selectedSourceFocusId = Objects.requireNonNull(focusId, "focusId");
         selectedTool = null;
         detailScroll = 0;
         rebuildForDetail();
@@ -1205,8 +1358,7 @@ public final class TomeWispScreen extends Screen {
             GuideUiRow.Tool replacement = next.rows().stream()
                     .filter(GuideUiRow.Tool.class::isInstance)
                     .map(GuideUiRow.Tool.class::cast)
-                    .filter(value -> value.activity().invocationId()
-                            .equals(selectedTool.activity().invocationId()))
+                            .filter(value -> toolFocusId(value).equals(toolFocusId(selectedTool)))
                     .findFirst().orElse(null);
             selectedTool = replacement;
         }
@@ -1216,13 +1368,17 @@ public final class TomeWispScreen extends Screen {
                 case GuideUiRow.Tool tool -> tool.activity().sources().contains(selectedSource);
                 default -> false;
             });
-            if (!retained) selectedSource = null;
+            if (!retained) {
+                selectedSource = null;
+                selectedSourceFocusId = null;
+            }
         }
         if (!wasOpen) return false;
         if (!detailOpen()) return true;
         if (!next.selectedSession().equals(view.selectedSession())) {
             selectedTool = null;
             selectedSource = null;
+            selectedSourceFocusId = null;
             detailScroll = 0;
             return true;
         }
@@ -1244,11 +1400,21 @@ public final class TomeWispScreen extends Screen {
         boolean closedDetail = refreshDetail(next);
         projectedDisplay = nextDisplay;
         view = next;
+        if (view.modelChoices().isEmpty()) {
+            modelSelectorOpen = false;
+            modelSelectorCursor = 0;
+            modelSelectorScroll = 0;
+        } else {
+            modelSelectorCursor = Mth.clamp(
+                    modelSelectorCursor, 0, view.modelChoices().size() - 1);
+        }
         if (changedSession) {
             scroll = 0;
             followBottom = true;
             semanticLayouts.clear();
             semanticHashes.clear();
+            stableRowHeights.clear();
+            nativeViews.clear();
         }
         if ((changedSession || closedDetail) && composer != null) {
             draft = composer.getValue();
@@ -1305,18 +1471,6 @@ public final class TomeWispScreen extends Screen {
         if (request != null) accept(service.retry(request.requestId()), ignored -> notice = "");
     }
 
-    private void cycleModel() {
-        List<GuideUiModelChoice> choices = view.modelChoices();
-        int selected = choices.indexOf(view.selectedModel());
-        for (int offset = 1; offset <= choices.size(); offset++) {
-            GuideUiModelChoice candidate = choices.get((selected + offset) % choices.size());
-            if (candidate.available() && !candidate.selected()) {
-                accept(service.setModelSelection(candidate.selection()), ignored -> notice = "");
-                return;
-            }
-        }
-    }
-
     private void createSession() {
         int index = 1;
         String id = "session-1";
@@ -1335,15 +1489,141 @@ public final class TomeWispScreen extends Screen {
     }
 
     private void closeSession() {
-        accept(service.closeSession(view.selectedSession()), ignored -> {
-            notice = "";
-            scroll = 0;
+        String sessionId = view.selectedSession();
+        minecraft.setScreenAndShow(new ConfirmScreen(
+                confirmed -> {
+                    if (confirmed) {
+                        confirmSessionDeletionAgain(sessionId);
+                    } else {
+                        minecraft.setScreenAndShow(this);
+                    }
+                },
+                Component.translatable("screen.tomewisp.session.delete.first.title"),
+                deleteConfirmationMessage(sessionId, false),
+                Component.translatable("screen.tomewisp.session.delete.continue"),
+                Component.translatable("screen.tomewisp.session.delete.cancel")));
+    }
+
+    private void confirmSessionDeletionAgain(String sessionId) {
+        minecraft.setScreenAndShow(new ConfirmScreen(
+                confirmed -> {
+                    minecraft.setScreenAndShow(this);
+                    if (confirmed) {
+                        accept(service.closeSession(sessionId), deleted -> {
+                            notice = Component.translatable(
+                                    deleted
+                                            ? "screen.tomewisp.session.delete.success"
+                                            : "screen.tomewisp.session.delete.missing",
+                                    sessionId).getString();
+                            if (deleted) scroll = 0;
+                        });
+                    }
+                },
+                Component.translatable("screen.tomewisp.session.delete.second.title"),
+                deleteConfirmationMessage(sessionId, true),
+                Component.translatable("screen.tomewisp.session.delete.confirm"),
+                Component.translatable("screen.tomewisp.session.delete.cancel")));
+    }
+
+    private void exportSession() {
+        if (exportRunning) return;
+        java.nio.file.Path gameDirectory = minecraft.gameDirectory.toPath();
+        exportRunning = true;
+        notice = Component.translatable("screen.tomewisp.session.export.running").getString();
+        updateControls();
+        service.captureSelectedSessionForExport().whenComplete((captured, captureFailure) -> {
+            if (captureFailure != null || captured == null) {
+                completeExportFailure();
+                return;
+            }
+            if (captured instanceof ToolResult.Failure<?> failure) {
+                completeExportFailure();
+                return;
+            }
+            var snapshot = ((ToolResult.Success<
+                    dev.tomewisp.guide.export.GuideSessionExportSnapshot>) captured).value();
+            CompletableFuture.supplyAsync(
+                            () -> new GuideSessionExporter(gameDirectory).export(snapshot),
+                            EXPORT_EXECUTOR)
+                    .whenComplete((exported, failure) -> minecraft.execute(() -> {
+                        exportRunning = false;
+                        notice = failure == null
+                                ? Component.translatable(
+                                        "screen.tomewisp.session.export.success",
+                                        exported.filename(),
+                                        exported.requestCount()).getString()
+                                : Component.translatable(
+                                        "screen.tomewisp.session.export.failed").getString();
+                        updateControls();
+                    }));
         });
     }
 
+    private void completeExportFailure() {
+        minecraft.execute(() -> {
+            exportRunning = false;
+            notice = Component.translatable(
+                    "screen.tomewisp.session.export.failed").getString();
+            updateControls();
+        });
+    }
+
+    private void renderCopyAction(
+            GuiGraphicsExtractor graphics,
+            GuideUiRow row,
+            String text,
+            int x,
+            int y,
+            int width) {
+        if (text == null || text.isBlank()) return;
+        Component label = Component.translatable("screen.tomewisp.action.copy");
+        int actionWidth = font.width(label) + 8;
+        int actionX = x + width - actionWidth;
+        String focusId = "copy:" + rowId(row);
+        if (isFocused(focusedContentId, focusId)) {
+            graphics.fill(actionX - 2, y - 2, actionX + actionWidth, y + 10, 0xFF31453F);
+        }
+        graphics.text(font, label, actionX + 2, y, MUTED, false);
+        hits.add(new Hit(
+                new GuideUiLayout.Rect(actionX - 2, y - 2, actionWidth + 2, 12),
+                HitKind.CONTENT,
+                () -> copyChatText(text),
+                focusId,
+                label.getString()));
+    }
+
+    private void copyChatText(String text) {
+        try {
+            minecraft.keyboardHandler.setClipboard(text);
+            notice = Component.translatable("screen.tomewisp.copy.success").getString();
+        } catch (RuntimeException failure) {
+            notice = Component.translatable("screen.tomewisp.copy.failed").getString();
+        }
+    }
+
+    static String copyableText(GuideUiRow row) {
+        return switch (row) {
+            case GuideUiRow.User value -> value.text();
+            case GuideUiRow.Assistant value -> value.text();
+            default -> null;
+        };
+    }
+
+    static Component deleteConfirmationMessage(String sessionId, boolean finalConfirmation) {
+        if (sessionId == null || !sessionId.matches("[a-zA-Z0-9_.-]+")) {
+            throw new IllegalArgumentException("invalid session deletion target");
+        }
+        return Component.translatable(
+                finalConfirmation
+                        ? "screen.tomewisp.session.delete.second.message"
+                        : "screen.tomewisp.session.delete.first.message",
+                sessionId);
+    }
+
     private List<GuideRequestSnapshot> selectedRequests() {
-        return service.snapshot().sessions().stream()
-                .filter(value -> value.sessionId().equals(service.snapshot().selectedSession()))
+        GuideSnapshot snapshot = service.snapshot();
+        return snapshot.sessions().stream()
+                .filter(value -> value.sessionId().equals(snapshot.selectedSession()))
                 .findFirst().orElseThrow().requests();
     }
 
@@ -1365,17 +1645,144 @@ public final class TomeWispScreen extends Screen {
         send.active = inWorld && view.canSend() && !draft.trim().isEmpty();
         stop.active = view.canCancel();
         retry.active = view.canRetry();
+        export.active = !exportRunning;
         model.setMessage(modelLabel());
-        model.active = view.modelChoices().stream()
-                .anyMatch(choice -> choice.available() && !choice.selected());
+        model.active = !view.modelChoices().isEmpty();
     }
 
     private Component modelLabel() {
         GuideUiModelChoice selected = view.selectedModel();
         Component label = choiceLabel(selected);
-        return selected.available()
+        Component value = selected.available()
                 ? label
                 : Component.translatable("screen.tomewisp.model.unavailable_short", label);
+        return Component.literal("▾ ").append(value);
+    }
+
+    private void revealSelectedModel() {
+        int selected = Math.max(0, view.modelChoices().indexOf(view.selectedModel()));
+        modelSelectorCursor = selected;
+        int visible = visibleModelChoiceCount();
+        modelSelectorScroll = Mth.clamp(
+                selected - Math.max(0, visible - 1),
+                0,
+                Math.max(0, view.modelChoices().size() - visible));
+    }
+
+    private void moveModelSelectorCursor(int delta) {
+        int last = view.modelChoices().size() - 1;
+        if (last < 0) return;
+        modelSelectorCursor = Mth.clamp(modelSelectorCursor + delta, 0, last);
+        int visible = visibleModelChoiceCount();
+        if (modelSelectorCursor < modelSelectorScroll) {
+            modelSelectorScroll = modelSelectorCursor;
+        } else if (modelSelectorCursor >= modelSelectorScroll + visible) {
+            modelSelectorScroll = modelSelectorCursor - visible + 1;
+        }
+        GuideUiModelChoice choice = view.modelChoices().get(modelSelectorCursor);
+        focusedContentId = modelFocusId(choice);
+        if (minecraft != null && minecraft.getNarrator().isActive()) {
+            minecraft.getNarrator().saySystemNow(choiceLabel(choice));
+        }
+    }
+
+    private int visibleModelChoiceCount() {
+        if (modelSelectorButton == null) return 1;
+        return Math.max(1, Math.min(8,
+                (height - modelSelectorButton.y() - modelSelectorButton.height() - 12) / 20));
+    }
+
+    private GuideUiLayout.Rect modelSelectorBounds() {
+        if (!modelSelectorOpen || modelSelectorButton == null) return null;
+        int visible = Math.min(visibleModelChoiceCount(), view.modelChoices().size());
+        return new GuideUiLayout.Rect(
+                modelSelectorButton.x(),
+                modelSelectorButton.y() + modelSelectorButton.height() + 2,
+                modelSelectorButton.width(),
+                Math.max(1, visible * 20));
+    }
+
+    private void renderModelSelector(GuiGraphicsExtractor graphics) {
+        hits.removeIf(hit -> hit.kind() == HitKind.MODEL);
+        GuideUiLayout.Rect menu = modelSelectorBounds();
+        if (menu == null) return;
+        int visible = Math.min(visibleModelChoiceCount(), view.modelChoices().size());
+        int maximum = Math.max(0, view.modelChoices().size() - visible);
+        modelSelectorScroll = Mth.clamp(modelSelectorScroll, 0, maximum);
+        graphics.fill(menu.x(), menu.y(), menu.x() + menu.width(), menu.y() + menu.height(), 0xFF181B22);
+        graphics.outline(menu.x(), menu.y(), menu.width(), menu.height(), ACCENT);
+        graphics.enableScissor(menu.x() + 1, menu.y() + 1,
+                menu.x() + menu.width() - 1, menu.y() + menu.height() - 1);
+        for (int offset = 0; offset < visible; offset++) {
+            int choiceIndex = modelSelectorScroll + offset;
+            GuideUiModelChoice choice = view.modelChoices().get(choiceIndex);
+            int y = menu.y() + offset * 20;
+            if (choice.selected()) {
+                graphics.fill(menu.x() + 1, y + 1, menu.x() + menu.width() - 1, y + 19, 0xFF355F59);
+            }
+            if (choiceIndex == modelSelectorCursor) {
+                graphics.outline(menu.x() + 2, y + 2, menu.width() - 4, 16, 0xFFFFFFFF);
+            }
+            Component label = Component.literal(choice.selected() ? "✓ " : "  ")
+                    .append(choiceLabel(choice));
+            if (!choice.available()) {
+                label = label.copy().append(Component.translatable(
+                        "screen.tomewisp.model.choice_unavailable"));
+            }
+            graphics.text(font, label, menu.x() + 5, y + 6,
+                    choice.available() ? TEXT : MUTED, false);
+            String focusId = modelFocusId(choice);
+            hits.add(new Hit(
+                    new GuideUiLayout.Rect(menu.x() + 1, y + 1, menu.width() - 2, 18),
+                    HitKind.MODEL,
+                    () -> selectModel(choice),
+                    focusId,
+                    label.getString()));
+        }
+        graphics.disableScissor();
+    }
+
+    private void selectModel(GuideUiModelChoice choice) {
+        modelSelectorOpen = false;
+        if (!choice.available() || choice.selected()) return;
+        accept(service.setModelSelection(choice.selection()), ignored -> notice = "");
+    }
+
+    private boolean renderNativeRecipe(
+            GuideUiRow.Assistant assistant,
+            GuiGraphicsExtractor graphics,
+            net.minecraft.client.gui.Font font,
+            dev.tomewisp.guide.semantic.RichComponent.RecipeGrid component,
+            GuideUiLayout.Rect bounds,
+            int mouseX,
+            int mouseY,
+            long ticks) {
+        NativeDomainViewBinding.Recipe binding = NativeDomainViewBindings.recipe(
+                view, assistant, component).orElse(null);
+        return binding != null && nativeViews.render(
+                binding,
+                new NativeDomainView.RenderContext(
+                        graphics, font, bounds, mouseX, mouseY, ticks));
+    }
+
+    static String toolFocusId(GuideUiRow.Tool tool) {
+        return "tool:" + tool.requestId() + ":" + tool.activity().invocationId();
+    }
+
+    static String sourceFocusId(
+            GuideUiRow.Assistant assistant, GuideSource source, int sourceIndex) {
+        return "source:" + assistant.requestId() + ":" + assistant.ordinal() + ":"
+                + sourceIndex + ":" + source.evidence().sourceId();
+    }
+
+    static String modelFocusId(GuideUiModelChoice choice) {
+        String id = choice.selection().kind() == GuideModelSelection.Kind.SERVER
+                ? "server" : choice.selection().profileId();
+        return "model:" + choice.selection().kind() + ":" + id;
+    }
+
+    static boolean isFocused(String focusedId, String candidateId) {
+        return focusedId != null && focusedId.equals(candidateId);
     }
 
     private Component modelStatus() {
@@ -1489,12 +1896,69 @@ public final class TomeWispScreen extends Screen {
         open(tools.get(index));
     }
 
+    /** Development-only count used to keep failed-report screenshots non-crashing. */
+    public int toolCountForDevelopmentProbe() {
+        if (!Boolean.getBoolean("tomewisp.e2e.enabled")) {
+            throw new IllegalStateException("development probe is disabled");
+        }
+        return (int) view.rows().stream().filter(GuideUiRow.Tool.class::isInstance).count();
+    }
+
+    /** Development-only explicit-selector state used by retained screenshot acceptance. */
+    public void openModelSelectorForDevelopmentProbe() {
+        if (!Boolean.getBoolean("tomewisp.e2e.enabled")) {
+            throw new IllegalStateException("development probe is disabled");
+        }
+        modelSelectorOpen = true;
+        revealSelectedModel();
+    }
+
+    /** Development-only selector cleanup used before the narrow-layout screenshot. */
+    public void closeModelSelectorForDevelopmentProbe() {
+        if (!Boolean.getBoolean("tomewisp.e2e.enabled")) {
+            throw new IllegalStateException("development probe is disabled");
+        }
+        modelSelectorOpen = false;
+    }
+
     /** Development-only readiness check so retained screenshots prove the active strip rendered. */
     public boolean hasRenderedActiveProgressForDevelopmentProbe() {
         return activeProgressRenderFrames >= 2;
     }
 
-    private enum HitKind { SESSION, CONTENT, DETAIL }
+    static final class StableRowHeights {
+        private final Map<String, Integer> heights = new LinkedHashMap<>();
+        private int width = -1;
+
+        void begin(int replacementWidth) {
+            if (replacementWidth <= 0) throw new IllegalArgumentException("row width must be positive");
+            if (width != replacementWidth) {
+                width = replacementWidth;
+                heights.clear();
+            }
+        }
+
+        int retain(String rowId, int measuredHeight, boolean stabilize) {
+            if (rowId == null || rowId.isBlank() || measuredHeight <= 0) {
+                throw new IllegalArgumentException("stable row measurement is invalid");
+            }
+            if (!stabilize) {
+                heights.put(rowId, measuredHeight);
+                return measuredHeight;
+            }
+            return heights.merge(rowId, measuredHeight, Math::max);
+        }
+
+        void retainOnly(java.util.Set<String> rowIds) {
+            heights.keySet().retainAll(rowIds);
+        }
+
+        void clear() {
+            heights.clear();
+        }
+    }
+
+    private enum HitKind { SESSION, CONTENT, DETAIL, MODEL }
     private record Hit(
             GuideUiLayout.Rect rect,
             HitKind kind,

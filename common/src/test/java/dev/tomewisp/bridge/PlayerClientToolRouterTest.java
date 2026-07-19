@@ -22,6 +22,7 @@ import dev.tomewisp.tool.ToolAccess;
 import dev.tomewisp.tool.ToolDescriptor;
 import dev.tomewisp.tool.ToolRegistry;
 import dev.tomewisp.tool.ToolResult;
+import dev.tomewisp.tool.builtin.ResolveResourceTool;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
@@ -201,6 +202,66 @@ final class PlayerClientToolRouterTest {
         assertEquals(
                 "server",
                 result.normalized().getAsJsonObject("value").get("placement").getAsString());
+    }
+
+    @Test
+    void playerVisibleGameStatePlacementRoutesToTheRequestingClient() {
+        ToolRegistry registry = registry();
+        registry.register("game", List.of(new InspectTool()));
+        List<SentCall> calls = new ArrayList<>();
+        PlayerClientToolRouter router = new PlayerClientToolRouter(
+                registry, new Gson(), transport(calls, new ArrayList<>()));
+        UUID actor = UUID.randomUUID();
+        UUID requestId = UUID.randomUUID();
+        AgentToolExecutor tools = success(router.open(
+                actor,
+                requestId,
+                "main",
+                List.of("tomewisp:inspect_game_state")));
+        JsonObject input = new JsonObject();
+        input.addProperty("section", "OPTIONS");
+
+        CompletableFuture<AgentToolResult> result = tools.execute(
+                "tomewisp:inspect_game_state",
+                input,
+                ToolInvocationContext.developmentConsole(requestId.toString()),
+                new CancellationSignal());
+
+        assertEquals(1, calls.size());
+        assertEquals(actor, calls.getFirst().actorId());
+        assertEquals("tomewisp:inspect_game_state", calls.getFirst().payload().toolId());
+        assertTrue(router.close(actor, requestId));
+        assertTrue(result.isCompletedExceptionally());
+    }
+
+    @Test
+    void gameContentCatalogPlacementRoutesToTheRequestingClient() {
+        ToolRegistry registry = registry();
+        registry.register("catalog", List.of(new ResolveResourceTool()));
+        List<SentCall> calls = new ArrayList<>();
+        PlayerClientToolRouter router = new PlayerClientToolRouter(
+                registry, new Gson(), transport(calls, new ArrayList<>()));
+        UUID actor = UUID.randomUUID();
+        UUID requestId = UUID.randomUUID();
+        AgentToolExecutor tools = success(router.open(
+                actor,
+                requestId,
+                "main",
+                List.of("tomewisp:resolve_resource")));
+        JsonObject input = new JsonObject();
+        input.addProperty("query", "中毒");
+
+        CompletableFuture<AgentToolResult> result = tools.execute(
+                "tomewisp:resolve_resource",
+                input,
+                ToolInvocationContext.developmentConsole(requestId.toString()),
+                new CancellationSignal());
+
+        assertEquals(1, calls.size());
+        assertEquals(actor, calls.getFirst().actorId());
+        assertEquals("tomewisp:resolve_resource", calls.getFirst().payload().toolId());
+        assertTrue(router.close(actor, requestId));
+        assertTrue(result.isCompletedExceptionally());
     }
 
     @Test

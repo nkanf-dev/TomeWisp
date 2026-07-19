@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import dev.tomewisp.guide.semantic.SemanticDocument;
+import dev.tomewisp.guide.semantic.SemanticBlock;
 import dev.tomewisp.guide.semantic.SemanticMessageParser;
 import dev.tomewisp.guide.semantic.SemanticStreamingState;
 import java.util.Locale;
@@ -89,6 +90,63 @@ final class SemanticLayoutTest {
                 .filter(line -> line.runs().stream().anyMatch(run -> run.text().equals("• ")))
                 .findFirst().orElseThrow();
         assertTrue(nested.indent() >= MEASURER.width("9. ", SemanticLayout.Style.STRONG));
+    }
+
+    @Test
+    void wideTablesPreserveGridCellsAlignmentWrappingAndReferences() {
+        SemanticDocument document = new SemanticMessageParser().parse("""
+                | Item | Count | Note |
+                |:-----|------:|:----:|
+                | [[tw:item\\|minecraft:iron_ingot\\|Iron]] | 9 | a deliberately long note that wraps |
+                | Coal | 1 | Fuel |
+                """);
+
+        SemanticLayout layout = new SemanticLayoutEngine().layout(document, 180, MEASURER);
+
+        SemanticLayout.Line line = layout.lines().getFirst();
+        SemanticLayout.TableBox table = line.table();
+        assertEquals(SemanticLayout.Kind.TABLE, line.kind());
+        assertEquals(SemanticLayout.TableBox.Mode.GRID, table.mode());
+        assertEquals(3, table.rows().size());
+        assertTrue(table.rows().getFirst().header());
+        assertEquals(180, table.rows().getFirst().cells().stream()
+                .mapToInt(SemanticLayout.TableCell::width).sum());
+        assertEquals(SemanticBlock.Alignment.LEFT,
+                table.rows().get(1).cells().getFirst().alignment());
+        assertEquals(SemanticBlock.Alignment.RIGHT,
+                table.rows().get(1).cells().get(1).alignment());
+        assertEquals(SemanticBlock.Alignment.CENTER,
+                table.rows().get(1).cells().get(2).alignment());
+        assertTrue(table.rows().get(1).height() > table.lineHeight());
+        assertTrue(table.rows().get(1).cells().getFirst().valueLines().stream()
+                .flatMap(value -> value.runs().stream())
+                .anyMatch(run -> run.reference() != null));
+        assertEquals(table.height(), line.height());
+    }
+
+    @Test
+    void narrowTablesDeterministicallyBecomeHeaderValueCards() {
+        SemanticDocument document = new SemanticMessageParser().parse("""
+                | Item | Count |
+                |:-----|------:|
+                | Iron | 9 |
+                | Coal | 1 |
+                """);
+        SemanticLayoutEngine engine = new SemanticLayoutEngine();
+
+        SemanticLayout first = engine.layout(document, 80, MEASURER);
+        SemanticLayout second = engine.layout(document, 80, MEASURER);
+
+        SemanticLayout.TableBox table = first.lines().getFirst().table();
+        assertEquals(SemanticLayout.TableBox.Mode.KEY_VALUE_CARDS, table.mode());
+        assertEquals(2, table.rows().size());
+        assertEquals(2, table.rows().getFirst().cells().size());
+        assertTrue(table.rows().getFirst().cells().stream()
+                .allMatch(cell -> !cell.labelLines().isEmpty()));
+        assertEquals(SemanticBlock.Alignment.RIGHT,
+                table.rows().getFirst().cells().get(1).alignment());
+        assertEquals(first, second);
+        assertEquals(table.height(), first.height());
     }
 
     @Test

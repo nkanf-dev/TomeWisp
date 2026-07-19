@@ -9,6 +9,7 @@ import dev.tomewisp.client.gui.settings.SettingsLayout;
 import dev.tomewisp.client.gui.settings.SettingsSection;
 import dev.tomewisp.client.gui.settings.ToolSettingsProjection;
 import dev.tomewisp.client.gui.settings.SkillSettingsProjection;
+import dev.tomewisp.guide.e2e.GuideClientE2EConfig;
 import dev.tomewisp.model.config.ModelProfileDefinition;
 import dev.tomewisp.model.config.ModelProfilesConfig;
 import dev.tomewisp.model.config.ModelProtocol;
@@ -77,6 +78,7 @@ public final class TomeWispSettingsScreen extends Screen {
     private EditBox sourceDisplayName;
     private EditBox sourceDirectory;
     private EditBox sourceLocale;
+    private SourceDraft sourceDraft;
     private int pageScroll;
     private int pageContentHeight;
     private ClientSettingsService.HistoryConfirmationToken historyConfirmation;
@@ -236,12 +238,20 @@ public final class TomeWispSettingsScreen extends Screen {
             rebuildWidgets();
             return true;
         }
-        if ((section == SettingsSection.DIAGNOSTICS
+        boolean scrollablePage = (section == SettingsSection.DIAGNOSTICS
                         || section == SettingsSection.HISTORY)
-                && layout.content().contains(mouseX, mouseY)) {
+                && layout.content().contains(mouseX, mouseY);
+        boolean scrollableTools = section == SettingsSection.TOOLS
+                && layout.editor().contains(mouseX, mouseY);
+        if (scrollablePage || scrollableTools) {
             int maximum = Math.max(0, pageContentHeight - layout.content().height() + 18);
-            pageScroll = net.minecraft.util.Mth.clamp(
+            int replacement = net.minecraft.util.Mth.clamp(
                     pageScroll - (int) Math.round(scrollY * 24), 0, maximum);
+            if (replacement != pageScroll) {
+                if (scrollableTools) captureSourceDraft();
+                pageScroll = replacement;
+                if (scrollableTools) rebuildWidgets();
+            }
             return true;
         }
         return super.mouseScrolled(mouseX, mouseY, scrollX, scrollY);
@@ -417,8 +427,11 @@ public final class TomeWispSettingsScreen extends Screen {
             Button button = addRenderableWidget(Button.builder(
                             Component.translatable(family.titleKey()),
                             ignored -> {
+                                captureSourceDraft();
                                 selectedTool = family.id();
                                 selectedToolSourceId = null;
+                                sourceDraft = null;
+                                pageScroll = 0;
                                 narrowToolDetail = true;
                                 rebuildWidgets();
                             })
@@ -433,30 +446,32 @@ public final class TomeWispSettingsScreen extends Screen {
         ToolSettingsProjection.Family family = selectedToolFamily();
         SettingsLayout.Rect area = layout.editor();
         int x = area.x() + 9;
-        int y = area.y() + 48;
+        int y = area.y() + 48 - pageScroll;
         int width = area.width() - 18;
-        Button enable = addRenderableWidget(Button.builder(
+        Button enable = Button.builder(
                         Component.translatable(family.enabled()
                                 ? "screen.tomewisp.settings.tools.disable"
                                 : "screen.tomewisp.settings.tools.enable"),
                         ignored -> accept(service.saveToolSettings(
                                 toolProjection().toggleTool(family.id()))))
                 .bounds(x, y, Math.max(80, (width - 4) / 2), 22)
-                .build());
+                .build();
         enable.active = family.available()
                 && snapshot.operation().kind() == SettingsOperation.Kind.IDLE;
+        addToolWidget(enable, area);
         int enableWidth = enable.getWidth();
-        Button restore = addRenderableWidget(Button.builder(
+        Button restore = Button.builder(
                         Component.translatable("screen.tomewisp.settings.tools.restore"),
                         ignored -> accept(service.restoreToolSettings(family.id())))
                 .bounds(x + enableWidth + 4, y, width - enableWidth - 4, 22)
-                .build());
+                .build();
         restore.active = snapshot.operation().kind() == SettingsOperation.Kind.IDLE;
+        addToolWidget(restore, area);
         y += 32;
 
         if (family.id() == ToolFamilyId.RECIPES) {
             int half = Math.max(80, (width - 4) / 2);
-            addRenderableWidget(Button.builder(
+            Button visibility = Button.builder(
                             Component.translatable(
                                     recipeDraft.visibility() == RecipeVisibilityPolicy.ALL_KNOWN
                                             ? "screen.tomewisp.settings.recipe.visibility_all"
@@ -466,8 +481,9 @@ public final class TomeWispSettingsScreen extends Screen {
                                 accept(service.saveRecipeSettings(recipeDraft));
                             })
                     .bounds(x, y, half, 20)
-                    .build());
-            addRenderableWidget(Button.builder(
+                    .build();
+            addToolWidget(visibility, area);
+            Button preferred = Button.builder(
                             Component.translatable(
                                     "screen.tomewisp.settings.recipe.preferred",
                                     preferredViewerLabel()),
@@ -476,45 +492,61 @@ public final class TomeWispSettingsScreen extends Screen {
                                 accept(service.saveRecipeSettings(recipeDraft));
                             })
                     .bounds(x + half + 4, y, width - half - 4, 20)
-                    .build());
+                    .build();
+            addToolWidget(preferred, area);
             y += 30;
         }
 
+        y += toolCardsHeight(family, width) + 8;
+
         for (ToolSettingsProjection.Source source : family.sources()) {
             int toggleWidth = Math.min(76, Math.max(58, width / 4));
-            Button select = addRenderableWidget(Button.builder(
+            Button select = Button.builder(
                             Component.literal(source.displayName()),
                             ignored -> {
+                                captureSourceDraft();
                                 selectedToolSourceId = source.id();
+                                sourceDraft = null;
                                 rebuildWidgets();
                             })
                     .bounds(x, y, width - toggleWidth - 4, 20)
-                    .build());
+                    .build();
             select.active = !source.id().equals(selectedToolSourceId);
-            Button toggle = addRenderableWidget(Button.builder(
+            addToolWidget(select, area);
+            Button toggle = Button.builder(
                             Component.translatable(source.enabled()
                                     ? "screen.tomewisp.settings.capability.enabled"
                                     : "screen.tomewisp.settings.capability.disabled"),
                             ignored -> accept(service.saveToolSettings(
                                     toolProjection().toggleSource(family.id(), source.id()))))
                     .bounds(x + width - toggleWidth, y, toggleWidth, 20)
-                    .build());
+                    .build();
             toggle.active = source.available()
                     && snapshot.operation().kind() == SettingsOperation.Kind.IDLE;
+            addToolWidget(toggle, area);
             y += 24;
         }
 
         if (family.id() == ToolFamilyId.GUIDES) {
-            addRenderableWidget(Button.builder(
+            Button add = Button.builder(
                             Component.translatable("screen.tomewisp.settings.tools.source.add_local"),
                             ignored -> addLocalMarkdownSource())
                     .bounds(x, y + 2, Math.min(180, width), 20)
-                    .build());
+                    .build();
+            addToolWidget(add, area);
             y += 30;
         }
         int sourceEditorY = y;
         selectedToolSource().ifPresent(
                 source -> addSourceEditor(source, x, sourceEditorY, width));
+        pageContentHeight = Math.max(
+                0, y + pageScroll - area.y() + (selectedToolSource().isPresent() ? 116 : 12));
+    }
+
+    private void addToolWidget(Button widget, SettingsLayout.Rect area) {
+        if (widget.getY() >= area.y() + 42 && widget.getY() + widget.getHeight() <= area.bottom()) {
+            addRenderableWidget(widget);
+        }
     }
 
     private void addSourceEditor(
@@ -522,34 +554,43 @@ public final class TomeWispSettingsScreen extends Screen {
         if (!source.editable()) {
             return;
         }
+        SourceDraft retained = sourceDraft != null && sourceDraft.sourceId().equals(source.id())
+                ? sourceDraft
+                : new SourceDraft(
+                        source.id(),
+                        source.displayName(),
+                        source.config().get("directory").getAsString(),
+                        source.config().get("locale").getAsString());
         sourceDisplayName = field(
-                x, y, width, "screen.tomewisp.settings.tools.source.name", source.displayName());
+                x, y, width, "screen.tomewisp.settings.tools.source.name", retained.displayName());
         y += 22;
         sourceDirectory = field(
                 x,
                 y,
                 width,
                 "screen.tomewisp.settings.tools.source.directory",
-                source.config().get("directory").getAsString());
+                retained.directory());
         y += 22;
         sourceLocale = field(
                 x,
                 y,
                 width,
                 "screen.tomewisp.settings.tools.source.locale",
-                source.config().get("locale").getAsString());
+                retained.locale());
         y += 24;
         int half = Math.max(60, (width - 4) / 2);
-        addRenderableWidget(Button.builder(
+        Button save = Button.builder(
                         Component.translatable("screen.tomewisp.settings.save"),
                         ignored -> saveSelectedSource())
                 .bounds(x, y, half, 20)
-                .build());
-        addRenderableWidget(Button.builder(
+                .build();
+        addToolWidget(save, layout.editor());
+        Button delete = Button.builder(
                         Component.translatable("screen.tomewisp.settings.delete"),
                         ignored -> deleteSelectedSource())
                 .bounds(x + half + 4, y, width - half - 4, 20)
-                .build());
+                .build();
+        addToolWidget(delete, layout.editor());
     }
 
     private void addSkillsPage() {
@@ -1152,8 +1193,17 @@ public final class TomeWispSettingsScreen extends Screen {
                 area.y() + 29,
                 MUTED,
                 false);
+        graphics.enableScissor(area.x(), area.y() + 42, area.right(), area.bottom());
+        int cardsY = area.y() + (family.id() == ToolFamilyId.RECIPES ? 110 : 80) - pageScroll;
+        int cardsX = area.x() + 9;
+        int cardsWidth = Math.max(80, area.width() - 18);
+        for (ToolSettingsProjection.ToolCard card : family.tools()) {
+            cardsY = renderToolCard(graphics, card, cardsX, cardsY, cardsWidth) + 6;
+        }
+        int sourcesY = cardsY;
         selectedToolSource().ifPresent(source -> {
-            int y = area.bottom() - (source.editable() ? 116 : 28);
+            int y = sourcesY + family.sources().size() * 24
+                    + (source.editable() ? 108 : 8);
             Component sourceInfo = Component.literal(source.displayName()).copy().append(" · ")
                     .append(Component.translatable(source.available()
                             ? "screen.tomewisp.settings.tools.source.ready"
@@ -1169,7 +1219,271 @@ public final class TomeWispSettingsScreen extends Screen {
                         false);
             }
         });
+        graphics.disableScissor();
     }
+
+    private int renderToolCard(
+            GuiGraphicsExtractor graphics,
+            ToolSettingsProjection.ToolCard card,
+            int x,
+            int y,
+            int width) {
+        int height = toolCardHeight(card, width);
+        graphics.fill(x, y, x + width, y + height, PANEL_ALT);
+        graphics.outline(x, y, width, height, card.available() ? 0xFF46515F : 0xFF68484D);
+        int cursor = y + 7;
+        String status = card.available()
+                ? card.enabled() ? "✓ " : "○ "
+                : "! ";
+        graphics.text(
+                font,
+                Component.literal(status).append(Component.translatable(card.titleKey())),
+                x + 7,
+                cursor,
+                card.available() ? TEXT : ERROR,
+                false);
+        cursor += 13;
+        cursor = renderWrapped(
+                graphics,
+                Component.translatable(card.descriptionKey()),
+                x + 7,
+                cursor,
+                width - 14,
+                MUTED,
+                10);
+        Component badges = Component.translatable(card.readOnly()
+                        ? "screen.tomewisp.settings.tools.read_only"
+                        : "screen.tomewisp.settings.tools.restricted")
+                .copy().append(" · ")
+                .append(Component.translatable(card.available()
+                        ? card.enabled()
+                                ? "screen.tomewisp.settings.tools.available_enabled"
+                                : "screen.tomewisp.settings.tools.available_disabled"
+                        : "screen.tomewisp.settings.tools.unavailable"));
+        graphics.text(font, badges, x + 7, cursor + 2, ACCENT, false);
+        cursor += 16;
+        cursor = renderToolFields(
+                graphics,
+                Component.translatable("screen.tomewisp.settings.tools.inputs"),
+                card.parameters().stream().map(parameter -> new ToolField(
+                        parameter.name(), parameter.label(), parameter.type(),
+                        parameter.required(), parameter.description())).toList(),
+                x + 7,
+                cursor,
+                width - 14,
+                true);
+        cursor = renderToolFields(
+                graphics,
+                Component.translatable("screen.tomewisp.settings.tools.returns"),
+                card.returns().stream().map(value -> new ToolField(
+                        value.name(), value.label(), value.type(), false, value.description())).toList(),
+                x + 7,
+                cursor,
+                width - 14,
+                false);
+        if (card.debug().isPresent()) {
+            cursor += 3;
+            graphics.text(
+                    font,
+                    Component.translatable("screen.tomewisp.settings.tools.debug"),
+                    x + 7,
+                    cursor,
+                    0xFFFFD479,
+                    false);
+            cursor += 13;
+            ToolSettingsProjection.Debug debug = card.debug().orElseThrow();
+            cursor = renderWrapped(graphics, Component.literal(
+                            "ID: " + debug.toolId() + " · alias: " + debug.modelAlias()),
+                    x + 9, cursor, width - 18, MUTED, 10);
+            cursor = renderWrapped(graphics, Component.literal(
+                            "provider: " + debug.providerId() + " · access: " + debug.access()),
+                    x + 9, cursor, width - 18, MUTED, 10);
+            cursor = renderWrapped(graphics, Component.translatable(debug.executionKey()).copy()
+                            .append(" · context: ")
+                            .append(debug.requiredContext().isEmpty()
+                                    ? "none" : String.join(", ", debug.requiredContext())),
+                    x + 9, cursor, width - 18, MUTED, 10);
+            if (debug.diagnostic() != null) {
+                cursor = renderWrapped(graphics, Component.literal(
+                                "diagnostic: " + debug.diagnostic()),
+                        x + 9, cursor, width - 18, ERROR, 10);
+            }
+            cursor = renderDebugSchema(
+                    graphics, "input schema", debug.inputSchema(), x + 9, cursor, width - 18);
+            cursor = renderDebugSchema(
+                    graphics, "output schema", debug.outputSchema(), x + 9, cursor, width - 18);
+        }
+        return y + height;
+    }
+
+    private int renderToolFields(
+            GuiGraphicsExtractor graphics,
+            Component heading,
+            List<ToolField> fields,
+            int x,
+            int y,
+            int width,
+            boolean showRequired) {
+        graphics.text(font, heading, x, y, ACCENT, false);
+        y += 12;
+        if (fields.isEmpty()) {
+            graphics.text(
+                    font,
+                    Component.translatable("screen.tomewisp.settings.tools.none"),
+                    x + 5,
+                    y,
+                    MUTED,
+                    false);
+            return y + 12;
+        }
+        for (ToolField field : fields) {
+            Component label = toolFieldLabel(field.name(), field.fallbackLabel()).copy()
+                    .append(" · " + field.type());
+            if (showRequired) {
+                label = label.copy().append(" · ").append(Component.translatable(field.required()
+                        ? "screen.tomewisp.settings.tools.required"
+                        : "screen.tomewisp.settings.tools.optional"));
+            }
+            y = renderWrapped(graphics, label, x + 5, y, width - 5, TEXT, 10);
+            if (hasToolFieldDescription(field)) {
+                y = renderWrapped(
+                        graphics,
+                        toolFieldDescription(field.name(), field.description()),
+                        x + 11,
+                        y,
+                        width - 11,
+                        MUTED,
+                        10);
+            }
+        }
+        return y + 2;
+    }
+
+    private int renderDebugSchema(
+            GuiGraphicsExtractor graphics,
+            String heading,
+            String schema,
+            int x,
+            int y,
+            int width) {
+        graphics.text(font, heading, x, y, 0xFFFFD479, false);
+        y += 11;
+        if (schema.isBlank()) {
+            graphics.text(font, "unavailable", x + 4, y, MUTED, false);
+            return y + 11;
+        }
+        for (String sourceLine : schema.split("\\R", -1)) {
+            y = renderWrapped(
+                    graphics, Component.literal(sourceLine), x + 4, y, width - 4, MUTED, 10);
+        }
+        return y + 2;
+    }
+
+    private int renderWrapped(
+            GuiGraphicsExtractor graphics,
+            Component text,
+            int x,
+            int y,
+            int width,
+            int color,
+            int lineHeight) {
+        for (net.minecraft.util.FormattedCharSequence line : font.split(text, Math.max(20, width))) {
+            graphics.text(font, line, x, y, color, false);
+            y += lineHeight;
+        }
+        return y;
+    }
+
+    private Component toolFieldLabel(String name, String fallback) {
+        String key = "screen.tomewisp.settings.tools.field." + name;
+        return Language.getInstance().has(key) ? Component.translatable(key) : Component.literal(fallback);
+    }
+
+    private Component toolFieldDescription(String name, String fallback) {
+        String key = "screen.tomewisp.settings.tools.field." + name + ".description";
+        return Language.getInstance().has(key) ? Component.translatable(key) : Component.literal(fallback);
+    }
+
+    private boolean hasToolFieldDescription(ToolField field) {
+        return !field.description().isBlank()
+                || Language.getInstance().has(
+                        "screen.tomewisp.settings.tools.field." + field.name() + ".description");
+    }
+
+    private int toolCardsHeight(ToolSettingsProjection.Family family, int width) {
+        return family.tools().stream().mapToInt(card -> toolCardHeight(card, width) + 6).sum();
+    }
+
+    private int toolCardHeight(ToolSettingsProjection.ToolCard card, int width) {
+        int inner = Math.max(20, width - 14);
+        int height = 7 + 13
+                + wrappedHeight(Component.translatable(card.descriptionKey()), inner, 10)
+                + 16;
+        height += toolFieldsHeight(card.parameters().stream().map(parameter -> new ToolField(
+                parameter.name(), parameter.label(), parameter.type(),
+                parameter.required(), parameter.description())).toList(), inner, true);
+        height += toolFieldsHeight(card.returns().stream().map(value -> new ToolField(
+                value.name(), value.label(), value.type(), false, value.description())).toList(), inner, false);
+        if (card.debug().isPresent()) {
+            ToolSettingsProjection.Debug debug = card.debug().orElseThrow();
+            height += 16;
+            height += wrappedHeight(Component.literal(
+                    "ID: " + debug.toolId() + " · alias: " + debug.modelAlias()), inner - 4, 10);
+            height += wrappedHeight(Component.literal(
+                    "provider: " + debug.providerId() + " · access: " + debug.access()), inner - 4, 10);
+            height += wrappedHeight(Component.translatable(debug.executionKey()).copy()
+                    .append(" · context: ")
+                    .append(debug.requiredContext().isEmpty()
+                            ? "none" : String.join(", ", debug.requiredContext())), inner - 4, 10);
+            if (debug.diagnostic() != null) {
+                height += wrappedHeight(
+                        Component.literal("diagnostic: " + debug.diagnostic()), inner - 4, 10);
+            }
+            height += debugSchemaHeight(debug.inputSchema(), inner - 4);
+            height += debugSchemaHeight(debug.outputSchema(), inner - 4);
+        }
+        return height + 7;
+    }
+
+    private int toolFieldsHeight(List<ToolField> fields, int width, boolean showRequired) {
+        int height = 12;
+        if (fields.isEmpty()) return height + 12;
+        for (ToolField field : fields) {
+            Component label = toolFieldLabel(field.name(), field.fallbackLabel()).copy()
+                    .append(" · " + field.type());
+            if (showRequired) {
+                label = label.copy().append(" · ").append(Component.translatable(field.required()
+                        ? "screen.tomewisp.settings.tools.required"
+                        : "screen.tomewisp.settings.tools.optional"));
+            }
+            height += wrappedHeight(label, width - 5, 10);
+            if (hasToolFieldDescription(field)) {
+                height += wrappedHeight(
+                        toolFieldDescription(field.name(), field.description()), width - 11, 10);
+            }
+        }
+        return height + 2;
+    }
+
+    private int debugSchemaHeight(String schema, int width) {
+        int height = 11;
+        if (schema.isBlank()) return height + 11;
+        for (String line : schema.split("\\R", -1)) {
+            height += wrappedHeight(Component.literal(line), width - 4, 10);
+        }
+        return height + 2;
+    }
+
+    private int wrappedHeight(Component text, int width, int lineHeight) {
+        return Math.max(1, font.split(text, Math.max(20, width)).size()) * lineHeight;
+    }
+
+    private record ToolField(
+            String name,
+            String fallbackLabel,
+            String type,
+            boolean required,
+            String description) {}
 
     private void renderSkills(GuiGraphicsExtractor graphics) {
         SettingsLayout.Rect area = layout.editor();
@@ -1506,6 +1820,7 @@ public final class TomeWispSettingsScreen extends Screen {
                         source.lifecycle()))
                 .toList();
         selectedToolSourceId = null;
+        sourceDraft = null;
         accept(service.saveToolSettings(new ToolFamilyConfig(
                 ToolFamilyConfig.SCHEMA_VERSION,
                 selectedTool,
@@ -1857,22 +2172,37 @@ public final class TomeWispSettingsScreen extends Screen {
     }
 
     private void captureDraft() {
-        if (section != SettingsSection.MODELS || id == null) {
+        if (section == SettingsSection.MODELS && id != null) {
+            draft = new ModelProfileDraft(
+                    id.getValue(),
+                    displayName.getValue(),
+                    draftEnabled,
+                    draftProtocol,
+                    baseUrl.getValue(),
+                    model.getValue(),
+                    draft.credentialRef(),
+                    contextWindow.getValue(),
+                    maxOutput.getValue(),
+                    connectTimeout.getValue(),
+                    requestTimeout.getValue(),
+                    draft.metadata());
+        }
+        captureSourceDraft();
+    }
+
+    private void captureSourceDraft() {
+        if (section != SettingsSection.TOOLS
+                || selectedToolSourceId == null
+                || sourceDisplayName == null
+                || sourceDirectory == null
+                || sourceLocale == null) {
             return;
         }
-        draft = new ModelProfileDraft(
-                id.getValue(),
-                displayName.getValue(),
-                draftEnabled,
-                draftProtocol,
-                baseUrl.getValue(),
-                model.getValue(),
-                draft.credentialRef(),
-                contextWindow.getValue(),
-                maxOutput.getValue(),
-                connectTimeout.getValue(),
-                requestTimeout.getValue(),
-                draft.metadata());
+        sourceDraft = new SourceDraft(
+                selectedToolSourceId,
+                sourceDisplayName.getValue(),
+                sourceDirectory.getValue(),
+                sourceLocale.getValue());
     }
 
     private void cycleProtocol() {
@@ -1939,6 +2269,48 @@ public final class TomeWispSettingsScreen extends Screen {
             GuiGraphicsExtractor graphics, SettingsLayout.Rect rect, int color) {
         if (rect.width() > 0 && rect.height() > 0) {
             graphics.fill(rect.x(), rect.y(), rect.right(), rect.bottom(), color);
+        }
+    }
+
+    /** Screenshot-harness navigation only; inert in every normal client launch. */
+    public void e2eOpenTools() {
+        e2eOpenTools(ToolFamilyId.GAME_CONTEXT);
+    }
+
+    /** Screenshot-harness navigation only; does not save or mutate Tool policy. */
+    public void e2eOpenTools(ToolFamilyId family) {
+        requireE2eControls();
+        Objects.requireNonNull(family, "family");
+        captureDraft();
+        section = SettingsSection.TOOLS;
+        selectedTool = family;
+        selectedToolSourceId = null;
+        sourceDraft = null;
+        narrowToolDetail = true;
+        pageScroll = 0;
+        pageContentHeight = 0;
+        rebuildWidgets();
+    }
+
+    /** Positive pixels move the Tool detail down; intended for retained screenshot coverage. */
+    public void e2eScrollToolDetails(int pixels) {
+        requireE2eControls();
+        if (section != SettingsSection.TOOLS || layout == null) {
+            throw new IllegalStateException("E2E Tool details are not open");
+        }
+        captureSourceDraft();
+        int maximum = Math.max(0, pageContentHeight - layout.content().height() + 18);
+        pageScroll = net.minecraft.util.Mth.clamp(pageScroll + pixels, 0, maximum);
+        rebuildWidgets();
+    }
+
+    static boolean e2eControlsEnabled() {
+        return Boolean.getBoolean(GuideClientE2EConfig.ENABLED);
+    }
+
+    private static void requireE2eControls() {
+        if (!e2eControlsEnabled()) {
+            throw new IllegalStateException("TomeWisp E2E controls are disabled");
         }
     }
 
@@ -2009,6 +2381,9 @@ public final class TomeWispSettingsScreen extends Screen {
             String failureCode) {}
 
     private record Action(String translationKey, Runnable action) {}
+
+    private record SourceDraft(
+            String sourceId, String displayName, String directory, String locale) {}
 
     private enum Confirmation {
         NONE,

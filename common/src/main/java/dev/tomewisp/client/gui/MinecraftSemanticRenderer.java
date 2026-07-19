@@ -3,6 +3,7 @@ package dev.tomewisp.client.gui;
 import dev.tomewisp.context.RecipeReference;
 import dev.tomewisp.guide.semantic.RecipeSemanticHandle;
 import dev.tomewisp.guide.semantic.RichComponent;
+import dev.tomewisp.guide.semantic.SemanticBlock;
 import dev.tomewisp.guide.semantic.SemanticReference;
 import dev.tomewisp.guide.semantic.SemanticReferenceKind;
 import dev.tomewisp.guide.ui.GuideUiLayout;
@@ -40,6 +41,21 @@ public final class MinecraftSemanticRenderer {
         public Result { hits = List.copyOf(hits); }
     }
 
+    @FunctionalInterface
+    public interface RecipeGridRenderer {
+        boolean render(
+                GuiGraphicsExtractor graphics,
+                Font font,
+                RichComponent.RecipeGrid component,
+                GuideUiLayout.Rect bounds,
+                int mouseX,
+                int mouseY,
+                long presentationTicks);
+    }
+
+    private static final RecipeGridRenderer NO_NATIVE_RECIPES =
+            (graphics, font, component, bounds, mouseX, mouseY, ticks) -> false;
+
     private final MinecraftSemanticResolver resolver;
 
     public MinecraftSemanticRenderer(MinecraftSemanticResolver resolver) {
@@ -69,6 +85,24 @@ public final class MinecraftSemanticRenderer {
             int mouseY,
             boolean animationsEnabled,
             long presentationTicks) {
+        return render(
+                graphics, font, layout, x, y, width, mouseX, mouseY,
+                animationsEnabled, presentationTicks, NO_NATIVE_RECIPES);
+    }
+
+    public Result render(
+            GuiGraphicsExtractor graphics,
+            Font font,
+            SemanticLayout layout,
+            int x,
+            int y,
+            int width,
+            int mouseX,
+            int mouseY,
+            boolean animationsEnabled,
+            long presentationTicks,
+            RecipeGridRenderer recipeGridRenderer) {
+        java.util.Objects.requireNonNull(recipeGridRenderer, "recipeGridRenderer");
         ArrayList<Hit> hits = new ArrayList<>();
         int current = y;
         for (SemanticLayout.Line line : layout.lines()) {
@@ -79,8 +113,9 @@ public final class MinecraftSemanticRenderer {
                         x + width, current + line.height() / 2 + 1, MUTED);
                 case COMPONENT -> renderComponent(
                         graphics, font, line.component(), left, current,
-                        Math.max(20, width - line.indent()), mouseX, mouseY, hits,
-                        animationsEnabled, presentationTicks);
+                        Math.max(20, width - line.indent()), line.height(), mouseX, mouseY, hits,
+                        animationsEnabled, presentationTicks, recipeGridRenderer);
+                case TABLE -> renderTable(graphics, font, line.table(), left, current, hits);
                 default -> {
                     if (line.kind() == SemanticLayout.Kind.CODE) {
                         graphics.fill(left - 2, current - 1, x + width, current + line.height(), PANEL);
@@ -117,6 +152,100 @@ public final class MinecraftSemanticRenderer {
         return new Result(current, hits);
     }
 
+    private void renderTable(
+            GuiGraphicsExtractor graphics,
+            Font font,
+            SemanticLayout.TableBox table,
+            int x,
+            int y,
+            List<Hit> hits) {
+        if (table.mode() == SemanticLayout.TableBox.Mode.GRID) {
+            graphics.fill(x, y, x + table.width(), y + table.height(), PANEL);
+            for (SemanticLayout.TableRow row : table.rows()) {
+                if (row.header()) {
+                    graphics.fill(
+                            x, y + row.y(), x + table.width(), y + row.y() + row.height(),
+                            0xFF29443F);
+                }
+                for (SemanticLayout.TableCell cell : row.cells()) {
+                    graphics.outline(
+                            x + cell.x(), y + cell.y(), cell.width(), cell.height(),
+                            0xFF46515F);
+                    int available = Math.max(1, cell.width() - 9);
+                    for (SemanticLayout.CellLine value : cell.valueLines()) {
+                        int textX = x + cell.x() + 4 + alignedOffset(
+                                cell.alignment(), available, value.width());
+                        int textY = y + cell.y() + 3 + value.y();
+                        renderTableRuns(
+                                graphics, font, value.runs(), textX, textY,
+                                row.header() ? ACCENT : TEXT, hits);
+                    }
+                }
+            }
+            return;
+        }
+
+        for (SemanticLayout.TableRow row : table.rows()) {
+            graphics.fill(x, y + row.y(), x + table.width(), y + row.y() + row.height(), PANEL);
+            graphics.outline(x, y + row.y(), table.width(), row.height(), 0xFF46515F);
+            for (SemanticLayout.TableCell cell : row.cells()) {
+                int labelY = y + cell.y();
+                for (SemanticLayout.CellLine label : cell.labelLines()) {
+                    renderTableRuns(
+                            graphics, font, label.runs(), x + cell.x(), labelY + label.y(),
+                            ACCENT, hits);
+                }
+                int valueY = labelY + cell.labelLines().size() * table.lineHeight();
+                for (SemanticLayout.CellLine value : cell.valueLines()) {
+                    int textX = x + cell.x() + alignedOffset(
+                            cell.alignment(), cell.width(), value.width());
+                    renderTableRuns(
+                            graphics, font, value.runs(), textX, valueY + value.y(),
+                            TEXT, hits);
+                }
+            }
+        }
+    }
+
+    private static void renderTableRuns(
+            GuiGraphicsExtractor graphics,
+            Font font,
+            List<SemanticLayout.Run> runs,
+            int x,
+            int y,
+            int color,
+            List<Hit> hits) {
+        int runX = x;
+        for (SemanticLayout.Run run : runs) {
+            MutableComponent rendered = Component.literal(run.text());
+            rendered = switch (run.style()) {
+                case NORMAL -> rendered;
+                case EMPHASIS -> rendered.withStyle(ChatFormatting.ITALIC);
+                case STRONG -> rendered.withStyle(ChatFormatting.BOLD);
+                case CODE -> rendered.withStyle(ChatFormatting.GRAY);
+                case REFERENCE -> rendered.withStyle(
+                        ChatFormatting.AQUA, ChatFormatting.UNDERLINE);
+            };
+            graphics.text(font, rendered, runX, y, color, false);
+            int runWidth = font.width(rendered);
+            Intent intent = intent(run.reference());
+            if (intent != null) {
+                hits.add(new Hit(new GuideUiLayout.Rect(runX, y - 1, runWidth, 10), intent));
+            }
+            runX += runWidth;
+        }
+    }
+
+    static int alignedOffset(
+            SemanticBlock.Alignment alignment, int availableWidth, int contentWidth) {
+        int remaining = Math.max(0, availableWidth - contentWidth);
+        return switch (alignment) {
+            case RIGHT -> remaining;
+            case CENTER -> remaining / 2;
+            case NONE, LEFT -> 0;
+        };
+    }
+
     public static Intent intent(SemanticReference reference) {
         if (reference == null) return null;
         return switch (reference.kind()) {
@@ -144,12 +273,14 @@ public final class MinecraftSemanticRenderer {
             int x,
             int y,
             int width,
+            int height,
             int mouseX,
             int mouseY,
             List<Hit> hits,
             boolean animationsEnabled,
-            long presentationTicks) {
-        graphics.fill(x - 2, y - 1, x + width, y + componentHeight(component), PANEL);
+            long presentationTicks,
+            RecipeGridRenderer recipeGridRenderer) {
+        graphics.fill(x - 2, y - 1, x + width, y + height, PANEL);
         switch (component) {
             case RichComponent.ItemRow value -> {
                 int rowY = y;
@@ -167,6 +298,20 @@ public final class MinecraftSemanticRenderer {
                 }
             }
             case RichComponent.RecipeGrid value -> {
+                if (recipeGridRenderer.render(
+                        graphics,
+                        font,
+                        value,
+                        new GuideUiLayout.Rect(x - 2, y - 1, width + 2, height),
+                        mouseX,
+                        mouseY,
+                        presentationTicks)) {
+                    action(graphics, font, Component.translatable(
+                                    "screen.tomewisp.semantic.action.open_recipe"),
+                            x + 4, y + height - 11,
+                            new Intent.ExactRecipe(value.recipe()), hits);
+                    break;
+                }
                 graphics.text(font, value.label().isBlank()
                                 ? Component.translatable("screen.tomewisp.semantic.recipe")
                                 : Component.literal(value.label()),
@@ -298,7 +443,7 @@ public final class MinecraftSemanticRenderer {
     private static int componentHeight(RichComponent component) {
         return switch (component) {
             case RichComponent.ItemRow value -> Math.max(22, 22 * value.items().size());
-            case RichComponent.RecipeGrid ignored -> 54;
+            case RichComponent.RecipeGrid ignored -> 136;
             case RichComponent.IngredientCheck value -> Math.max(22, 22 * value.ingredients().size());
             case RichComponent.CraftabilitySummary ignored -> 40;
             case RichComponent.ProgressSteps value -> 12 * (value.steps().size() + 1);

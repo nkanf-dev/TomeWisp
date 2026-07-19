@@ -1,5 +1,6 @@
 package dev.tomewisp.knowledge;
 
+import dev.tomewisp.knowledge.search.KnowledgeIndex;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -7,7 +8,7 @@ import java.util.List;
 import java.util.Set;
 
 public final class KnowledgeRegistry {
-    private volatile KnowledgeSnapshot snapshot = KnowledgeSnapshot.empty();
+    private volatile PublishedKnowledge published = published(KnowledgeSnapshot.empty());
     private volatile List<KnowledgeDiagnostic> diagnostics = List.of();
     private List<KnowledgeSourceProvider> primaryProviders = List.of();
     private List<KnowledgeSourceProvider> supplementalProviders = List.of();
@@ -70,6 +71,7 @@ public final class KnowledgeRegistry {
         List<KnowledgeDiagnostic> nextDiagnostics = new ArrayList<>();
         List<dev.tomewisp.context.EvidenceMetadata> evidence = new ArrayList<>();
         Set<String> keys = new HashSet<>();
+        String failureCode = "provider_failure";
         try {
             for (KnowledgeSourceProvider provider : providers) {
                 KnowledgeLoad load = provider.load();
@@ -90,15 +92,18 @@ public final class KnowledgeRegistry {
                 }
             }
             documents.sort(java.util.Comparator.comparing(KnowledgeDocument::key));
-            snapshot = new KnowledgeSnapshot(
+            KnowledgeSnapshot nextSnapshot = new KnowledgeSnapshot(
                     documents, Instant.now(), evidence.stream().distinct().toList());
+            failureCode = "index_failure";
+            PublishedKnowledge next = published(nextSnapshot);
+            published = next;
             diagnostics = List.copyOf(nextDiagnostics);
             return true;
         } catch (Exception failure) {
             String source = providers.isEmpty() ? "knowledge" : providers.getFirst().sourceId();
             diagnostics = List.of(new KnowledgeDiagnostic(
                     source,
-                    "provider_failure",
+                    failureCode,
                     failure.getMessage() == null ? failure.getClass().getSimpleName() : failure.getMessage(),
                     source));
             return false;
@@ -106,10 +111,23 @@ public final class KnowledgeRegistry {
     }
 
     public KnowledgeSnapshot snapshot() {
-        return snapshot;
+        return published.snapshot();
+    }
+
+    public KnowledgeSearch search(String query, Integer limit) {
+        PublishedKnowledge current = published;
+        return new KnowledgeSearch(
+                current.index().search(query, limit),
+                current.snapshot().evidence());
     }
 
     public List<KnowledgeDiagnostic> diagnostics() {
         return diagnostics;
     }
+
+    private static PublishedKnowledge published(KnowledgeSnapshot snapshot) {
+        return new PublishedKnowledge(snapshot, new KnowledgeIndex(snapshot));
+    }
+
+    private record PublishedKnowledge(KnowledgeSnapshot snapshot, KnowledgeIndex index) {}
 }

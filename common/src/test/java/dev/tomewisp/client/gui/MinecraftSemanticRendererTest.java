@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 
 import dev.tomewisp.context.RecipeReference;
+import dev.tomewisp.guide.semantic.SemanticBlock;
 import dev.tomewisp.guide.semantic.RecipeSemanticHandle;
 import dev.tomewisp.guide.semantic.SemanticReference;
 import dev.tomewisp.guide.semantic.SemanticReferenceKind;
@@ -57,5 +58,17 @@ final class MinecraftSemanticRendererTest {
                 RichComponent.StepState.ACTIVE, true, 8));
         assertEquals("✓", MinecraftSemanticRenderer.progressMarker(
                 RichComponent.StepState.COMPLETE, true, 0));
+    }
+
+    @Test
+    void tableAlignmentNeverMovesContentOutsideItsCell() {
+        assertEquals(0, MinecraftSemanticRenderer.alignedOffset(
+                SemanticBlock.Alignment.LEFT, 30, 10));
+        assertEquals(10, MinecraftSemanticRenderer.alignedOffset(
+                SemanticBlock.Alignment.CENTER, 30, 10));
+        assertEquals(20, MinecraftSemanticRenderer.alignedOffset(
+                SemanticBlock.Alignment.RIGHT, 30, 10));
+        assertEquals(0, MinecraftSemanticRenderer.alignedOffset(
+                SemanticBlock.Alignment.RIGHT, 10, 30));
     }
 }

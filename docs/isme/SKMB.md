@@ -30,6 +30,7 @@ accepted and contains explicit approval evidence.
 | SKMB-2026-07-19-020 | accepted | request observability, stable native interaction, Tool guidance, and unified player-observable game state | A, B, C, D, E, F | decisions/2026-07-19-020-observable-game-state-and-request-visibility.md | 78c2122 |
 | SKMB-2026-07-19-021 | accepted | model ownership, authenticated model listing, Tool alias recovery, and player client Tool bridge | A, B, C, D, E, F | decisions/2026-07-19-021-model-ownership-and-player-tool-bridge.md | 48ed4c1 |
 | SKMB-2026-07-19-022 | accepted | embedded native domain views, local retrieval, stable presentation, and future player-memory boundary | A, B, C, D, E, F | decisions/2026-07-19-022-native-domain-views-retrieval-memory.md | pending |
+| SKMB-2026-07-19-023 | accepted | double-confirmed session deletion, managed conversation export, and visible chat copying | B, C, E, F, G | decisions/2026-07-19-023-session-actions-and-safe-export.md | pending |
 
 SKMB-2026-07-18-006 is implemented by `a0eaeff`, `19ab90f`, and `c6ca6bc`.
 Its deterministic clean-build and packaged-driver evidence is recorded in the
@@ -200,6 +201,10 @@ graphical evidence review all passed. Phase 4 is closed.
 | T64 | native_view_resolving | exact provider succeeds or providers exhaust/fail | native_view_ready or native_view_fallback | Publish the provider view, generic detached canvas, or readable fallback without changing Agent state | SKMB-2026-07-19-022 |
 | T65 | native_view_ready or native_view_fallback | row leaves viewport, screen closes, or generation changes | released | Release all live provider objects and hit regions on the client thread | SKMB-2026-07-19-022 |
 | T66 | knowledge_index_building | detached generation succeeds or fails | knowledge_index_ready or knowledge_index_degraded | Atomically publish the new index or retain the prior valid/local lexical path | SKMB-2026-07-19-022 |
+| T67 | Guide session visible | player requests deletion | deletion_confirming_first | Capture the selected session ID and show the first native confirmation without mutating state | SKMB-2026-07-19-023 |
+| T68 | deletion_confirming_first | player confirms | deletion_confirming_final | Show the irreversible/cancellation warning bound to the same captured session ID | SKMB-2026-07-19-023 |
+| T69 | deletion_confirming_final | player confirms or dismisses | session deleted or unchanged | Invoke the existing fenced close only after confirmation; either dismissal performs no action | SKMB-2026-07-19-023 |
+| T70 | export idle | player exports selected session | export_collecting then export_writing | Capture immutable live sequences, read every durable page, redact, and atomically publish under the managed export directory | SKMB-2026-07-19-023 |
 
 ## Invariants
 
@@ -280,6 +285,9 @@ graphical evidence review all passed. Phase 4 is closed.
 | I73 | Knowledge retrieval remains useful offline, preserves stable provenance/evidence, and never requires an embedding provider | SKMB-2026-07-19-022 |
 | I74 | Conversation history, derived summaries, player memory, and live game facts remain distinct; neither summary nor player memory satisfies factual evidence requirements | SKMB-2026-07-19-022 |
 | I75 | Durable player-memory writes require explicit player confirmation and remain disabled until their management UI and persistence contract are implemented | SKMB-2026-07-19-022 |
+| I76 | Session deletion requires two affirmative native confirmations bound to one captured session ID; dismissing either confirmation mutates nothing | SKMB-2026-07-19-023 |
+| I77 | Player conversation export has no arbitrary-path input, publishes only complete atomic files under `gameDir/tomewisp/exports`, and excludes credentials, normalized Tool data, checkpoints, model settings, and raw diagnostics | SKMB-2026-07-19-023 |
+| I78 | Clipboard writes are explicit local player actions over already-visible user or assistant text and are never exposed as an Agent Tool | SKMB-2026-07-19-023 |
 
 ## Fail Semantics
 
@@ -333,6 +341,8 @@ graphical evidence review all passed. Phase 4 is closed.
 | F46 | Table geometry is invalid or cannot preserve readable columns | Use the structural narrow key/value projection, then narration fallback if validation itself failed | SKMB-2026-07-19-022 |
 | F47 | A streaming semantic replacement measures shorter than its mutable row reservation | Preserve the reservation and viewport anchor until terminal reflow can occur without moving player-owned scroll | SKMB-2026-07-19-022 |
 | F48 | Knowledge indexing/reranking fails or embeddings are unavailable | Retain the last valid index or deterministic local lexical path and expose a source-scoped diagnostic; never fabricate empty results | SKMB-2026-07-19-022 |
+| F49 | Session export paging, confinement, redaction, or atomic publication fails | Publish no final file, remove temporary output where possible, retain conversation state, and show a localized failure | SKMB-2026-07-19-023 |
+| F50 | Clipboard access fails | Preserve the transcript and show a localized copy failure without exposing exception details | SKMB-2026-07-19-023 |
 
 ## Reviewed Statistical Defaults
 

@@ -3,6 +3,7 @@
 
 import argparse
 import json
+import os
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
@@ -25,6 +26,13 @@ GAME_STATE_STEPS = (
     ("tomewisp__inspect_game_state", {"section": "PLAYER", "query": "summary"}),
     ("tomewisp__inspect_game_state", {"section": "WORLD_QUERY", "query": "time"}),
 )
+
+RECIPE_OUTPUT = os.environ.get(
+    "TOMEWISP_E2E_RECIPE_OUTPUT", "minecraft:iron_block")
+RECIPE_ID = os.environ.get(
+    "TOMEWISP_E2E_RECIPE_ID", "minecraft:iron_block")
+RECIPE_LABEL = os.environ.get("TOMEWISP_E2E_RECIPE_LABEL", "铁块")
+RECIPE_SOURCE = os.environ.get("TOMEWISP_E2E_RECIPE_SOURCE")
 
 
 def recipe_reference(request, output_item=None, recipe_id=None, recipe_type=None):
@@ -54,9 +62,13 @@ def recipe_reference(request, output_item=None, recipe_id=None, recipe_type=None
                     continue
                 if recipe_type is not None and recipe.get("type") != recipe_type:
                     continue
-                reference = recipe["reference"]
-                return {key: reference[key]
-                        for key in ("sourceId", "generation", "recipeId")}
+                references = recipe.get("references", [recipe["reference"]])
+                reference = next((value for value in references
+                                  if RECIPE_SOURCE is None
+                                  or value.get("sourceId") == RECIPE_SOURCE), None)
+                if reference is not None:
+                    return {key: reference[key]
+                            for key in ("sourceId", "generation", "recipeId")}
         except (KeyError, IndexError, TypeError, json.JSONDecodeError):
             continue
     if matching_search is not None:
@@ -78,17 +90,72 @@ def recipe_reference(request, output_item=None, recipe_id=None, recipe_type=None
                      + json.dumps(observed_tools, separators=(",", ":")))
 
 
+def normalized_tool_values(request):
+    for message in request.get("messages", []):
+        if message.get("role") != "tool":
+            continue
+        try:
+            normalized = json.loads(message.get("content", ""))
+        except (TypeError, json.JSONDecodeError):
+            continue
+        if (isinstance(normalized, dict)
+                and normalized.get("status") == "success"
+                and isinstance(normalized.get("value"), dict)):
+            yield normalized["value"]
+
+
+def ingredient_check(request):
+    recipe = None
+    counts = {}
+    for value in normalized_tool_values(request):
+        candidate = value.get("recipe")
+        if isinstance(candidate, dict) and candidate.get("id") == RECIPE_ID:
+            recipe = candidate
+        candidate_counts = value.get("counts")
+        if isinstance(candidate_counts, dict):
+            counts = candidate_counts
+    if recipe is None:
+        raise ValueError("exact recipe result did not contain recipe details")
+
+    ingredients = []
+    for requirement in recipe.get("ingredients", []):
+        if not isinstance(requirement, dict):
+            continue
+        item_id = None
+        for alternative in requirement.get("alternatives", []):
+            if not isinstance(alternative, dict):
+                continue
+            resolved = alternative.get("resolvedItems", [])
+            if isinstance(resolved, list) and resolved:
+                item_id = resolved[0]
+                break
+            if alternative.get("kind") == "item":
+                item_id = alternative.get("id")
+                break
+        if not isinstance(item_id, str):
+            continue
+        ingredients.append({
+            "itemId": item_id,
+            "required": requirement.get("count", 0),
+            "available": counts.get(item_id, 0),
+            "label": item_id.split(":", 1)[-1].replace("_", " "),
+        })
+    if not ingredients:
+        raise ValueError("exact recipe result did not expose grounded item ingredients")
+    return ingredients
+
+
 def step(request, completed):
     if completed == 0:
-        return STEP_NAMES[completed], {"outputItem": "minecraft:iron_block"}
+        return STEP_NAMES[completed], {"outputItem": RECIPE_OUTPUT}
     if completed == 1:
         return STEP_NAMES[completed], recipe_reference(
-            request, "minecraft:iron_block", "minecraft:iron_block")
+            request, RECIPE_OUTPUT, RECIPE_ID)
     if completed == 2:
         return STEP_NAMES[completed], {}
     if completed == 3:
         reference = recipe_reference(
-            request, "minecraft:iron_block", "minecraft:iron_block")
+            request, RECIPE_OUTPUT, RECIPE_ID)
         reference["crafts"] = 1
         return STEP_NAMES[completed], reference
     return STEP_NAMES[completed], {}
@@ -96,7 +163,8 @@ def step(request, completed):
 
 def assistant_content(request, completed):
     if completed == 0:
-        return "# Phase 4 图形验收\n\n我会先查询 **铁块配方**，再核对库存和知识来源。"
+        return ("# Phase 4 图形验收\n\n我会先查询 **"
+                + RECIPE_LABEL + "配方**，再核对库存和知识来源。")
     if completed == 1:
         return """
 已获得搜索证据，现在读取精确配方。
@@ -107,26 +175,26 @@ def assistant_content(request, completed):
 """.strip()
     if completed == 2:
         reference = recipe_reference(
-            request, "minecraft:iron_block", "minecraft:iron_block")
+            request, RECIPE_OUTPUT, RECIPE_ID)
         component = {
             "schemaVersion": 1,
             "type": "recipe_grid",
             "properties": {
                 **reference,
-                "label": "铁块配方",
+                "label": RECIPE_LABEL + "配方",
             },
-            "fallback": "铁块配方已确认",
-            "narration": "铁块配方已确认，可打开配方查看器",
+            "fallback": RECIPE_LABEL + "配方已确认",
+            "narration": RECIPE_LABEL + "配方已确认，可打开配方查看器",
         }
         item_row = {
             "schemaVersion": 1,
             "type": "item_row",
             "properties": {
-                "items": [{"itemId": "minecraft:iron_block", "count": 1,
-                           "label": "铁块"}],
+                "items": [{"itemId": RECIPE_OUTPUT, "count": 1,
+                           "label": RECIPE_LABEL}],
             },
-            "fallback": "配方产出 1 个铁块",
-            "narration": "配方产出：一个铁块",
+            "fallback": "配方产出 1 个" + RECIPE_LABEL,
+            "narration": "配方产出：一个" + RECIPE_LABEL,
         }
         return "## 精确配方\n\n" + "```tomewisp-component\n" \
             + json.dumps(component, ensure_ascii=False, separators=(",", ":")) \
@@ -134,6 +202,13 @@ def assistant_content(request, completed):
             + json.dumps(item_row, ensure_ascii=False, separators=(",", ":")) \
             + "\n```\n\n下一步检查玩家库存。"
     if completed == 3:
+        component = {
+            "schemaVersion": 1,
+            "type": "ingredient_check",
+            "properties": {"ingredients": ingredient_check(request)},
+            "fallback": "已根据精确配方与库存快照核对材料",
+            "narration": "材料检查完成",
+        }
         return """
 - 库存快照
   - 已脱离 Minecraft 对象并安全捕获
@@ -141,16 +216,17 @@ def assistant_content(request, completed):
 - 下一步：计算一次制作
 
 ```tomewisp-component
-{"schemaVersion":1,"type":"ingredient_check","properties":{"ingredients":[{"itemId":"minecraft:iron_ingot","required":9,"available":0,"label":"铁锭"}]},"fallback":"需要 9 个铁锭，当前为 0","narration":"材料检查：缺少铁锭"}
+INGREDIENT_CHECK
 ```
 
 ```tomewisp-component
 {"schemaVersion":1,"type":"world_mutation","properties":{"command":"/give"},"fallback":"不支持的组件已安全降级为文本","narration":"不支持的组件"}
 ```
-""".strip()
+""".replace("INGREDIENT_CHECK", json.dumps(
+            component, ensure_ascii=False, separators=(",", ":"))).strip()
     if completed == 4:
         reference = recipe_reference(
-            request, "minecraft:iron_block", "minecraft:iron_block")
+            request, RECIPE_OUTPUT, RECIPE_ID)
         craftability = {
             "schemaVersion": 1,
             "type": "craftability_summary",
@@ -161,7 +237,7 @@ def assistant_content(request, completed):
                 "requestedCrafts": 1,
                 "maximumCrafts": 0,
             },
-            "fallback": "当前材料不足，无法制作铁块",
+            "fallback": "当前材料不足，无法制作" + RECIPE_LABEL,
             "narration": "制作检查完成：材料不足",
         }
         return """
@@ -250,19 +326,25 @@ def source_label(source_id):
     }.get(source_id, "游戏内知识来源")
 
 
-def game_state_assistant_content(completed):
+def game_state_assistant_content(completed, world_query_permission_denied=False):
     labels = (
         "运行概览", "已安装模组", "设置分组", "资源包与数据包",
         "光影状态", "F3 诊断类别", "玩家可见状态", "只读世界时间",
     )
     if completed < len(labels):
         return "## 游戏外层状态验收\n\n正在读取：**" + labels[completed] + "**。"
-    return """
+    world_query_line = (
+        "- 只读世界查询明确返回权限不足；Agent 保留该结构化失败并继续完成"
+        if world_query_permission_denied
+        else "- 已读取只读世界查询"
+    )
+    return f"""
 ## 游戏外层状态验收完成
 
 - 已读取运行环境和安装模组
 - 已读取设置、资源包、数据包与光影集成状态
-- 已读取 F3 类诊断、玩家可见状态和只读世界查询
+- 已读取 F3 类诊断和玩家可见状态
+{world_query_line}
 
 所有结果来自同一请求开始时脱离 Minecraft 对象的只读快照；不可用或不完整部分保持明确标注。
 """.strip()
@@ -271,6 +353,7 @@ def game_state_assistant_content(completed):
 def validated_game_state_results(turn_messages, allow_world_query_permission_failure=False):
     expected = [arguments["section"] for _, arguments in GAME_STATE_STEPS]
     observed = []
+    world_query_permission_denied = False
     for message in turn_messages:
         if message.get("role") != "tool":
             continue
@@ -281,6 +364,7 @@ def validated_game_state_results(turn_messages, allow_world_query_permission_fai
                         and len(observed) == len(expected) - 1
                         and result.get("code") == "permission_denied"):
                     observed.append(expected[-1])
+                    world_query_permission_denied = True
                     continue
                 raise ValueError("game-state tool returned failure")
             section = result["value"]["section"]
@@ -289,7 +373,7 @@ def validated_game_state_results(turn_messages, allow_world_query_permission_fai
         if len(observed) >= len(expected) or section != expected[len(observed)]:
             raise ValueError("game-state tool result section is out of order")
         observed.append(section)
-    return observed
+    return observed, world_query_permission_denied
 
 
 def content_events(content):
@@ -326,10 +410,12 @@ class Handler(BaseHTTPRequestHandler):
             "TomeWisp E2E 服务端模型反向工具验收")
         game_state = (user_text.startswith("TomeWisp E2E 游戏外层状态验收")
                       or server_client_tools)
+        world_query_permission_denied = False
         if game_state:
             try:
-                completed = len(validated_game_state_results(
-                    turn_messages, server_client_tools))
+                observed, world_query_permission_denied = validated_game_state_results(
+                    turn_messages, True)
+                completed = len(observed)
             except ValueError as failure:
                 self.send_error(422, str(failure))
                 return
@@ -338,7 +424,8 @@ class Handler(BaseHTTPRequestHandler):
                 "历史分页种子已记录。" if history_seed
                 else "服务端模型已完成客户端状态读取；无权限的只读世界查询作为工具失败返回后，Agent 仍正常完成。"
                 if server_client_tools and completed == len(GAME_STATE_STEPS)
-                else game_state_assistant_content(completed) if game_state
+                else game_state_assistant_content(
+                    completed, world_query_permission_denied) if game_state
                 else assistant_content(request, completed))
         except ValueError as failure:
             self.send_error(422, str(failure))

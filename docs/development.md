@@ -103,11 +103,12 @@ tool. Model providers and future online knowledge tools reuse the JDK HTTP
 transport mechanics but retain separate credentials, permissions, codecs, and
 evidence policy.
 
-The guide screen's compact model control cycles through the selected session's
-available named profiles and the server model when offered. Switching during
-an active request changes only the next request; the status line continues to
-show the model captured by the running request. Commands provide the same
-semantics:
+The guide screen's compact model control opens an explicit scrollable selector
+for the selected session's named profiles and the server model when offered;
+it never changes the model merely by cycling a button. Returning from settings
+refreshes capabilities automatically. Switching during an active request
+changes only the next request; the status line continues to show the model
+captured by the running request. Commands provide the same semantics:
 
 ```text
 /guide model list
@@ -405,6 +406,20 @@ sources. The report records redacted semantic/component/fallback counts and
 history-window/cache metrics, and the script rejects any outcome other than
 `COMPLETED`.
 
+The default retained recipe is `minecraft:iron_block`. A compatible mod recipe
+can exercise native viewer embedding without changing the fixture, for example:
+
+```bash
+TOMEWISP_E2E_RECIPE_OUTPUT=farmersdelight:apple_cider \
+TOMEWISP_E2E_RECIPE_ID=farmersdelight:cooking/apple_cider \
+TOMEWISP_E2E_RECIPE_LABEL=苹果酒 \
+./scripts/run-real-client-e2e.sh fabric
+```
+
+These variables affect only the deterministic loopback scenario. The exact
+reference is still discovered from a real current recipe-provider generation;
+the fixture never fabricates the viewer handle.
+
 Set `TOMEWISP_E2E_HISTORY_SEED_REQUESTS` to create sequential durable seed
 requests before the reported scenario. `TOMEWISP_E2E_MIN_HISTORY_REQUESTS`
 asserts the durable total; `TOMEWISP_E2E_REQUIRE_PAGED_HISTORY=true` additionally
@@ -447,6 +462,27 @@ explanation in normal mode. Technical evidence metadata and normalized JSON are
 only representable when the local default-off Debug Mode is enabled. No browser
 is launched. Session switches and disconnect cleanup remove stale detail state.
 
+Deleting a session from the Guide screen uses two native confirmations bound to
+the originally selected session; the second warning states that durable history
+is removed and any active request is stopped. User and assistant rows expose an
+explicit local clipboard action. The Export action captures the complete
+current session in request/timeline order and atomically writes a UTF-8 text
+file below `tomewisp/exports` in the Minecraft game directory. The writer has no
+path input, rejects symlink escape, and omits normalized Tool payloads,
+checkpoints, model settings, raw diagnostics, and credential-shaped text.
+
+Validated inline `recipe_grid` components bind only to the complete normalized
+recipe result from their same-request Tool invocation. Visible bindings enter a
+client-thread-only `NativeDomainView` lifecycle and are released when their row
+leaves the viewport or the Screen closes. JEI 26.2 exact references re-resolve
+against the current provider generation and embed its public
+`IRecipeLayoutDrawable` (`drawRecipe`, overlays/tooltips, and `tick`). Oversized,
+stale, missing, or failed layouts fall through to TomeWisp's neutral labelled
+slot canvas. REI 26.2 currently exposes category widget construction but no
+verified exact durable-reference re-resolution contract used by TomeWisp, so
+its native provider records `rei_exact_embedding_unsupported` and uses the same
+neutral fallback instead of claiming or approximating a mod-owned screen.
+
 If the selected model is unavailable, the screen still opens and shows the
 configuration/capability state. Client profiles remain at
 `config/tomewisp/models.json`; the Models page accepts a transient masked API
@@ -461,6 +497,32 @@ details. Client recipe-display facts are `CLIENT_VISIBLE`; server RecipeManager
 facts are `SERVER_AUTHORITATIVE`. An unloaded knowledge snapshot is `UNKNOWN`,
 not proof that no documents exist. The result normalizer rejects any
 `EvidenceBearing` success whose evidence list is empty.
+
+`tomewisp:resolve_resource` is the unified player-visible game-content catalog,
+not only an item-name converter. Its optional kind filter covers `item`,
+`block`, `effect`, `potion`, `entity`, and `attribute`. It searches active-locale
+display text, exact IDs and paths, translation-key aliases, bound public tags,
+default item component IDs, and a small detached map of public static metadata.
+Exact identity/name/path matches remain ahead of token and bounded edit-distance
+matches; all ties are deterministic and results are not silently truncated.
+An empty catalog match is an evidenced successful observation, while a missing
+registry capture is an explicit `missing_context` failure.
+
+The catalog's `COMPLETE` claim is scoped to registered entry types and the
+listed detached fields. It does not enumerate creative-tab/viewer item-stack
+variants or inspect component values such as written-book contents. Questions
+such as “which books discuss poison” resolve the mechanic when useful and then
+search the indexed knowledge corpus; answers say “all indexed matches” rather
+than claiming every possible book or item variant in the installation.
+
+Both client and server capture use the same common catalog projection. The
+capture helper re-checks owning-thread access, copies registry values into
+immutable records immediately, and the Tool searches only those records. A
+server-hosted model can request the player's client catalog through the existing
+client Tool bridge. This catalog never scans world blocks, nearby entities,
+containers, inventories, arbitrary paths, private fields, or component values.
+A registered book may therefore match as an `item`; its pages or guide text are
+not catalog metadata and remain exclusively under `search_knowledge`.
 
 The Phase 3A recipe workflow is:
 
@@ -534,6 +596,23 @@ Patchouli is read directly from active client resource packs, without a binary
 dependency. Locale precedence is active locale, `zh_cn`, then `en_us`.
 Config/advancement-gated entries whose visibility cannot be proven are excluded.
 Text, item/recipe links, and embedded dense or sparse multiblocks are indexed.
+
+Each successful knowledge reload builds one immutable, in-memory index and
+publishes it atomically with the matching snapshot evidence. Search first
+protects exact document and linked item/recipe identities, then weights stable
+path aliases, source metadata, titles and Markdown headings before applying a
+Unicode-aware BM25-style score to section text. A result retains the exact
+`sourceId`/`documentId` pair used by `get_knowledge_document` and adds a stable
+heading-derived `sectionId` plus an evidenced excerpt. Documents without
+headings use the stable `document` section.
+
+This index deliberately remains pure Java. Knowledge generations already live
+as detached resource snapshots, so copying them into SQLite FTS would create a
+second mutation and failure lifecycle without adding durability. The active
+retriever is behind a narrow common interface so a later optional embedding or
+reranking adapter can compose with the local candidates, but exact identities,
+provenance, evidence and the deterministic offline path cannot be replaced by
+an external score.
 
 FTB Quests is optional. Its public API is resolved through allowlisted public
 method handles; private reflection is never used. Only chapters and quests the

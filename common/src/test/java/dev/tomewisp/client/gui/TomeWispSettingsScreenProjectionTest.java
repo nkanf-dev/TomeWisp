@@ -65,6 +65,21 @@ final class TomeWispSettingsScreenProjectionTest {
                 .calculate(480, 320).showBack());
     }
 
+    @Test
+    void screenshotControlsAreInertUnlessTheExplicitE2ePropertyIsEnabled() {
+        String key = dev.tomewisp.guide.e2e.GuideClientE2EConfig.ENABLED;
+        String prior = System.getProperty(key);
+        try {
+            System.clearProperty(key);
+            assertFalse(TomeWispSettingsScreen.e2eControlsEnabled());
+            System.setProperty(key, "true");
+            assertTrue(TomeWispSettingsScreen.e2eControlsEnabled());
+        } finally {
+            if (prior == null) System.clearProperty(key);
+            else System.setProperty(key, prior);
+        }
+    }
+
     private static ModelProfileDefinition profile(String id) {
         return new ModelProfileDefinition(
                 id,

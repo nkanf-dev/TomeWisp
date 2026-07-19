@@ -4,6 +4,7 @@ import dev.tomewisp.capability.CapabilityPolicy;
 import dev.tomewisp.settings.capability.CapabilitySettingsView;
 import dev.tomewisp.settings.capability.RecipeSettingsView;
 import dev.tomewisp.tool.ToolResult;
+import dev.tomewisp.tool.RegisteredTool;
 import dev.tomewisp.tool.config.ToolFamilyConfig;
 import dev.tomewisp.tool.config.ToolFamilyId;
 import dev.tomewisp.tool.config.ToolFamilySettingsStore;
@@ -24,12 +25,22 @@ public final class ToolSettingsBackend {
     private final ToolSourceKindRegistry registry;
     private final Supplier<CapabilitySettingsView> capabilities;
     private final Supplier<RecipeSettingsView> recipes;
+    private final List<RegisteredTool> registrations;
 
     public ToolSettingsBackend(
             Map<ToolFamilyId, ToolFamilySettingsStore> stores,
             ToolSourceKindRegistry registry,
             Supplier<CapabilitySettingsView> capabilities,
             Supplier<RecipeSettingsView> recipes) {
+        this(stores, registry, capabilities, recipes, List.of());
+    }
+
+    public ToolSettingsBackend(
+            Map<ToolFamilyId, ToolFamilySettingsStore> stores,
+            ToolSourceKindRegistry registry,
+            Supplier<CapabilitySettingsView> capabilities,
+            Supplier<RecipeSettingsView> recipes,
+            List<RegisteredTool> registrations) {
         Objects.requireNonNull(stores, "stores");
         EnumMap<ToolFamilyId, ToolFamilySettingsStore> copy = new EnumMap<>(ToolFamilyId.class);
         copy.putAll(stores);
@@ -49,10 +60,12 @@ public final class ToolSettingsBackend {
         this.registry = Objects.requireNonNull(registry, "registry");
         this.capabilities = Objects.requireNonNull(capabilities, "capabilities");
         this.recipes = Objects.requireNonNull(recipes, "recipes");
+        this.registrations = List.copyOf(registrations);
     }
 
     public ToolSettingsView currentView() {
-        return ToolSettingsView.project(currentConfigs(), registry, capabilities.get(), recipes.get());
+        return ToolSettingsView.project(
+                currentConfigs(), registry, capabilities.get(), recipes.get(), registrations);
     }
 
     public State currentState() {
@@ -241,7 +254,7 @@ public final class ToolSettingsBackend {
                 current.unknownDisabledSkills());
         return new State(
                 ToolSettingsView.project(
-                        currentConfigs(), registry, projectedCapabilities, recipes.get()),
+                        currentConfigs(), registry, projectedCapabilities, recipes.get(), registrations),
                 candidate);
     }
 

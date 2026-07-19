@@ -21,7 +21,6 @@ import dev.tomewisp.context.RecipeOutputSnapshot;
 import dev.tomewisp.context.RecipeProcessingSnapshot;
 import dev.tomewisp.context.RecipeReference;
 import dev.tomewisp.context.RecipeSnapshot;
-import dev.tomewisp.context.RegistryEntrySnapshot;
 import dev.tomewisp.context.RegistrySnapshot;
 import dev.tomewisp.context.ToolInvocationContext;
 import dev.tomewisp.context.game.ObservableGameStateSnapshot;
@@ -103,7 +102,7 @@ public final class MinecraftContextCapture {
                 ? Optional.of(capturePlayer(serverPlayer, capturedAt))
                 : Optional.empty();
         Optional<RegistrySnapshot> registries = capabilities.contains(ContextCapability.REGISTRIES)
-                ? Optional.of(captureRegistries(capturedAt))
+                ? Optional.of(captureRegistries(source, capturedAt))
                 : Optional.empty();
         Optional<RecipeSnapshot> recipes = capabilities.contains(ContextCapability.RECIPES)
                 ? Optional.of(captureRecipes(source, capturedAt))
@@ -292,33 +291,14 @@ public final class MinecraftContextCapture {
                 evidence);
     }
 
-    private RegistrySnapshot captureRegistries(java.time.Instant capturedAt) {
-        List<RegistryEntrySnapshot> entries = new ArrayList<>();
-        BuiltInRegistries.ITEM.stream().forEach(item -> {
-            Identifier id = Objects.requireNonNull(BuiltInRegistries.ITEM.getKey(item));
-            entries.add(new RegistryEntrySnapshot(
-                    id.toString(),
-                    "item",
-                    new ItemStack(item).getHoverName().getString(),
-                    id.getNamespace(),
-                    REGISTRY_PROVENANCE));
-        });
-        BuiltInRegistries.BLOCK.stream().forEach(block -> {
-            Identifier id = Objects.requireNonNull(BuiltInRegistries.BLOCK.getKey(block));
-            entries.add(new RegistryEntrySnapshot(
-                    id.toString(),
-                    "block",
-                    block.getName().getString(),
-                    id.getNamespace(),
-                    REGISTRY_PROVENANCE));
-        });
-        entries.sort(Comparator.comparing(RegistryEntrySnapshot::id)
-                .thenComparing(RegistryEntrySnapshot::kind));
+    private RegistrySnapshot captureRegistries(
+            CommandSourceStack source, java.time.Instant capturedAt) {
         return new RegistrySnapshot(evidence(
                 DataCompleteness.COMPLETE,
                 capturedAt,
                 "minecraft:registry",
-                REGISTRY_PROVENANCE), entries);
+                REGISTRY_PROVENANCE), RegistryCatalogCapture.capture(
+                        REGISTRY_PROVENANCE, () -> source.getServer().isSameThread()));
     }
 
     private RecipeSnapshot captureRecipes(

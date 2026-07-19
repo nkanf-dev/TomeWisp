@@ -1,6 +1,8 @@
 package dev.tomewisp.settings.tool;
 
 import com.google.gson.JsonObject;
+import dev.tomewisp.agent.tool.ToolNameCodec;
+import dev.tomewisp.agent.tool.ToolSchemaGenerator;
 import dev.tomewisp.capability.CapabilitySettingsEntry;
 import dev.tomewisp.settings.capability.CapabilitySettingsView;
 import dev.tomewisp.settings.capability.RecipeSettingsView;
@@ -9,6 +11,7 @@ import dev.tomewisp.tool.config.ToolFamilyId;
 import dev.tomewisp.tool.config.ToolSourceDefinition;
 import dev.tomewisp.tool.config.ToolSourceKind;
 import dev.tomewisp.tool.config.ToolSourceKindRegistry;
+import dev.tomewisp.tool.RegisteredTool;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.EnumMap;
@@ -50,6 +53,7 @@ public record ToolSettingsView(List<Family> families) {
                     false,
                     id.memberToolIds(),
                     List.of(),
+                    List.of(),
                     id == ToolFamilyId.RECIPES
                             ? new RecipeDetail("ALL_KNOWN", "auto", true, List.of(), Set.of())
                             : null));
@@ -62,16 +66,32 @@ public record ToolSettingsView(List<Family> families) {
             ToolSourceKindRegistry registry,
             CapabilitySettingsView capabilities,
             RecipeSettingsView recipes) {
+        return project(configs, registry, capabilities, recipes, List.of());
+    }
+
+    static ToolSettingsView project(
+            Map<ToolFamilyId, ToolFamilyConfig> configs,
+            ToolSourceKindRegistry registry,
+            CapabilitySettingsView capabilities,
+            RecipeSettingsView recipes,
+            List<RegisteredTool> registrations) {
         Objects.requireNonNull(configs, "configs");
         Objects.requireNonNull(registry, "registry");
         Objects.requireNonNull(capabilities, "capabilities");
         Objects.requireNonNull(recipes, "recipes");
+        registrations = List.copyOf(registrations);
 
         Map<String, CapabilitySettingsEntry> capabilityById = new LinkedHashMap<>();
         for (CapabilitySettingsEntry entry : capabilities.catalog().entries()) {
             capabilityById.put(entry.id(), entry);
         }
         Set<String> deniedTools = capabilities.policy().disabledTools();
+        Map<String, RegisteredTool> registrationById = registrations.stream()
+                .collect(java.util.stream.Collectors.toUnmodifiableMap(
+                        value -> value.tool().descriptor().id(), value -> value));
+        ToolNameCodec aliases = registrations.isEmpty() ? null : new ToolNameCodec(
+                registrations.stream().map(value -> value.tool().descriptor().id()).toList());
+        ToolSchemaGenerator schemas = new ToolSchemaGenerator();
         List<Family> projected = new ArrayList<>();
         for (ToolFamilyId id : ToolFamilyId.values()) {
             ToolFamilyConfig config = Objects.requireNonNull(
@@ -87,6 +107,15 @@ public record ToolSettingsView(List<Family> families) {
             List<Source> sources = config.sources().stream()
                     .map(source -> source(source, registry, recipes))
                     .toList();
+            List<Member> members = id.memberToolIds().stream()
+                    .map(toolId -> member(
+                            toolId,
+                            capabilityById.get(toolId),
+                            registrationById.get(toolId),
+                            aliases,
+                            schemas,
+                            deniedTools))
+                    .toList();
             projected.add(new Family(
                     id,
                     titleKey(id),
@@ -94,10 +123,55 @@ public record ToolSettingsView(List<Family> families) {
                     config.enabled() && policyEnabled,
                     available,
                     id.memberToolIds(),
+                    members,
                     sources,
                     id == ToolFamilyId.RECIPES ? RecipeDetail.from(recipes) : null));
         }
         return new ToolSettingsView(projected);
+    }
+
+    private static Member member(
+            String toolId,
+            CapabilitySettingsEntry capability,
+            RegisteredTool registration,
+            ToolNameCodec aliases,
+            ToolSchemaGenerator schemas,
+            Set<String> deniedTools) {
+        String fallbackKey = "settings.tomewisp.capability.tool."
+                + toolId.replace(':', '_').replace('/', '_').replace('-', '_');
+        String titleKey = capability == null ? fallbackKey + ".title" : capability.titleKey();
+        String descriptionKey = capability == null
+                ? fallbackKey + ".description" : capability.descriptionKey();
+        if (registration == null) {
+            return new Member(
+                    toolId, null, titleKey, descriptionKey, "", false, false,
+                    "", Set.of(), "", "", null, null, "tool_not_registered");
+        }
+        var descriptor = registration.tool().descriptor();
+        JsonObject input = null;
+        JsonObject output = null;
+        String diagnostic = null;
+        try {
+            input = schemas.generate(descriptor.inputType());
+            output = schemas.generateOutput(descriptor.outputType());
+        } catch (IllegalArgumentException unsupported) {
+            diagnostic = "tool_schema_unsupported";
+        }
+        return new Member(
+                toolId,
+                aliases == null ? null : aliases.encode(toolId),
+                titleKey,
+                descriptionKey,
+                descriptor.description(),
+                capability == null || capability.available(),
+                !deniedTools.contains(toolId) && (capability == null || capability.enabled()),
+                descriptor.access().name(),
+                descriptor.requiredContext(),
+                registration.providerId(),
+                "screen.tomewisp.settings.tools.execution.client_bridgeable",
+                input,
+                output,
+                diagnostic);
     }
 
     private static Source source(
@@ -144,6 +218,7 @@ public record ToolSettingsView(List<Family> families) {
             boolean enabled,
             boolean available,
             List<String> memberToolIds,
+            List<Member> members,
             List<Source> sources,
             RecipeDetail recipeDetail) {
         public Family {
@@ -153,6 +228,7 @@ public record ToolSettingsView(List<Family> families) {
                 throw new IllegalArgumentException("Tool title and description keys are required");
             }
             memberToolIds = List.copyOf(memberToolIds);
+            members = List.copyOf(members);
             sources = List.copyOf(sources);
             if (id == ToolFamilyId.RECIPES && recipeDetail == null) {
                 throw new IllegalArgumentException("Recipes Tool requires recipe detail");
@@ -164,6 +240,44 @@ public record ToolSettingsView(List<Family> families) {
 
         public Optional<RecipeDetail> recipes() {
             return Optional.ofNullable(recipeDetail);
+        }
+    }
+
+    /** Credential-free callable Tool metadata captured from the trusted runtime registry. */
+    public record Member(
+            String id,
+            String modelAlias,
+            String titleKey,
+            String descriptionKey,
+            String descriptorDescription,
+            boolean available,
+            boolean enabled,
+            String access,
+            Set<dev.tomewisp.context.ContextCapability> requiredContext,
+            String providerId,
+            String executionKey,
+            JsonObject inputSchema,
+            JsonObject outputSchema,
+            String schemaDiagnostic) {
+        public Member {
+            Objects.requireNonNull(id, "id");
+            Objects.requireNonNull(titleKey, "titleKey");
+            Objects.requireNonNull(descriptionKey, "descriptionKey");
+            descriptorDescription = descriptorDescription == null ? "" : descriptorDescription;
+            access = access == null ? "" : access;
+            requiredContext = Set.copyOf(requiredContext);
+            providerId = providerId == null ? "" : providerId;
+            executionKey = executionKey == null ? "" : executionKey;
+            inputSchema = inputSchema == null ? null : inputSchema.deepCopy();
+            outputSchema = outputSchema == null ? null : outputSchema.deepCopy();
+        }
+
+        @Override public JsonObject inputSchema() {
+            return inputSchema == null ? null : inputSchema.deepCopy();
+        }
+
+        @Override public JsonObject outputSchema() {
+            return outputSchema == null ? null : outputSchema.deepCopy();
         }
     }
 

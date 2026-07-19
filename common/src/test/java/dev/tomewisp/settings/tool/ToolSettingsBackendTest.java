@@ -15,6 +15,8 @@ import dev.tomewisp.recipe.config.RecipeClientConfig;
 import dev.tomewisp.settings.capability.CapabilitySettingsView;
 import dev.tomewisp.settings.capability.RecipeSettingsView;
 import dev.tomewisp.tool.ToolResult;
+import dev.tomewisp.tool.RegisteredTool;
+import dev.tomewisp.tool.builtin.ResolveResourceTool;
 import dev.tomewisp.tool.config.ToolConfigException;
 import dev.tomewisp.tool.config.ToolFamilyConfig;
 import dev.tomewisp.tool.config.ToolFamilyId;
@@ -55,6 +57,13 @@ final class ToolSettingsBackendTest {
         assertTrue(detail.preferredViewerAvailable());
         assertEquals("viewer:rei", detail.discoveredSources().getFirst().id());
         assertTrue(view.find(ToolFamilyId.GUIDES).orElseThrow().recipes().isEmpty());
+        ToolSettingsView.Member resolver = view.find(ToolFamilyId.RESOURCE_RESOLUTION)
+                .orElseThrow().members().getFirst();
+        assertEquals("test:provider", resolver.providerId());
+        assertEquals("tomewisp__resolve_resource", resolver.modelAlias());
+        assertEquals("string", resolver.inputSchema().getAsJsonObject("properties")
+                .getAsJsonObject("query").get("type").getAsString());
+        assertTrue(resolver.outputSchema().has("properties"));
     }
 
     @Test
@@ -196,7 +205,12 @@ final class ToolSettingsBackendTest {
                 Set.of("future:viewer"),
                 true);
         return new Fixture(
-                new ToolSettingsBackend(stores, registry, capabilities::get, () -> recipes),
+                new ToolSettingsBackend(
+                        stores,
+                        registry,
+                        capabilities::get,
+                        () -> recipes,
+                        List.of(new RegisteredTool("test:provider", new ResolveResourceTool()))),
                 capabilities);
     }
 

@@ -21,9 +21,9 @@ import dev.tomewisp.context.RecipeOutputSnapshot;
 import dev.tomewisp.context.RecipeProcessingSnapshot;
 import dev.tomewisp.context.RecipeReference;
 import dev.tomewisp.context.RecipeSnapshot;
-import dev.tomewisp.context.RegistryEntrySnapshot;
 import dev.tomewisp.context.RegistrySnapshot;
 import dev.tomewisp.context.ToolInvocationContext;
+import dev.tomewisp.context.minecraft.RegistryCatalogCapture;
 import dev.tomewisp.context.game.ObservableGameStateSnapshot;
 import dev.tomewisp.context.game.ObservableGameStateSnapshot.DiagnosticValue;
 import dev.tomewisp.context.game.ObservableGameStateSnapshot.OptionValue;
@@ -103,7 +103,7 @@ public final class ClientContextCapture {
                 ? Optional.of(player(player, client, capturedAt))
                 : Optional.empty();
         Optional<RegistrySnapshot> registries = capabilities.contains(ContextCapability.REGISTRIES)
-                ? Optional.of(registries(capturedAt))
+                ? Optional.of(registries(client, capturedAt))
                 : Optional.empty();
         Optional<RecipeSnapshot> recipes = capabilities.contains(ContextCapability.RECIPES)
                 ? Optional.of(recipes(player, client, capturedAt))
@@ -472,27 +472,13 @@ public final class ClientContextCapture {
                 evidence);
     }
 
-    private RegistrySnapshot registries(Instant capturedAt) {
-        List<RegistryEntrySnapshot> entries = new ArrayList<>();
-        BuiltInRegistries.ITEM.stream().forEach(item -> {
-            Identifier id = BuiltInRegistries.ITEM.getKey(item);
-            entries.add(new RegistryEntrySnapshot(
-                    id.toString(), "item", new ItemStack(item).getHoverName().getString(),
-                    id.getNamespace(), "minecraft:client_registry"));
-        });
-        BuiltInRegistries.BLOCK.stream().forEach(block -> {
-            Identifier id = BuiltInRegistries.BLOCK.getKey(block);
-            entries.add(new RegistryEntrySnapshot(
-                    id.toString(), "block", block.getName().getString(),
-                    id.getNamespace(), "minecraft:client_registry"));
-        });
-        entries.sort(Comparator.comparing(RegistryEntrySnapshot::id)
-                .thenComparing(RegistryEntrySnapshot::kind));
+    private RegistrySnapshot registries(Minecraft client, Instant capturedAt) {
         return new RegistrySnapshot(evidence(
                 DataCompleteness.COMPLETE,
                 capturedAt,
                 "minecraft:client_registry",
-                "minecraft:client_registry"), entries);
+                "minecraft:client_registry"),
+                RegistryCatalogCapture.capture("minecraft:client_registry", client::isSameThread));
     }
 
     private RecipeSnapshot recipes(LocalPlayer player, Minecraft client, Instant capturedAt) {

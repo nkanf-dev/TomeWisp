@@ -20,6 +20,20 @@ final class KnowledgeRegistryTest {
 
         assertEquals("first", registry.snapshot().documents().getFirst().title());
         assertEquals("provider_failure", registry.diagnostics().getFirst().code());
+        assertEquals("first", registry.search("minecraft:iron_ingot", null)
+                .results().getFirst().title());
+    }
+
+    @Test
+    void searchResultsAndEvidenceComeFromOnePublishedGeneration() {
+        KnowledgeRegistry registry = new KnowledgeRegistry();
+        KnowledgeDocument first = document("first");
+        assertTrue(registry.reload(List.of(provider("guide", first))));
+
+        KnowledgeSearch search = registry.search("minecraft:iron_ingot", null);
+
+        assertEquals("first", search.results().getFirst().title());
+        assertEquals(first.evidence(), search.evidence().getFirst());
     }
 
     @Test

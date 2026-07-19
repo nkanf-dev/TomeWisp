@@ -210,7 +210,8 @@ public final class TomeWispNeoForgeClient {
                     gson,
                     client::stop,
                     secret == null || secret.isBlank() ? java.util.Set.of() : java.util.Set.of(secret),
-                    contexts::recipeProviderReadiness);
+                    contexts::recipeProviderReadiness,
+                    settings == null ? null : settings.settings());
             NeoForge.EVENT_BUS.addListener((ClientTickEvent.Post event) -> {
                 if (client.player != null) controller.tick(client.player.getUUID());
             });

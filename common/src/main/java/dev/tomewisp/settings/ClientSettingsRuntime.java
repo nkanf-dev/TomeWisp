@@ -255,7 +255,11 @@ public record ClientSettingsRuntime(
                 }
             }
             ToolSettingsBackend toolSettings = new ToolSettingsBackend(
-                    toolStores, sourceKinds, capabilities::currentView, recipes::currentView);
+                    toolStores,
+                    sourceKinds,
+                    capabilities::currentView,
+                    recipes::currentView,
+                    product.tools().registrations());
             for (ToolFamilyId family : List.of(ToolFamilyId.RECIPES, ToolFamilyId.GUIDES)) {
                 ToolResult<Boolean> applied = applyToolRuntime(
                         toolSettings.current(family), recipes, product, configDirectory);

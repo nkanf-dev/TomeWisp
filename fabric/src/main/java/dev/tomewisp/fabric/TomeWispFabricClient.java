@@ -193,7 +193,8 @@ public final class TomeWispFabricClient implements ClientModInitializer {
                     gson,
                     () -> Minecraft.getInstance().stop(),
                     secret == null || secret.isBlank() ? java.util.Set.of() : java.util.Set.of(secret),
-                    contexts::recipeProviderReadiness);
+                    contexts::recipeProviderReadiness,
+                    settings == null ? null : settings.settings());
             ClientTickEvents.END_CLIENT_TICK.register(client -> {
                 if (client.player != null) controller.tick(client.player.getUUID());
             });

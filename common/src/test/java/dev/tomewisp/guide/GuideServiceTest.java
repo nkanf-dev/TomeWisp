@@ -149,6 +149,42 @@ final class GuideServiceTest {
         assertEquals(1, remote.cancelled.size());
     }
 
+    @Test
+    void capturesTheSelectedSessionForPlayerInitiatedExport() {
+        FakeLocal local = new FakeLocal();
+        GuideService service = service(local, new FakeRemote(false));
+        UUID request = success(service.ask("export this").join());
+        local.complete(request, "exported answer");
+
+        dev.tomewisp.guide.export.GuideSessionExportSnapshot exported = success(
+                service.captureSelectedSessionForExport().join());
+
+        assertEquals("main", exported.sessionId());
+        assertEquals(Instant.EPOCH, exported.capturedAt());
+        assertEquals(List.of("export this"), exported.requests().stream()
+                .map(dev.tomewisp.guide.export.GuideSessionExportSnapshot.Request::userMessage)
+                .toList());
+        assertEquals("exported answer",
+                ((dev.tomewisp.guide.export.GuideSessionExportSnapshot.Entry.Assistant)
+                        exported.requests().getFirst().timeline().getFirst()).text());
+    }
+
+    @Test
+    void confirmedSessionCloseCancelsItsActiveRequestAndFencesLateOutput() {
+        FakeLocal local = new FakeLocal();
+        GuideService service = service(local, new FakeRemote(false));
+        UUID request = success(service.ask("active session").join());
+
+        assertTrue(success(service.closeSession("main").join()));
+        assertTrue(local.cancelled.contains("main"));
+        assertEquals(List.of("main"), service.snapshot().sessions().stream()
+                .map(GuideSessionSnapshot::sessionId).toList());
+        assertTrue(service.snapshot().sessions().getFirst().requests().isEmpty());
+
+        local.complete(request, "late answer");
+        assertTrue(service.snapshot().sessions().getFirst().requests().isEmpty());
+    }
+
     private static GuideService service(FakeLocal local, FakeRemote remote) {
         return new GuideService(
                 ACTOR,

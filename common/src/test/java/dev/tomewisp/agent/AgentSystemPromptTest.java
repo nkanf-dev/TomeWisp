@@ -11,7 +11,9 @@ final class AgentSystemPromptTest {
         String prompt = AgentSystemPrompt.compose("- inspect-game-state: Inspect settings");
 
         assertTrue(prompt.contains("Do not call tools for greetings"));
-        assertTrue(prompt.contains("Resolve a natural/localized name first"));
+        assertTrue(prompt.contains("game-content catalog Tool"));
+        assertTrue(prompt.contains("aliases, tags, components, or public metadata"));
+        assertTrue(prompt.contains("book item is catalog content"));
         assertTrue(prompt.contains("at most one materially corrected call"));
         assertTrue(prompt.contains("Never repeat a successful call"));
         assertTrue(prompt.contains("stop calling tools"));

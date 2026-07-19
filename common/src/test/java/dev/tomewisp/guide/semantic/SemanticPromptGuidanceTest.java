@@ -19,6 +19,7 @@ final class SemanticPromptGuidanceTest {
         assertTrue(guidance.contains("\"schemaVersion\":1"));
         assertTrue(guidance.contains("Do not add envelope or properties fields"));
         assertTrue(guidance.contains("never invent or repair them"));
+        assertTrue(guidance.contains("Never author slots, coordinates, textures, widget names"));
         assertTrue(guidance.contains("Do not emit HTML"));
         assertFalse(guidance.contains("apiKey"));
         assertFalse(guidance.contains("reasoning"));

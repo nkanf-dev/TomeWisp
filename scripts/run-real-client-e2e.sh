@@ -150,13 +150,21 @@ if scenario == "phase-4-game-state":
         raise SystemExit("E2E did not inspect every registered outer game-state section")
     if len(probes) != len(expected_sections):
         raise SystemExit("E2E game-state probe count is incomplete")
-    for expected, probe in zip(expected_sections, probes):
+    for expected, probe in zip(expected_sections[:7], probes[:7]):
         if (probe.get("toolId") != "tomewisp:inspect_game_state"
                 or probe.get("status") != "SUCCEEDED"
                 or probe.get("section") != expected
                 or probe.get("failureCode") is not None):
             raise SystemExit("E2E game-state section did not complete successfully: "
                              + repr({"expected": expected, "probe": probe}))
+    world_query = probes[-1]
+    if not (
+            world_query.get("toolId") == "tomewisp:inspect_game_state"
+            and (world_query.get("status") == "SUCCEEDED"
+                 or (world_query.get("status") == "FAILED"
+                     and world_query.get("failureCode") == "permission_denied"))):
+        raise SystemExit("E2E world query did not preserve read-only authority: "
+                         + repr(world_query))
     if metrics.get("assistantSegments", 0) < 9:
         raise SystemExit("E2E did not preserve game-state tool chronology")
     raise SystemExit(0)

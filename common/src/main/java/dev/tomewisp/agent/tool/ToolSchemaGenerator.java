@@ -17,39 +17,44 @@ import java.util.Set;
 
 public final class ToolSchemaGenerator {
     public JsonObject generate(Class<?> inputType) {
-        return schema(inputType, new HashSet<>());
+        return schema(inputType, new HashSet<>(), true);
     }
 
-    private JsonObject schema(Type type, Set<Type> visiting) {
+    /** Generates the serialized result shape without claiming every nullable result field is present. */
+    public JsonObject generateOutput(Class<?> outputType) {
+        return schema(outputType, new HashSet<>(), false);
+    }
+
+    private JsonObject schema(Type type, Set<Type> visiting, boolean inputContract) {
         if (type instanceof Class<?> raw) {
-            return classSchema(raw, visiting);
+            return classSchema(raw, visiting, inputContract);
         }
         if (type instanceof ParameterizedType parameterized) {
             Class<?> raw = (Class<?>) parameterized.getRawType();
             Type[] arguments = parameterized.getActualTypeArguments();
             if (raw == Optional.class) {
-                return schema(arguments[0], visiting);
+                return schema(arguments[0], visiting, inputContract);
             }
             if (Collection.class.isAssignableFrom(raw)) {
                 JsonObject result = typed("array");
-                result.add("items", schema(arguments[0], visiting));
+                result.add("items", schema(arguments[0], visiting, inputContract));
                 return result;
             }
             if (Map.class.isAssignableFrom(raw) && arguments[0] == String.class) {
                 JsonObject result = typed("object");
-                result.add("additionalProperties", schema(arguments[1], visiting));
+                result.add("additionalProperties", schema(arguments[1], visiting, inputContract));
                 return result;
             }
         }
         if (type instanceof GenericArrayType array) {
             JsonObject result = typed("array");
-            result.add("items", schema(array.getGenericComponentType(), visiting));
+            result.add("items", schema(array.getGenericComponentType(), visiting, inputContract));
             return result;
         }
         throw new IllegalArgumentException("Unsupported tool schema type: " + type.getTypeName());
     }
 
-    private JsonObject classSchema(Class<?> type, Set<Type> visiting) {
+    private JsonObject classSchema(Class<?> type, Set<Type> visiting, boolean inputContract) {
         if (type == String.class || type == Character.class || type == char.class) {
             return typed("string");
         }
@@ -85,8 +90,26 @@ public final class ToolSchemaGenerator {
         }
         if (type.isArray()) {
             JsonObject result = typed("array");
-            result.add("items", schema(type.getComponentType(), visiting));
+            result.add("items", schema(type.getComponentType(), visiting, inputContract));
             return result;
+        }
+        if (type == java.time.Instant.class
+                || type == java.net.URI.class
+                || type == java.util.UUID.class) {
+            JsonObject result = typed("string");
+            result.addProperty("format", type == java.time.Instant.class
+                    ? "date-time"
+                    : type == java.util.UUID.class ? "uuid" : "uri");
+            return result;
+        }
+        if (com.google.gson.JsonObject.class.isAssignableFrom(type)) {
+            return typed("object");
+        }
+        if (com.google.gson.JsonArray.class.isAssignableFrom(type)) {
+            return typed("array");
+        }
+        if (com.google.gson.JsonElement.class.isAssignableFrom(type) || type == Object.class) {
+            return new JsonObject();
         }
         if (type.isRecord()) {
             if (!visiting.add(type)) {
@@ -100,7 +123,8 @@ public final class ToolSchemaGenerator {
             JsonObject properties = new JsonObject();
             JsonArray required = new JsonArray();
             for (RecordComponent component : type.getRecordComponents()) {
-                JsonObject componentSchema = schema(component.getGenericType(), visiting);
+                JsonObject componentSchema = schema(
+                        component.getGenericType(), visiting, inputContract);
                 ToolDescription description = component.getAnnotation(ToolDescription.class);
                 if (description != null) {
                     componentSchema.addProperty("description", description.value());
@@ -110,7 +134,8 @@ public final class ToolSchemaGenerator {
                     componentSchema.addProperty("pattern", pattern.value());
                 }
                 properties.add(component.getName(), componentSchema);
-                if (component.getAnnotation(ToolOptional.class) == null
+                if (inputContract
+                        && component.getAnnotation(ToolOptional.class) == null
                         && !(component.getGenericType() instanceof ParameterizedType parameterized
                                 && parameterized.getRawType() == Optional.class)) {
                     required.add(component.getName());
@@ -119,7 +144,8 @@ public final class ToolSchemaGenerator {
             result.add("properties", properties);
             result.add("required", required);
             result.addProperty("additionalProperties", false);
-            ToolAtLeastOne atLeastOne = type.getAnnotation(ToolAtLeastOne.class);
+            ToolAtLeastOne atLeastOne = inputContract
+                    ? type.getAnnotation(ToolAtLeastOne.class) : null;
             if (atLeastOne != null) {
                 Set<String> componentNames = Arrays.stream(type.getRecordComponents())
                         .map(RecordComponent::getName)

@@ -13,7 +13,10 @@ import dev.tomewisp.guide.semantic.RichComponent;
 import dev.tomewisp.guide.semantic.SemanticBlock;
 import dev.tomewisp.guide.ui.SemanticLayoutCache;
 import dev.tomewisp.client.gui.TomeWispScreen;
+import dev.tomewisp.client.gui.TomeWispSettingsScreen;
+import dev.tomewisp.settings.ClientSettingsService;
 import dev.tomewisp.tool.ToolResult;
+import dev.tomewisp.tool.config.ToolFamilyId;
 import dev.tomewisp.recipe.RecipeProviderReadiness;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -44,6 +47,7 @@ public final class GuideClientE2EController {
     private final Runnable shutdown;
     private final Set<String> secrets;
     private final Supplier<RecipeProviderReadiness> recipeReadiness;
+    private final ClientSettingsService clientSettings;
     private final List<GuideRequestStatus> transitions = new ArrayList<>();
     private Instant startedAt;
     private UUID requestId;
@@ -84,6 +88,21 @@ public final class GuideClientE2EController {
             Runnable shutdown,
             Set<String> secrets,
             Supplier<RecipeProviderReadiness> recipeReadiness) {
+        this(config, loader, gameVersion, modVersion, services, gson, shutdown, secrets,
+                recipeReadiness, null);
+    }
+
+    public GuideClientE2EController(
+            GuideClientE2EConfig config,
+            String loader,
+            String gameVersion,
+            String modVersion,
+            GuideServiceManager services,
+            Gson gson,
+            Runnable shutdown,
+            Set<String> secrets,
+            Supplier<RecipeProviderReadiness> recipeReadiness,
+            ClientSettingsService clientSettings) {
         this.config = java.util.Objects.requireNonNull(config, "config");
         this.loader = require(loader, "loader");
         this.gameVersion = require(gameVersion, "gameVersion");
@@ -93,6 +112,7 @@ public final class GuideClientE2EController {
         this.shutdown = java.util.Objects.requireNonNull(shutdown, "shutdown");
         this.secrets = Set.copyOf(secrets);
         this.recipeReadiness = java.util.Objects.requireNonNull(recipeReadiness, "recipeReadiness");
+        this.clientSettings = clientSettings;
     }
 
     /** Starts exactly once after a real client player exists. */
@@ -269,7 +289,10 @@ public final class GuideClientE2EController {
         if (screenshotStage < 0 || ++screenshotTicks < 8) return;
         screenshotTicks = 0;
         var client = net.minecraft.client.Minecraft.getInstance();
-        if (!(client.gui.screen() instanceof TomeWispScreen screen)) return;
+        if (screenshotStage <= 7
+                && !(client.gui.screen() instanceof TomeWispScreen)) return;
+        TomeWispScreen screen = client.gui.screen() instanceof TomeWispScreen value
+                ? value : null;
         switch (screenshotStage++) {
             case 0 -> screen.positionForDevelopmentProbe(0.0D);
             case 1 -> {
@@ -282,21 +305,53 @@ public final class GuideClientE2EController {
             }
             case 3 -> {
                 screenshot(client, "03-wide-final.png");
-                screen.selectToolForDevelopmentProbe(1);
+                int tools = screen.toolCountForDevelopmentProbe();
+                if (tools > 0) {
+                    // Durable E2E history may contain older interrupted requests. Select a
+                    // terminal card near the end of the current chronology so the retained
+                    // screenshot demonstrates a populated result rather than stale progress.
+                    screen.selectToolForDevelopmentProbe(Math.max(0, tools - 2));
+                }
             }
             case 4 -> {
                 screenshot(client, "04-wide-tool-detail.png");
+                screen.openModelSelectorForDevelopmentProbe();
+            }
+            case 5 -> {
+                screenshot(client, "05-wide-model-selector.png");
+                screen.closeModelSelectorForDevelopmentProbe();
                 client.getWindow().setWindowed(640, 480);
             }
-            case 5 -> screenshot(client, "05-narrow-tool-detail.png");
-            case 6 -> {
+            case 6 -> screenshot(client, "06-narrow-tool-detail.png");
+            case 7 -> {
                 client.getWindow().setWindowed(originalWindowWidth, originalWindowHeight);
-                screenshotStage = -1;
-                if (Boolean.getBoolean("tomewisp.e2e.shutdownAfterScreenshots")) {
-                    shutdown.run();
+                if (clientSettings == null) {
+                    finishScreenshotProbe();
+                    break;
+                }
+                TomeWispSettingsScreen settings = new TomeWispSettingsScreen(
+                        clientSettings, () -> {});
+                client.gui.setScreen(settings);
+                settings.e2eOpenTools(ToolFamilyId.RESOURCE_RESOLUTION);
+            }
+            case 8 -> {
+                screenshot(client, "07-wide-tool-settings.png");
+                if (client.gui.screen() instanceof TomeWispSettingsScreen settings) {
+                    settings.e2eScrollToolDetails(320);
                 }
             }
+            case 9 -> {
+                screenshot(client, "08-wide-tool-settings-lower.png");
+                finishScreenshotProbe();
+            }
             default -> screenshotStage = -1;
+        }
+    }
+
+    private void finishScreenshotProbe() {
+        screenshotStage = -1;
+        if (Boolean.getBoolean("tomewisp.e2e.shutdownAfterScreenshots")) {
+            shutdown.run();
         }
     }
 

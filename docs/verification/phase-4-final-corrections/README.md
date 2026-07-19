@@ -100,7 +100,7 @@ Production artifacts:
 
 | Artifact | SHA-256 |
 | --- | --- |
-| `tomewisp-fabric-26.2-0.1.0-SNAPSHOT.jar` | `c901eeed19e8b2c45150719b35acee79f3e53b190fd69b761cb7b64400b2b846` |
+| `tomewisp-fabric-26.2-0.1.0-SNAPSHOT.jar` | `dc3af415f054cd553048a0cc872100cb1fce97d662a777cbb968e50bfe320ee9` |
 | `tomewisp-neoforge-26.2-0.1.0-SNAPSHOT.jar` | `b5b4193fd402727c047ec652050a19722fa8f4adc9c53e0c7cc22986699f0954` |
 
 ## Runtime profile provenance

@@ -139,12 +139,12 @@ print(value)
 PY
 ) || fail 'project response did not contain an ID'
 
-# A newly created project is submitted for moderation after its version files
-# exist. Existing approved/processing projects ignore this step below.
-project_was_created=false
-if [[ "$project_status" == 200 ]] && [[ -f "$work/project.json" ]]; then
-  project_was_created=true
-fi
+project_state=$(python3 - "$project_response" <<'PY'
+import json
+import sys
+print(json.load(open(sys.argv[1], encoding="utf-8")).get("status", "unknown"))
+PY
+) || fail 'project response did not contain a status'
 
 release_type=release
 if [[ "$version" == *-* ]]; then
@@ -219,14 +219,24 @@ publish_loader fabric \
 publish_loader neoforge \
   "neoforge/build/libs/openallay-neoforge-${minecraft_version}-${version}.jar"
 
-if [[ "$project_was_created" == true ]]; then
-  printf '{"requested_status":"approved"}' > "$work/submit.json"
-  submit_status=$(api_status PATCH "$api/project/$project_id" "$work/submit-response.json" \
-    --header 'Content-Type: application/json' \
-    --data-binary "@$work/submit.json")
-  [[ "$submit_status" == 204 ]] \
-    || fail_api 'project moderation submission' "$submit_status" "$work/submit-response.json"
-fi
+python3 - "$work/submit.json" "$project_state" <<'PY'
+import json
+import pathlib
+import sys
+
+payload = {
+    "client_side": "required",
+    "server_side": "optional",
+}
+if sys.argv[2] == "draft":
+    payload["requested_status"] = "approved"
+pathlib.Path(sys.argv[1]).write_text(json.dumps(payload), encoding="utf-8")
+PY
+submit_status=$(api_status PATCH "$api/project/$project_id" "$work/submit-response.json" \
+  --header 'Content-Type: application/json' \
+  --data-binary "@$work/submit.json")
+[[ "$submit_status" == 204 ]] \
+  || fail_api 'project metadata update' "$submit_status" "$work/submit-response.json"
 
 printf 'modrinth_project_id=%s\n' "$project_id"
 printf 'modrinth_version=%s\n' "$version"

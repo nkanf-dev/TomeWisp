@@ -31,7 +31,7 @@ x86_64/aarch64, and Windows x86_64/aarch64.
 
 ```text
 openallay-fabric-26.2-0.1.0-SNAPSHOT.jar
-sha256 fb2b462f62ffd9fa2617c4a276d6fb51b7cde8209a17d2d42fd128300614a23f
+sha256 571fefaf47f936b08758a5efd75cd2a94b15599deffb65742fbee40fa03ca3af
 
 openallay-neoforge-26.2-0.1.0-SNAPSHOT.jar
 sha256 1ee420fa166d401ef123000ddb4ed575d4109aff5924c20bb862fdffe425f9f0
@@ -59,3 +59,20 @@ them as separate Fabric and NeoForge Modrinth alpha versions, creates the
 Modrinth project on its first run, generates release notes and checksums, adds
 build provenance, and publishes a GitHub prerelease. Modrinth upload is
 idempotent per loader and version.
+
+## Publication evidence
+
+- Quality run: <https://github.com/nkanf-dev/OpenAllay/actions/runs/29697399882>
+- Release run (attempt 2):
+  <https://github.com/nkanf-dev/OpenAllay/actions/runs/29697551720>
+- GitHub prerelease:
+  <https://github.com/nkanf-dev/OpenAllay/releases/tag/v0.1.0-SNAPSHOT>
+- Modrinth project: `vuB8HitN` / `openallay`
+- Fabric alpha version: `vHKJrZzd`, Minecraft 26.2
+- NeoForge alpha version: `CjNfr7HI`, Minecraft 26.2
+
+The GitHub prerelease is public and contains both JARs, `SHA256SUMS`, and build
+provenance. The Modrinth project contains the README banner, generated project
+icon, and both loader versions. It was submitted to Modrinth moderation at
+2026-07-19T18:00:38Z and was in `processing` state when this report was
+captured; the public listing depends on Modrinth completing that review.

@@ -4,7 +4,7 @@
 - decided_by: designer
 - approval_source: the designer required that client settings configure only client-owned models, server models remain server-configured and appear on clients only as synchronized read-only choices, model IDs can be fetched with the current or saved API key, and a server-hosted Agent can invoke the requesting player's client read-only tools instead of terminating on an unavailable local execution path
 - date: 2026-07-19
-- commit: pending
+- commit: 48ed4c1
 - patterns:
   - A_async_wait
   - B_state_persistence

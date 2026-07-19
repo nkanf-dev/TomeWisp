@@ -18,7 +18,7 @@ final class BundledSkillsTest {
                 "tomewisp:find_item_usages",
                 "tomewisp:inspect_inventory",
                 "tomewisp:calculate_craftability",
-                "tomewisp:player_context",
+                "tomewisp:inspect_game_state",
                 "tomewisp:list_knowledge_sources",
                 "tomewisp:search_knowledge",
                 "tomewisp:get_knowledge_document",

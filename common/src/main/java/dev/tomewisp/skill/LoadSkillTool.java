@@ -25,10 +25,10 @@ public final class LoadSkillTool implements Tool<LoadSkillTool.Input, LoadSkillT
             Output.class,
             ToolAccess.READ_ONLY);
 
-    private final SkillRepository repository;
+    private final SkillCatalog catalog;
 
-    public LoadSkillTool(SkillRepository repository) {
-        this.repository = repository;
+    public LoadSkillTool(SkillCatalog catalog) {
+        this.catalog = java.util.Objects.requireNonNull(catalog, "catalog");
     }
 
     @Override
@@ -41,7 +41,7 @@ public final class LoadSkillTool implements Tool<LoadSkillTool.Input, LoadSkillT
         if (input == null || input.name() == null || input.name().isBlank()) {
             return new ToolResult.Failure<>("invalid_skill_name", "Skill name must not be blank");
         }
-        return repository.find(input.name())
+        return catalog.find(input.name())
                 .<ToolResult<Output>>map(document -> new ToolResult.Success<>(new Output(
                         document.metadata().name(),
                         document.instructions(),

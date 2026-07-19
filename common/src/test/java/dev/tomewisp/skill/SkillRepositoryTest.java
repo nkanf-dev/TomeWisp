@@ -56,7 +56,7 @@ final class SkillRepositoryTest {
         SkillRepository repository = repository();
         SkillSource source = valid("quest-guide", "body");
         String entry = source.files().get(source.entryPath()).replace(
-                "required-mods: []", "required-mods: [ftbquests]");
+                "allowed-tools:", "metadata:\n  tomewisp/required-mods: \"ftbquests\"\nallowed-tools:");
         source = new SkillSource(source.provenance(), source.entryPath(), Map.of(
                 source.entryPath(), entry,
                 "quest-guide/references/policy.md", "Ground every claim."));
@@ -64,6 +64,24 @@ final class SkillRepositoryTest {
         assertTrue(repository.reload(java.util.List.of(source), Set.of()));
         assertTrue(repository.metadata().isEmpty());
         assertEquals("required_mod_unavailable", repository.diagnostics().getFirst().code());
+    }
+
+    @Test
+    void snapshotFiltersDisabledSkillsAndDoesNotObserveLaterReload() {
+        SkillRepository repository = repository();
+        assertTrue(repository.reload(java.util.List.of(
+                valid("original-skill", "original"),
+                valid("disabled-skill", "disabled")), Set.of()));
+
+        SkillCatalogSnapshot snapshot = repository.snapshot(Set.of("disabled-skill"));
+        assertTrue(repository.reload(
+                java.util.List.of(valid("replacement-skill", "replacement")), Set.of()));
+
+        assertTrue(snapshot.find("original-skill").isPresent());
+        assertTrue(snapshot.find("disabled-skill").isEmpty());
+        assertTrue(snapshot.find("replacement-skill").isEmpty());
+        assertFalse(snapshot.metadataPrompt().contains("disabled-skill"));
+        assertTrue(repository.find("replacement-skill").isPresent());
     }
 
     private static SkillRepository repository() {
@@ -84,12 +102,9 @@ final class SkillRepositoryTest {
                 ---
                 name: %s
                 description: Answer a guide question
-                required-mods: []
-                allowed-tools: %s
-                references:
-                  - references/policy.md
+                allowed-tools: "%s"
                 ---
                 %s
-                """.formatted(name, tools, body);
+                """.formatted(name, tools.substring(1, tools.length() - 1), body);
     }
 }

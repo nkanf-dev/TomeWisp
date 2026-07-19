@@ -74,4 +74,39 @@ final class LocalAgentToolExecutorTest {
         assertTrue(result.failure());
         assertEquals("invalid_arguments", result.normalized().get("code").getAsString());
     }
+
+    @Test
+    void filteredCatalogDoesNotExposeContextOrExecuteDisabledTool() {
+        ToolRegistry registry = new ToolRegistry();
+        registry.register("test-provider", List.of(new Tool<Input, Output>() {
+            private final ToolDescriptor<Input, Output> descriptor = new ToolDescriptor<>(
+                    "test:fact",
+                    "Return a fact",
+                    Input.class,
+                    Output.class,
+                    ToolAccess.READ_ONLY,
+                    Set.of(ContextCapability.RECIPES));
+
+            @Override public ToolDescriptor<Input, Output> descriptor() { return descriptor; }
+            @Override public ToolResult<Output> invoke(ToolInvocationContext context, Input input) {
+                return new ToolResult.Success<>(new Output(input.value()));
+            }
+        }));
+        ToolRuntimeCatalog catalog = ToolRuntimeCatalog.from(
+                registry.registrations(), Set.of("test:fact"));
+        LocalAgentToolExecutor executor = new LocalAgentToolExecutor(catalog, new Gson());
+
+        assertTrue(executor.definitions().isEmpty());
+        assertTrue(executor.requiredContext().isEmpty());
+        AgentToolResult result = executor.execute(
+                        "test__fact",
+                        JsonParser.parseString("{\"value\":42}").getAsJsonObject(),
+                        ToolInvocationContext.developmentConsole("test"),
+                        new CancellationSignal())
+                .join();
+        assertTrue(result.failure());
+        assertEquals("tool_unavailable", result.normalized().get("code").getAsString());
+        assertEquals("test:fact", result.toolId());
+        assertEquals(1, registry.descriptors().size());
+    }
 }

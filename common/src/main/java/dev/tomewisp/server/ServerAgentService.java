@@ -9,10 +9,15 @@ import dev.tomewisp.agent.session.AgentSessionStore;
 import dev.tomewisp.agent.tool.AgentToolExecutor;
 import dev.tomewisp.bridge.protocol.ServerAgentEventCodec;
 import dev.tomewisp.bridge.protocol.ServerAgentEventPayload;
+import dev.tomewisp.bridge.protocol.ServerAgentHistoryMessage;
 import dev.tomewisp.bridge.protocol.ServerAgentRequestPayload;
 import dev.tomewisp.context.ContextCapability;
 import dev.tomewisp.context.ToolInvocationContext;
+import dev.tomewisp.model.ModelContent;
+import dev.tomewisp.model.ModelMessage;
+import dev.tomewisp.model.ModelRole;
 import dev.tomewisp.tool.ToolResult;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
@@ -96,7 +101,13 @@ public final class ServerAgentService {
                             systemPrompt,
                             context,
                             payload.stream());
-                    return agent.ask(request, event -> publish(payload.requestId(), owner, event));
+                    List<ModelMessage> restored = payload.history().stream()
+                            .map(ServerAgentHistoryMessage::toModelMessage)
+                            .toList();
+                    return agent.askWithHistory(
+                            request,
+                            restored,
+                            event -> publish(payload.requestId(), owner, event));
                 })
                 .exceptionally(throwable -> {
                     publishFailure(payload.requestId(), owner, throwable);

@@ -11,6 +11,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
+import dev.tomewisp.testing.GroundedTestFixtures;
 
 final class GroundedSnapshotTest {
     private static final EvidenceMetadata EVIDENCE = new EvidenceMetadata(
@@ -38,7 +39,10 @@ final class GroundedSnapshotTest {
         Map<String, JsonObject> extensions = new HashMap<>();
         extensions.put("create:processing", extension);
         RecipeEntrySnapshot recipe = new RecipeEntrySnapshot(
-                new RecipeReference("minecraft:recipe_manager", "minecraft:iron_block"),
+                new RecipeReference(
+                        "minecraft:recipe_manager",
+                        GroundedTestFixtures.RECIPE_GENERATION,
+                        "minecraft:iron_block"),
                 "minecraft:iron_block",
                 "minecraft:crafting",
                 new RecipeLayoutSnapshot(3, 3, true),
@@ -90,7 +94,10 @@ final class GroundedSnapshotTest {
 
     private static RecipeEntrySnapshot recipe(List<IngredientRequirementSnapshot> ingredients) {
         return new RecipeEntrySnapshot(
-                new RecipeReference("minecraft:recipe_manager", "example:test"),
+                new RecipeReference(
+                        "minecraft:recipe_manager",
+                        GroundedTestFixtures.RECIPE_GENERATION,
+                        "example:test"),
                 "example:test",
                 "minecraft:crafting",
                 RecipeLayoutSnapshot.unknown(),

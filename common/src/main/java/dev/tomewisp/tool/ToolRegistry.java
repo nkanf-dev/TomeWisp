@@ -42,5 +42,8 @@ public final class ToolRegistry {
                 .toList();
     }
 
-    private record RegisteredTool(String providerId, Tool<?, ?> tool) {}
+    /** Returns a detached, stable-ID-ordered view of the authoritative registrations. */
+    public synchronized List<RegisteredTool> registrations() {
+        return tools.values().stream().toList();
+    }
 }

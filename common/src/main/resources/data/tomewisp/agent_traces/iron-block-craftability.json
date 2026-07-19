@@ -25,6 +25,7 @@
       "tool": "tomewisp:get_recipe",
       "arguments": {
         "sourceId": "minecraft:recipe_manager",
+        "generation": "0000000000000000000000000000000000000000000000000000000000000000",
         "recipeId": "minecraft:iron_block"
       },
       "expect": {
@@ -48,6 +49,7 @@
       "tool": "tomewisp:calculate_craftability",
       "arguments": {
         "sourceId": "minecraft:recipe_manager",
+        "generation": "0000000000000000000000000000000000000000000000000000000000000000",
         "recipeId": "minecraft:iron_block",
         "crafts": 1
       },

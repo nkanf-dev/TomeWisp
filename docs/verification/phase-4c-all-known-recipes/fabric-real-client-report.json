@@ -1,0 +1,113 @@
+{
+  "evidence": [
+    {
+      "authority": "CLIENT_VISIBLE",
+      "capturedAt": { "nanos": 247894000, "seconds": 1784355164 },
+      "completeness": "COMPLETE",
+      "details": {},
+      "gameVersion": "26.2",
+      "loader": "fabric",
+      "provenance": "minecraft:client_player",
+      "sourceId": "minecraft:client_player"
+    },
+    {
+      "authority": "CLIENT_VISIBLE",
+      "capturedAt": { "nanos": 247894000, "seconds": 1784355164 },
+      "completeness": "COMPLETE",
+      "details": {},
+      "gameVersion": "26.2",
+      "loader": "fabric",
+      "provenance": "minecraft:client_player",
+      "sourceId": "minecraft:client_player"
+    },
+    {
+      "authority": "CLIENT_VISIBLE",
+      "capturedAt": { "nanos": 247894000, "seconds": 1784355164 },
+      "completeness": "PARTIAL",
+      "details": {},
+      "gameVersion": "26.2",
+      "loader": "fabric",
+      "provenance": "tomewisp:recipe_catalog",
+      "sourceId": "tomewisp:recipe_catalog"
+    },
+    {
+      "authority": "CLIENT_VISIBLE",
+      "capturedAt": { "nanos": 247894000, "seconds": 1784355164 },
+      "completeness": "PARTIAL",
+      "details": {},
+      "gameVersion": "26.2",
+      "loader": "fabric",
+      "provenance": "tomewisp:recipe_catalog",
+      "sourceId": "tomewisp:recipe_catalog"
+    },
+    {
+      "authority": "INTEGRATION_API",
+      "capturedAt": { "nanos": 247894000, "seconds": 1784355164 },
+      "completeness": "COMPLETE",
+      "details": { "tomewisp:category": "minecraft:crafting" },
+      "gameVersion": "26.2",
+      "loader": "Fabric",
+      "provenance": "viewer:jei",
+      "sourceId": "viewer:jei"
+    },
+    {
+      "authority": "INTEGRATION_API",
+      "capturedAt": { "nanos": 247894000, "seconds": 1784355164 },
+      "completeness": "COMPLETE",
+      "details": { "tomewisp:category": "minecraft:crafting" },
+      "gameVersion": "26.2",
+      "loader": "Fabric",
+      "provenance": "viewer:jei",
+      "sourceId": "viewer:jei"
+    },
+    {
+      "authority": "INTEGRATION_API",
+      "capturedAt": { "nanos": 247894000, "seconds": 1784355164 },
+      "completeness": "COMPLETE",
+      "details": { "tomewisp:category": "farmersdelight:cooking" },
+      "gameVersion": "26.2",
+      "loader": "Fabric",
+      "provenance": "viewer:jei",
+      "sourceId": "viewer:jei"
+    }
+  ],
+  "gameVersion": "26.2",
+  "loader": "fabric",
+  "modVersion": "0.1.0-SNAPSHOT",
+  "outcome": "COMPLETED",
+  "payloadHashes": {
+    "assistantTextSha256": "4485c3822c3d5fc146064496f8e9e870b903faea9976f35d8f993384631ab981",
+    "userMessageSha256": "8315ef3190c339681d6cce953ea37a5c03358a80e6b315be7c5ab7e753bfb3c0"
+  },
+  "requestId": "84a3b209-0ee8-4ad7-94e1-d3b6d65a8dcc",
+  "scenario": "real-client-all-known-recipes",
+  "sessionId": "e2e",
+  "timingsMillis": { "total": 1333 },
+  "toolIds": [
+    "tomewisp:search_recipes",
+    "tomewisp:get_recipe",
+    "tomewisp:inspect_inventory",
+    "tomewisp:calculate_craftability",
+    "tomewisp:search_recipes",
+    "tomewisp:get_recipe"
+  ],
+  "topology": "CLIENT_WITH_SERVER_TOOLS",
+  "transitions": [
+    "PREPARING",
+    "MODEL_WAIT",
+    "TOOL_WAIT",
+    "MODEL_WAIT",
+    "TOOL_WAIT",
+    "MODEL_WAIT",
+    "TOOL_WAIT",
+    "MODEL_WAIT",
+    "TOOL_WAIT",
+    "MODEL_WAIT",
+    "TOOL_WAIT",
+    "MODEL_WAIT",
+    "TOOL_WAIT",
+    "MODEL_WAIT",
+    "COMPLETING",
+    "COMPLETED"
+  ]
+}

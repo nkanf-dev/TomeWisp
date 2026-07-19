@@ -1,6 +1,7 @@
 package dev.tomewisp;
 
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 
 import dev.tomewisp.platform.PlatformService;
 import java.util.Set;
@@ -21,6 +22,9 @@ final class BuiltinToolRegistrationTest {
                 "tomewisp:inspect_inventory",
                 "tomewisp:calculate_craftability",
                 "tomewisp:find_recipes")));
+        assertTrue(toolIds.contains("tomewisp:inspect_game_state"));
+        assertFalse(toolIds.contains("tomewisp:platform_info"));
+        assertFalse(toolIds.contains("tomewisp:player_context"));
     }
 
     private static PlatformService testPlatform() {

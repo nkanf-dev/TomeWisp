@@ -73,6 +73,30 @@ final class GuideServiceTest {
     }
 
     @Test
+    void servicePreservesInterleavedAssistantAndToolTimeline() {
+        FakeLocal local = new FakeLocal();
+        GuideService service = service(local, new FakeRemote(false));
+        UUID requestId = success(service.ask("interleave").join());
+
+        local.completeInterleaved(requestId);
+
+        GuideRequestSnapshot request = request(service, "main", requestId);
+        assertEquals(
+                List.of(
+                        GuideTimelineEntry.Assistant.class,
+                        GuideTimelineEntry.Tool.class,
+                        GuideTimelineEntry.Assistant.class,
+                        GuideTimelineEntry.Tool.class,
+                        GuideTimelineEntry.Assistant.class),
+                request.timeline().stream().map(Object::getClass).toList());
+        assertEquals("final answer", request.assistantText());
+        assertEquals("final answer",
+                ((GuideTimelineEntry.Assistant) request.timeline().getLast())
+                        .semantic().fallbackText());
+        assertEquals("final answer", service.snapshot().sessions().getFirst().messages().getLast().text());
+    }
+
+    @Test
     void serverModeWorksWithoutClientModelAndNeverFallsBack() {
         FakeRemote remote = new FakeRemote(true);
         GuideService service = service(null, remote);
@@ -187,6 +211,21 @@ final class GuideServiceTest {
             Consumer<AgentEvent> events = pending.get(request);
             events.accept(new AgentEvent.StateChanged(AgentState.COMPLETED));
             events.accept(new AgentEvent.FinalText(text));
+        }
+
+        void completeInterleaved(UUID request) {
+            Consumer<AgentEvent> events = pending.get(request);
+            events.accept(new AgentEvent.ModelProgress(new dev.tomewisp.model.ModelEvent.TextDelta(
+                    "I will check.")));
+            events.accept(new AgentEvent.ToolStarted("call-1", "tomewisp:get_recipe"));
+            events.accept(new AgentEvent.ToolCompleted(
+                    "call-1", "tomewisp:get_recipe", false, new com.google.gson.JsonObject()));
+            events.accept(new AgentEvent.ModelProgress(new dev.tomewisp.model.ModelEvent.TextDelta(
+                    "Now inventory.")));
+            events.accept(new AgentEvent.ToolStarted("call-2", "tomewisp:inspect_inventory"));
+            events.accept(new AgentEvent.ToolCompleted(
+                    "call-2", "tomewisp:inspect_inventory", false, new com.google.gson.JsonObject()));
+            events.accept(new AgentEvent.FinalText("final answer"));
         }
     }
 

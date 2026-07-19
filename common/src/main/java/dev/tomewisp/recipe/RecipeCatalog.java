@@ -34,11 +34,18 @@ public final class RecipeCatalog {
             String type,
             List<RecipeOutputSnapshot> outputs,
             String workstation,
-            EvidenceMetadata evidence) {
+            EvidenceMetadata evidence,
+            List<RecipeReference> references,
+            List<EvidenceMetadata> evidenceRecords) {
         public Summary {
             Objects.requireNonNull(reference, "reference");
             outputs = List.copyOf(outputs);
             Objects.requireNonNull(evidence, "evidence");
+            references = List.copyOf(references);
+            evidenceRecords = List.copyOf(evidenceRecords);
+            if (references.isEmpty() || references.size() != evidenceRecords.size()) {
+                throw new IllegalArgumentException("recipe summary references and evidence are incomplete");
+            }
         }
     }
 
@@ -67,16 +74,24 @@ public final class RecipeCatalog {
             .thenComparing(Usage::role);
 
     private final List<RecipeEntrySnapshot> recipes;
+    private final List<RecipeSemanticGroup> groups;
 
     public RecipeCatalog(RecipeSnapshot snapshot) {
         Objects.requireNonNull(snapshot, "snapshot");
         recipes = snapshot.recipes().stream().sorted(RECIPE_ORDER).toList();
+        groups = snapshot.groups();
     }
 
     public List<Summary> search(Query query) {
         Objects.requireNonNull(query, "query");
         if (query.isEmpty()) {
             throw new IllegalArgumentException("at least one recipe search criterion is required");
+        }
+        if (!groups.isEmpty()) {
+            return groups.stream()
+                    .filter(group -> matches(group, query))
+                    .map(RecipeCatalog::summary)
+                    .toList();
         }
         return recipes.stream()
                 .filter(recipe -> query.recipeId() == null
@@ -117,7 +132,37 @@ public final class RecipeCatalog {
                 recipe.type(),
                 recipe.outputs(),
                 recipe.workstation(),
-                recipe.evidence());
+                recipe.evidence(),
+                List.of(recipe.reference()),
+                List.of(recipe.evidence()));
+    }
+
+    private static Summary summary(RecipeSemanticGroup group) {
+        RecipeEntrySnapshot recipe = group.representative();
+        return new Summary(
+                recipe.reference(),
+                recipe.id(),
+                recipe.type(),
+                recipe.outputs(),
+                recipe.workstation(),
+                recipe.evidence(),
+                group.references(),
+                group.evidence());
+    }
+
+    private static boolean matches(RecipeSemanticGroup group, Query query) {
+        RecipeEntrySnapshot recipe = group.representative();
+        return (query.recipeId() == null
+                        || recipe.id().equals(query.recipeId())
+                        || group.references().stream().anyMatch(reference ->
+                                reference.recipeId().equals(query.recipeId())))
+                && (query.recipeType() == null || recipe.type().equals(query.recipeType()))
+                && (query.outputItem() == null
+                        || matchesOutputs(recipe.outputs(), query.outputItem())
+                        || matchesOutputs(recipe.byproducts(), query.outputItem()))
+                && (query.inputItem() == null
+                        || matchesRequirements(recipe.ingredients(), query.inputItem())
+                        || matchesRequirements(recipe.catalysts(), query.inputItem()));
     }
 
     private static boolean matchesRequirements(

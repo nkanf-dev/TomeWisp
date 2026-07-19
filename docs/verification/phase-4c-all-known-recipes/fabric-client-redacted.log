@@ -1,0 +1,16 @@
+[14:12:32] [main/INFO] (FabricLoader/GameProvider) Loading Minecraft 26.2 with Fabric Loader 0.19.3
+[14:12:32] [main/INFO] (FabricLoader) Loading 55 mods
+  farmersdelight 26.2-3.6.7+refabricated
+  jei 30.12.0.69
+  roughlyenoughitems 26.2.820
+[14:12:36] [Render thread/INFO] (TomeWisp) Initialized TomeWisp on Fabric with 14 tool(s)
+[14:12:37] [Render thread/INFO] (REI) Registered plugin provider TomeWispReiClientPlugin [tomewisp]
+[14:12:42] [Render thread/INFO] (LoggedTimer) Starting JEI...
+[14:12:43] [Render thread/INFO] (JeiGuiStarter) Starting JEI GUI
+[14:12:43] [Render thread/INFO] (LoggedTimer) Starting JEI took 517.5 milliseconds
+[14:12:44] [Render thread/INFO] (Minecraft) TomeWisp E2E recipe readiness: READY ready Recipe providers are ready
+[14:12:45] [Render thread/INFO] (REI) Received server's request to set 2317 recipes
+
+This excerpt intentionally omits player identity, local filesystem paths, routine
+renderer output, and unrelated account-service diagnostics. It contains no
+credentials, authorization headers, model request bodies, or raw tool payloads.

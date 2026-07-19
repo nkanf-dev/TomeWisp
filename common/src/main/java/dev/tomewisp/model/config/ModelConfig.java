@@ -1,5 +1,6 @@
 package dev.tomewisp.model.config;
 
+import dev.tomewisp.agent.context.ContextBudget;
 import java.net.URI;
 import java.time.Duration;
 import java.util.Locale;
@@ -11,6 +12,7 @@ public record ModelConfig(
         URI baseUri,
         String model,
         SecretValue apiKey,
+        int contextWindowTokens,
         int maxOutputTokens,
         Duration connectTimeout,
         Duration requestTimeout) {
@@ -23,9 +25,7 @@ public record ModelConfig(
         Objects.requireNonNull(apiKey, "apiKey");
         Objects.requireNonNull(connectTimeout, "connectTimeout");
         Objects.requireNonNull(requestTimeout, "requestTimeout");
-        if (maxOutputTokens <= 0) {
-            throw new IllegalArgumentException("maxOutputTokens must be positive");
-        }
+        new ContextBudget(contextWindowTokens, maxOutputTokens);
         if (connectTimeout.isZero()
                 || connectTimeout.isNegative()
                 || requestTimeout.isZero()
@@ -44,9 +44,14 @@ public record ModelConfig(
                 baseUri,
                 model,
                 apiKey.toString(),
+                contextWindowTokens,
                 maxOutputTokens,
                 connectTimeout.toMillis(),
                 requestTimeout.toMillis());
+    }
+
+    public ContextBudget contextBudget() {
+        return new ContextBudget(contextWindowTokens, maxOutputTokens);
     }
 
     private static void validateUri(URI uri) {
@@ -70,6 +75,7 @@ public record ModelConfig(
             URI baseUri,
             String model,
             String apiKey,
+            int contextWindowTokens,
             int maxOutputTokens,
             long connectTimeoutMillis,
             long requestTimeoutMillis) {}

@@ -22,11 +22,13 @@ final class GuideClientE2EConfigTest {
         properties.setProperty("tomewisp.e2e.report", "build/e2e/report.json");
         properties.setProperty("tomewisp.e2e.modelMode", "server");
         properties.setProperty("tomewisp.e2e.shutdown", "false");
+        properties.setProperty("tomewisp.e2e.historySeedRequests", "12");
 
         GuideClientE2EConfig config = GuideClientE2EConfig.from(properties).orElseThrow();
 
         assertEquals(GuideModelMode.SERVER, config.modelMode());
         assertEquals("e2e", config.sessionId());
+        assertEquals(12, config.historySeedRequests());
         assertTrue(!config.shutdownAfterReport());
     }
 

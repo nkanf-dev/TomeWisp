@@ -33,18 +33,19 @@ final class KnowledgeToolsTest {
         ToolResult.Success<ResolveResourceTool.Output> result = assertInstanceOf(
                 ToolResult.Success.class,
                 new ResolveResourceTool().invoke(
-                        fullContext(), new ResolveResourceTool.Input("example:missing", "item")));
+                        fullContext(), new ResolveResourceTool.Input(
+                                "example:missing", ResolveResourceTool.Kind.item)));
 
         assertFalse(result.value().exists());
         assertTrue(result.value().matches().isEmpty());
     }
 
     @Test
-    void rejectsInvalidResourceKindAndMissingRegistryContext() {
+    void rejectsBlankQueryAndMissingRegistryContext() {
         ToolResult.Failure<ResolveResourceTool.Output> invalid = assertInstanceOf(
                 ToolResult.Failure.class,
                 new ResolveResourceTool().invoke(
-                        fullContext(), new ResolveResourceTool.Input("minecraft:stone", "fluid")));
+                        fullContext(), new ResolveResourceTool.Input(" ", null)));
         assertEquals("invalid_arguments", invalid.code());
 
         ToolResult.Failure<ResolveResourceTool.Output> missing = assertInstanceOf(
@@ -53,6 +54,21 @@ final class KnowledgeToolsTest {
                         ToolInvocationContext.developmentConsole("test"),
                         new ResolveResourceTool.Input("minecraft:stone", null)));
         assertEquals("missing_context", missing.code());
+    }
+
+    @Test
+    void resolvesLocalizedNamesAndIdentifierTokensDeterministically() {
+        ToolResult.Success<ResolveResourceTool.Output> localized = assertInstanceOf(
+                ToolResult.Success.class,
+                new ResolveResourceTool().invoke(
+                        fullContext(), new ResolveResourceTool.Input("Stone", null)));
+        assertEquals("minecraft:stone", localized.value().matches().getFirst().id());
+
+        ToolResult.Success<ResolveResourceTool.Output> path = assertInstanceOf(
+                ToolResult.Success.class,
+                new ResolveResourceTool().invoke(
+                        fullContext(), new ResolveResourceTool.Input("iron block", null)));
+        assertEquals("minecraft:iron_block", path.value().matches().getFirst().id());
     }
 
     @Test
@@ -69,21 +85,6 @@ final class KnowledgeToolsTest {
                         ToolInvocationContext.developmentConsole("test"),
                         new FindRecipesTool.Input("minecraft:iron_block")));
         assertEquals("missing_context", missing.code());
-    }
-
-    @Test
-    void returnsCompletePlayerOrRequiresOne() {
-        ToolResult.Success<PlayerContextTool.Output> result = assertInstanceOf(
-                ToolResult.Success.class,
-                new PlayerContextTool().invoke(fullContext(), new PlayerContextTool.Input()));
-        assertEquals(2, result.value().player().inventory().slots().size());
-
-        ToolResult.Failure<PlayerContextTool.Output> missing = assertInstanceOf(
-                ToolResult.Failure.class,
-                new PlayerContextTool().invoke(
-                        ToolInvocationContext.developmentConsole("test"),
-                        new PlayerContextTool.Input()));
-        assertEquals("player_required", missing.code());
     }
 
     private static ToolInvocationContext fullContext() {

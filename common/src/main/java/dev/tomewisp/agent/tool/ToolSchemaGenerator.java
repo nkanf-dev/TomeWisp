@@ -12,6 +12,7 @@ import java.util.Collection;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Arrays;
 import java.util.Set;
 
 public final class ToolSchemaGenerator {
@@ -92,10 +93,23 @@ public final class ToolSchemaGenerator {
                 throw new IllegalArgumentException("Recursive tool record is unsupported: " + type.getName());
             }
             JsonObject result = typed("object");
+            ToolDescription recordDescription = type.getAnnotation(ToolDescription.class);
+            if (recordDescription != null) {
+                result.addProperty("description", recordDescription.value());
+            }
             JsonObject properties = new JsonObject();
             JsonArray required = new JsonArray();
             for (RecordComponent component : type.getRecordComponents()) {
-                properties.add(component.getName(), schema(component.getGenericType(), visiting));
+                JsonObject componentSchema = schema(component.getGenericType(), visiting);
+                ToolDescription description = component.getAnnotation(ToolDescription.class);
+                if (description != null) {
+                    componentSchema.addProperty("description", description.value());
+                }
+                ToolPattern pattern = component.getAnnotation(ToolPattern.class);
+                if (pattern != null) {
+                    componentSchema.addProperty("pattern", pattern.value());
+                }
+                properties.add(component.getName(), componentSchema);
                 if (component.getAnnotation(ToolOptional.class) == null
                         && !(component.getGenericType() instanceof ParameterizedType parameterized
                                 && parameterized.getRawType() == Optional.class)) {
@@ -105,6 +119,29 @@ public final class ToolSchemaGenerator {
             result.add("properties", properties);
             result.add("required", required);
             result.addProperty("additionalProperties", false);
+            ToolAtLeastOne atLeastOne = type.getAnnotation(ToolAtLeastOne.class);
+            if (atLeastOne != null) {
+                Set<String> componentNames = Arrays.stream(type.getRecordComponents())
+                        .map(RecordComponent::getName)
+                        .collect(java.util.stream.Collectors.toUnmodifiableSet());
+                JsonArray anyOf = new JsonArray();
+                for (String name : atLeastOne.value()) {
+                    if (!componentNames.contains(name)) {
+                        throw new IllegalArgumentException(
+                                "Unknown at-least-one component " + name + " on " + type.getName());
+                    }
+                    JsonObject alternative = new JsonObject();
+                    JsonArray alternativeRequired = new JsonArray();
+                    alternativeRequired.add(name);
+                    alternative.add("required", alternativeRequired);
+                    anyOf.add(alternative);
+                }
+                if (anyOf.isEmpty()) {
+                    throw new IllegalArgumentException(
+                            "At-least-one Tool contract must name a component: " + type.getName());
+                }
+                result.add("anyOf", anyOf);
+            }
             visiting.remove(type);
             return result;
         }

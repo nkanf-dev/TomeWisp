@@ -3,6 +3,7 @@ package dev.tomewisp.agent.tool;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.google.gson.JsonObject;
 import java.util.List;
@@ -15,6 +16,13 @@ final class ToolSchemaGeneratorTest {
     record Nested(int count) {}
 
     record Input(String id, @ToolOptional String kind, Optional<Mode> mode, List<Nested> nested) {}
+
+    @ToolDescription("Choose at least one exact lookup key")
+    @ToolAtLeastOne({"id", "kind"})
+    record Described(
+            @ToolDescription("Exact namespaced identifier")
+            @ToolPattern("^[a-z]+:[a-z_]+$") @ToolOptional String id,
+            @ToolDescription("Optional kind") @ToolOptional String kind) {}
 
     @Test
     void createsStrictNestedRecordSchemaAndOptionalFields() {
@@ -41,5 +49,24 @@ final class ToolSchemaGeneratorTest {
         assertEquals("tomewisp__find_recipes", names.encode("tomewisp:find_recipes"));
         assertEquals("tomewisp:find_recipes", names.decode("tomewisp__find_recipes"));
         assertThrows(IllegalArgumentException.class, () -> names.decode("unknown"));
+    }
+
+    @Test
+    void emitsTrustedDescriptionsPatternsAndAtLeastOneContract() {
+        JsonObject schema = new ToolSchemaGenerator().generate(Described.class);
+        assertEquals("Choose at least one exact lookup key", schema.get("description").getAsString());
+        JsonObject id = schema.getAsJsonObject("properties").getAsJsonObject("id");
+        assertEquals("Exact namespaced identifier", id.get("description").getAsString());
+        assertEquals("^[a-z]+:[a-z_]+$", id.get("pattern").getAsString());
+        assertEquals(2, schema.getAsJsonArray("anyOf").size());
+        assertTrue(schema.getAsJsonArray("required").isEmpty());
+    }
+
+    @Test
+    void rejectsAtLeastOneReferencesToUnknownComponents() {
+        @ToolAtLeastOne("missing")
+        record Invalid(@ToolOptional String value) {}
+        assertThrows(IllegalArgumentException.class,
+                () -> new ToolSchemaGenerator().generate(Invalid.class));
     }
 }

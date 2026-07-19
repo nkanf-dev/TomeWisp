@@ -27,8 +27,21 @@ final class GuideE2EReportJsonTest {
                 "main",
                 List.of(GuideRequestStatus.PREPARING, GuideRequestStatus.COMPLETED),
                 List.of("tomewisp:search_recipes"),
+                List.of(new GuideE2EReport.ToolProbe(
+                        "tomewisp:search_recipes",
+                        dev.tomewisp.guide.GuideToolStatus.SUCCEEDED,
+                        null,
+                        null)),
                 List.of(GroundedTestFixtures.serverEvidence()),
+                List.of("assistant", "tool", "assistant"),
+                Map.of("assistantSegments", 2L, "semanticFallbacks", 1L),
+                List.of("semantic_component_unsupported"),
+                List.of("status_badge"),
+                "IDLE",
+                Map.of("loadedRequests", 1L, "totalRequests", 1L),
                 GuideRequestStatus.COMPLETED,
+                null,
+                null,
                 Map.of("total", 10L),
                 Map.of("result", "abc"));
 
@@ -37,5 +50,7 @@ final class GuideE2EReportJsonTest {
         assertFalse(encoded.contains(secret));
         assertTrue(encoded.contains("[REDACTED]"));
         assertTrue(encoded.contains("minecraft:recipe_manager"));
+        assertTrue(encoded.contains("semantic_component_unsupported"));
+        assertFalse(encoded.contains("component payload"));
     }
 }

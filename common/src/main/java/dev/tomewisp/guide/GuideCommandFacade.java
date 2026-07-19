@@ -2,7 +2,9 @@ package dev.tomewisp.guide;
 
 import dev.tomewisp.TomeWispRuntime;
 import dev.tomewisp.tool.ToolResult;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 import java.util.function.Consumer;
 
@@ -32,15 +34,16 @@ public final class GuideCommandFacade {
         GuideService service = services.forActor(actor);
         final GuideSubscription[] subscription = new GuideSubscription[1];
         final UUID[] requestId = new UUID[1];
-        final int[] seenTools = {0};
+        Set<String> seenTools = new LinkedHashSet<>();
         final GuideRequestStatus[] seenStatus = {null};
         subscription[0] = service.subscribe(snapshot -> {
             if (requestId[0] == null) return;
             GuideRequestSnapshot request = find(snapshot, requestId[0]);
             if (request == null) return;
-            while (seenTools[0] < request.tools().size()) {
-                GuideToolActivity tool = request.tools().get(seenTools[0]++);
-                notices.accept(GuideNotice.info("查询 " + tool.toolId()));
+            for (GuideToolActivity tool : request.tools()) {
+                if (seenTools.add(tool.invocationId())) {
+                    notices.accept(GuideNotice.info("查询 " + tool.toolId()));
+                }
             }
             if (request.status() == GuideRequestStatus.RATE_LIMITED
                     && seenStatus[0] != GuideRequestStatus.RATE_LIMITED) {
@@ -120,6 +123,41 @@ public final class GuideCommandFacade {
     public void model(UUID actor, GuideModelMode mode, Consumer<GuideNotice> notices) {
         services.forActor(actor).setModelMode(mode).thenAccept(result -> emit(
                 result, notices, selected -> "模型模式已切换为 " + selected.name().toLowerCase()));
+    }
+
+    public void modelProfile(UUID actor, String profileId, Consumer<GuideNotice> notices) {
+        GuideService service = services.forActor(actor);
+        GuideModelSelection selection;
+        try {
+            selection = GuideModelSelection.client(profileId);
+        } catch (IllegalArgumentException invalid) {
+            notices.accept(GuideNotice.error("invalid_model_selection: 模型配置 ID 无效"));
+            return;
+        }
+        service.setModelSelection(selection).thenAccept(result -> emit(
+                result,
+                notices,
+                selected -> "当前会话的模型已切换为 " + service.snapshot().clientProfiles().stream()
+                        .filter(profile -> profile.id().equals(selected.profileId()))
+                        .map(GuideClientModelProfile::displayName)
+                        .findFirst()
+                        .orElse(selected.profileId())));
+    }
+
+    public void models(UUID actor, Consumer<GuideNotice> notices) {
+        GuideSnapshot snapshot = services.forActor(actor).snapshot();
+        List<String> choices = new java.util.ArrayList<>();
+        snapshot.clientProfiles().stream()
+                .filter(GuideClientModelProfile::enabled)
+                .map(profile -> profile.displayName() + " (" + profile.id() + ")"
+                        + (profile.available() ? "" : " [不可用]"))
+                .forEach(choices::add);
+        if (snapshot.serverModelAvailable()
+                || snapshot.modelSelection().kind() == GuideModelSelection.Kind.SERVER) {
+            choices.add("服务端模型"
+                    + (snapshot.serverModelAvailable() ? "" : " [不可用]"));
+        }
+        notices.accept(GuideNotice.info("可选模型: " + choices));
     }
 
     public void status(UUID actor, Consumer<GuideNotice> notices) {

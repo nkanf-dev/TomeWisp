@@ -13,7 +13,8 @@ public record GuideClientE2EConfig(
         String question,
         GuideModelMode modelMode,
         Path reportPath,
-        boolean shutdownAfterReport) {
+        boolean shutdownAfterReport,
+        int historySeedRequests) {
     public static final String ENABLED = "tomewisp.e2e.enabled";
 
     public GuideClientE2EConfig {
@@ -24,6 +25,19 @@ public record GuideClientE2EConfig(
         if (question == null || question.isBlank()) throw new IllegalArgumentException("question is required");
         java.util.Objects.requireNonNull(modelMode, "modelMode");
         java.util.Objects.requireNonNull(reportPath, "reportPath");
+        if (historySeedRequests < 0) {
+            throw new IllegalArgumentException("historySeedRequests must not be negative");
+        }
+    }
+
+    public GuideClientE2EConfig(
+            String scenario,
+            String sessionId,
+            String question,
+            GuideModelMode modelMode,
+            Path reportPath,
+            boolean shutdownAfterReport) {
+        this(scenario, sessionId, question, modelMode, reportPath, shutdownAfterReport, 0);
     }
 
     public static Optional<GuideClientE2EConfig> from(Properties properties) {
@@ -38,12 +52,19 @@ public record GuideClientE2EConfig(
                 required(properties, "tomewisp.e2e.question"),
                 GuideModelMode.valueOf(mode),
                 Path.of(required(properties, "tomewisp.e2e.report")),
-                Boolean.parseBoolean(properties.getProperty("tomewisp.e2e.shutdown", "true"))));
+                Boolean.parseBoolean(properties.getProperty("tomewisp.e2e.shutdown", "true")),
+                nonNegativeInteger(properties, "tomewisp.e2e.historySeedRequests", 0)));
     }
 
     private static String required(Properties properties, String key) {
         String value = properties.getProperty(key);
         if (value == null || value.isBlank()) throw new IllegalArgumentException(key + " is required");
+        return value;
+    }
+
+    private static int nonNegativeInteger(Properties properties, String key, int fallback) {
+        int value = Integer.parseInt(properties.getProperty(key, Integer.toString(fallback)));
+        if (value < 0) throw new IllegalArgumentException(key + " must not be negative");
         return value;
     }
 }

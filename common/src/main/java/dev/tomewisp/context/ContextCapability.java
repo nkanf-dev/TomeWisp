@@ -3,5 +3,6 @@ package dev.tomewisp.context;
 public enum ContextCapability {
     REGISTRIES,
     RECIPES,
-    PLAYER
+    PLAYER,
+    OBSERVABLE_GAME_STATE
 }

@@ -12,6 +12,7 @@ import dev.tomewisp.agent.session.AgentSessionStore;
 import dev.tomewisp.client.ClientGuideRuntime;
 import dev.tomewisp.devmode.DevelopmentToolInspector;
 import dev.tomewisp.integration.patchouli.PatchouliMultiblockStore;
+import dev.tomewisp.guide.ui.GuideRecipePresenter;
 import dev.tomewisp.knowledge.KnowledgeRegistry;
 import dev.tomewisp.model.CancellationSignal;
 import dev.tomewisp.model.ModelClient;
@@ -52,14 +53,16 @@ final class GuideProductE2ETest {
                 new CalculateCraftabilityTool()));
         TomeWispRuntime base = runtime(tools);
         ScriptedModel model = new ScriptedModel(List.of(
-                tool("1", "tomewisp__search_recipes", json(
+                toolWithText("1", "准备查询配方。", "tomewisp__search_recipes", json(
                         "outputItem", "minecraft:iron_block")),
-                tool("2", "tomewisp__get_recipe", json(
+                toolWithText("2", "我再确认完整配方。", "tomewisp__get_recipe", json(
                         "sourceId", "minecraft:recipe_manager",
+                        "generation", GroundedTestFixtures.RECIPE_GENERATION,
                         "recipeId", "minecraft:iron_block")),
-                tool("3", "tomewisp__inspect_inventory", new JsonObject()),
-                tool("4", "tomewisp__calculate_craftability", json(
+                toolWithText("3", "现在检查你的库存。", "tomewisp__inspect_inventory", new JsonObject()),
+                toolWithText("4", "最后计算材料缺口。", "tomewisp__calculate_craftability", json(
                         "sourceId", "minecraft:recipe_manager",
+                        "generation", GroundedTestFixtures.RECIPE_GENERATION,
                         "recipeId", "minecraft:iron_block",
                         "crafts", 1)),
                 text("你有 4 个铁锭；制作 1 个铁块还缺 5 个。")));
@@ -91,8 +94,24 @@ final class GuideProductE2ETest {
 
         assertEquals(GuideRequestStatus.COMPLETED, completed.status());
         assertEquals(4, completed.tools().size());
+        assertEquals(
+                List.of(
+                        GuideTimelineEntry.Assistant.class,
+                        GuideTimelineEntry.Tool.class,
+                        GuideTimelineEntry.Assistant.class,
+                        GuideTimelineEntry.Tool.class,
+                        GuideTimelineEntry.Assistant.class,
+                        GuideTimelineEntry.Tool.class,
+                        GuideTimelineEntry.Assistant.class,
+                        GuideTimelineEntry.Tool.class,
+                        GuideTimelineEntry.Assistant.class),
+                completed.timeline().stream().map(Object::getClass).toList());
         assertTrue(completed.tools().stream().allMatch(
                 value -> value.status() == GuideToolStatus.SUCCEEDED));
+        JsonObject recipeSearch = completed.tools().getFirst().normalized();
+        assertTrue(recipeSearch.getAsJsonObject("value").has("catalog"));
+        assertEquals(1, GuideRecipePresenter.cards(
+                completed.tools().getFirst().toolId(), recipeSearch).size());
         assertFalse(completed.sources().isEmpty());
         assertEquals("你有 4 个铁锭；制作 1 个铁块还缺 5 个。", completed.assistantText());
         assertEquals(5, model.requests.size());
@@ -121,6 +140,13 @@ final class GuideProductE2ETest {
 
     private static ModelTurn tool(String id, String name, JsonObject arguments) {
         return new ModelTurn("fixture", "scripted", List.of(
+                new ModelContent.ToolUse(id, name, arguments)), "tool_use", ModelUsage.empty());
+    }
+
+    private static ModelTurn toolWithText(
+            String id, String text, String name, JsonObject arguments) {
+        return new ModelTurn("fixture", "scripted", List.of(
+                new ModelContent.Text(text),
                 new ModelContent.ToolUse(id, name, arguments)), "tool_use", ModelUsage.empty());
     }
 
@@ -157,8 +183,10 @@ final class GuideProductE2ETest {
                 CancellationSignal cancellation) {
             requests.add(request);
             ModelTurn turn = turns.removeFirst();
-            if (turn.toolUses().isEmpty()) {
+            if (!turn.text().isBlank()) {
                 events.accept(new ModelEvent.TextDelta(turn.text()));
+            }
+            if (turn.toolUses().isEmpty()) {
                 events.accept(new ModelEvent.UsageUpdate(turn.usage()));
             }
             return CompletableFuture.completedFuture(turn);

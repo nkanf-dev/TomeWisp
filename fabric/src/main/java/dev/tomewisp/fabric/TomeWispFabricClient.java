@@ -2,20 +2,30 @@ package dev.tomewisp.fabric;
 
 import dev.tomewisp.TomeWispBootstrap;
 import dev.tomewisp.TomeWispRuntime;
-import dev.tomewisp.client.ClientGuideRuntime;
+import dev.tomewisp.client.ClientModelRuntimeRegistry;
+import dev.tomewisp.settings.ClientSettingsRuntime;
 import com.google.gson.Gson;
 import dev.tomewisp.client.MinecraftGuideContextProvider;
+import dev.tomewisp.client.MinecraftGuideHistoryScope;
 import dev.tomewisp.guide.GuideCommandFacade;
 import dev.tomewisp.guide.GuideLocalEndpoint;
 import dev.tomewisp.guide.GuideServiceManager;
 import dev.tomewisp.guide.PayloadGuideRemoteEndpoint;
+import dev.tomewisp.guide.history.GuideHistoryCodec;
+import dev.tomewisp.guide.history.GuideHistoryRepository;
+import dev.tomewisp.guide.history.SqliteGuideHistoryStore;
 import dev.tomewisp.guide.e2e.GuideClientE2EConfig;
 import dev.tomewisp.guide.e2e.GuideClientE2EController;
 import dev.tomewisp.client.gui.TomeWispKeyMappings;
 import dev.tomewisp.client.gui.TomeWispScreen;
+import dev.tomewisp.client.gui.TomeWispSettingsScreen;
+import dev.tomewisp.guide.ui.GuideDisplayRuntime;
+import dev.tomewisp.settings.ClientSettingsHistoryBinding;
 import dev.tomewisp.tool.ToolResult;
+import dev.tomewisp.recipe.config.RecipeClientRuntime;
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
+import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientLifecycleEvents;
 import net.fabricmc.fabric.api.client.keymapping.v1.KeyMappingHelper;
 import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.client.Minecraft;
@@ -30,19 +40,43 @@ public final class TomeWispFabricClient implements ClientModInitializer {
         FabricClientBridge bridge = new FabricClientBridge();
         bridge.register();
         Gson gson = new Gson();
+        java.time.Clock clock = java.time.Clock.systemUTC();
         var dispatcher = (dev.tomewisp.client.ClientEventDispatcher)
                 runnable -> Minecraft.getInstance().execute(runnable);
-        ToolResult<ClientGuideRuntime> guide = ClientGuideRuntime.create(
+        java.nio.file.Path configDirectory =
+                FabricLoader.getInstance().getConfigDir().resolve("tomewisp");
+        GuideDisplayRuntime display = new GuideDisplayRuntime(
+                configDirectory.resolve("display.json"));
+        ClientSettingsHistoryBinding historySettings = new ClientSettingsHistoryBinding();
+        RecipeClientRuntime recipeClient = new RecipeClientRuntime(
+                configDirectory.resolve("recipes.json"));
+        ToolResult<ClientSettingsRuntime> settingsResult = ClientSettingsRuntime.create(
                 runtime,
-                FabricLoader.getInstance().getConfigDir().resolve("tomewisp/model.json"),
+                configDirectory.resolve("models.json"),
+                configDirectory.resolve("model.json"),
+                configDirectory.resolve("model-metadata.json"),
+                configDirectory.resolve("capabilities.json"),
+                configDirectory.resolve("recipes.json"),
+                recipeClient,
                 System.getenv(),
                 dispatcher,
-                bridge.remoteTools());
-        GuideLocalEndpoint local = guide instanceof ToolResult.Success<ClientGuideRuntime> success
-                ? success.value()
-                : null;
+                bridge.remoteTools(),
+                clock,
+                display,
+                historySettings);
+        ClientSettingsRuntime settings =
+                settingsResult instanceof ToolResult.Success<ClientSettingsRuntime> success
+                        ? success.value()
+                        : null;
+        ClientModelRuntimeRegistry modelRegistry =
+                settings == null ? null : settings.models();
+        GuideLocalEndpoint local = modelRegistry;
         MinecraftGuideContextProvider contexts = new MinecraftGuideContextProvider(
-                runtime, Minecraft.getInstance(), gson, TomeWispFabricClient.class.getClassLoader());
+                runtime,
+                Minecraft.getInstance(),
+                gson,
+                TomeWispFabricClient.class.getClassLoader(),
+                recipeClient);
         PayloadGuideRemoteEndpoint remote = new PayloadGuideRemoteEndpoint(
                 new PayloadGuideRemoteEndpoint.Port() {
                     @Override public dev.tomewisp.bridge.protocol.CapabilityPayload capabilities() {
@@ -59,15 +93,48 @@ public final class TomeWispFabricClient implements ClientModInitializer {
                     @Override public void disconnect() { bridge.disconnectState(); }
                 },
                 gson);
+        GuideHistoryRepository history = new GuideHistoryRepository(new SqliteGuideHistoryStore(
+                FabricLoader.getInstance().getConfigDir().resolve("tomewisp/history.sqlite3"),
+                clock,
+                new GuideHistoryCodec()));
         GuideServiceManager services = new GuideServiceManager(
-                local, remote, contexts, dispatcher, java.time.Clock.systemUTC(), gson);
+                local,
+                remote,
+                contexts,
+                dispatcher,
+                clock,
+                gson,
+                history,
+                new MinecraftGuideHistoryScope(Minecraft.getInstance()));
+        historySettings.bind(services);
         bridge.onDisconnect(services::disconnect);
+        ClientLifecycleEvents.CLIENT_STOPPING.register(client ->
+                services.shutdown()
+                        .handle((ignored, failure) -> null)
+                        .thenCompose(ignored -> history.closeAsync())
+                        .thenCompose(ignored -> settings == null
+                                ? java.util.concurrent.CompletableFuture.completedFuture(null)
+                                : settings.closeAsync()));
         bridge.onCapabilitiesChanged(() -> {
             var current = services.current();
             if (current != null) current.refreshCapabilities();
         });
+        java.util.function.Consumer<dev.tomewisp.guide.GuideService> showGuide =
+                new java.util.function.Consumer<>() {
+                    @Override
+                    public void accept(dev.tomewisp.guide.GuideService service) {
+                        Runnable openSettings = settings == null ? null : () ->
+                                Minecraft.getInstance().gui.setScreen(new TomeWispSettingsScreen(
+                                        settings.settings(), () -> accept(service)));
+                        Minecraft.getInstance().gui.setScreen(new TomeWispScreen(
+                                service,
+                                recipeClient,
+                                display,
+                                openSettings));
+                    }
+                };
         dev.tomewisp.guide.GuideScreenOpener screens = service -> {
-            Minecraft.getInstance().gui.setScreen(new TomeWispScreen(service));
+            showGuide.accept(service);
             return new ToolResult.Success<>(true);
         };
         FabricGuideCommands.register(new GuideCommandFacade(
@@ -94,7 +161,8 @@ public final class TomeWispFabricClient implements ClientModInitializer {
                     services,
                     gson,
                     () -> Minecraft.getInstance().stop(),
-                    secret == null || secret.isBlank() ? java.util.Set.of() : java.util.Set.of(secret));
+                    secret == null || secret.isBlank() ? java.util.Set.of() : java.util.Set.of(secret),
+                    contexts::recipeProviderReadiness);
             ClientTickEvents.END_CLIENT_TICK.register(client -> {
                 if (client.player != null) controller.tick(client.player.getUUID());
             });

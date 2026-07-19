@@ -17,7 +17,7 @@ import java.util.Set;
 
 public final class CalculateCraftabilityTool implements Tool<
         CalculateCraftabilityTool.Input, CalculateCraftabilityTool.Output> {
-    public record Input(String sourceId, String recipeId, long crafts) {}
+    public record Input(String sourceId, String generation, String recipeId, long crafts) {}
 
     public record Output(
             RecipeReference recipe,
@@ -46,20 +46,24 @@ public final class CalculateCraftabilityTool implements Tool<
     public ToolResult<Output> invoke(ToolInvocationContext context, Input input) {
         if (input == null
                 || !BuiltinToolValidation.isIdentifier(input.sourceId())
+                || input.generation() == null
+                || !input.generation().matches("[0-9a-f]{64}")
                 || !BuiltinToolValidation.isIdentifier(input.recipeId())
                 || input.crafts() <= 0) {
             return new ToolResult.Failure<>(
-                    "invalid_arguments", "valid sourceId, recipeId, and positive crafts are required");
+                    "invalid_arguments",
+                    "valid sourceId, generation, recipeId, and positive crafts are required");
         }
         if (context.player().isEmpty() || context.recipes().isEmpty()) {
             return new ToolResult.Failure<>(
                     "capability_unavailable", "player and recipe context are required");
         }
-        RecipeReference reference = new RecipeReference(input.sourceId(), input.recipeId());
+        RecipeReference reference = new RecipeReference(
+                input.sourceId(), input.generation(), input.recipeId());
         var recipe = new RecipeCatalog(context.recipes().orElseThrow()).get(reference);
         if (recipe.isEmpty()) {
             return new ToolResult.Failure<>(
-                    "recipe_not_found", "the requested recipe reference is not visible");
+                    "stale_reference", "the requested recipe reference is stale");
         }
         try {
             var inventory = context.player().orElseThrow().inventory();

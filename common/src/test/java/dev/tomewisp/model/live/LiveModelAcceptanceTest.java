@@ -52,6 +52,7 @@ final class LiveModelAcceptanceTest {
                 URI.create(baseUrl),
                 modelId,
                 SecretValue.of(apiKey),
+                Integer.parseInt(env.getOrDefault("TOMEWISP_CONTEXT_WINDOW_TOKENS", "128000")),
                 Integer.parseInt(env.getOrDefault("TOMEWISP_MAX_OUTPUT_TOKENS", "4096")),
                 Duration.ofSeconds(30),
                 Duration.ofMinutes(5));

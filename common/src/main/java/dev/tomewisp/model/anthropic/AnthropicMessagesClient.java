@@ -10,8 +10,8 @@ import dev.tomewisp.model.config.ModelConfig;
 import dev.tomewisp.model.http.HttpModelTransport;
 import dev.tomewisp.model.http.ModelHttpErrors;
 import dev.tomewisp.model.http.SseParser;
+import dev.tomewisp.net.HttpExchangeRequest;
 import java.io.InputStream;
-import java.net.http.HttpRequest;
 import java.nio.charset.StandardCharsets;
 import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
@@ -33,22 +33,32 @@ public final class AnthropicMessagesClient implements ModelClient {
             ModelRequest request,
             Consumer<ModelEvent> events,
             CancellationSignal cancellation) {
-        HttpRequest httpRequest = HttpRequest.newBuilder(config.baseUri().resolve("messages"))
+        HttpExchangeRequest httpRequest = HttpExchangeRequest.newBuilder(
+                        config.baseUri().resolve("messages"))
                 .timeout(config.requestTimeout())
                 .header("x-api-key", config.apiKey().reveal())
                 .header("anthropic-version", "2023-06-01")
                 .header("content-type", "application/json")
-                .POST(HttpRequest.BodyPublishers.ofString(codec.requestBody(config, request)))
+                .postJson(codec.requestBody(config, request))
                 .build();
-        return transport.execute(httpRequest, cancellation, (status, headers, body) -> {
+        return transport.execute(httpRequest, cancellation, events, (status, headers, body, safeEvents) -> {
             ModelHttpErrors.requireSuccess(status, headers, body);
             return request.stream()
                             || headers.firstValue("content-type")
                                     .orElse("")
                                     .contains("text/event-stream")
-                    ? decodeStream(body, events, cancellation)
-                    : codec.parseTurn(new String(body.readAllBytes(), StandardCharsets.UTF_8), events);
+                    ? decodeStream(body, safeEvents, cancellation)
+                    : parseBody(body, safeEvents, cancellation);
         });
+    }
+
+    private ModelTurn parseBody(
+            InputStream body,
+            Consumer<ModelEvent> events,
+            CancellationSignal cancellation) throws java.io.IOException {
+        byte[] encoded = body.readAllBytes();
+        cancellation.throwIfCancelled();
+        return codec.parseTurn(new String(encoded, StandardCharsets.UTF_8), events);
     }
 
     private static ModelTurn decodeStream(

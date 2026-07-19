@@ -16,7 +16,10 @@ final class CalculateCraftabilityToolTest {
                 new CalculateCraftabilityTool().invoke(
                         GroundedTestFixtures.fullContext(),
                         new CalculateCraftabilityTool.Input(
-                                "minecraft:recipe_manager", "minecraft:iron_block", 1)));
+                                "minecraft:recipe_manager",
+                                GroundedTestFixtures.RECIPE_GENERATION,
+                                "minecraft:iron_block",
+                                1)));
 
         assertFalse(success.value().result().craftable());
         assertEquals(5L, success.value().result().missing().getFirst().missing());
@@ -31,7 +34,10 @@ final class CalculateCraftabilityToolTest {
                 tool.invoke(
                         GroundedTestFixtures.fullContext(),
                         new CalculateCraftabilityTool.Input(
-                                "minecraft:recipe_manager", "minecraft:iron_block", 0)));
+                                "minecraft:recipe_manager",
+                                GroundedTestFixtures.RECIPE_GENERATION,
+                                "minecraft:iron_block",
+                                0)));
         assertEquals("invalid_arguments", invalid.code());
 
         ToolResult.Failure<CalculateCraftabilityTool.Output> missing = assertInstanceOf(
@@ -39,7 +45,10 @@ final class CalculateCraftabilityToolTest {
                 tool.invoke(
                         GroundedTestFixtures.fullContext(),
                         new CalculateCraftabilityTool.Input(
-                                "minecraft:recipe_manager", "minecraft:missing", 1)));
-        assertEquals("recipe_not_found", missing.code());
+                                "minecraft:recipe_manager",
+                                GroundedTestFixtures.RECIPE_GENERATION,
+                                "minecraft:missing",
+                                1)));
+        assertEquals("stale_reference", missing.code());
     }
 }

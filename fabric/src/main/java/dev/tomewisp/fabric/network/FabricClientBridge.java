@@ -7,6 +7,7 @@ import dev.tomewisp.bridge.protocol.CapabilityPayload;
 import dev.tomewisp.bridge.protocol.RemoteToolResultChunkPayload;
 import dev.tomewisp.bridge.protocol.ServerAgentEventPayload;
 import dev.tomewisp.bridge.protocol.ServerAgentRequestPayload;
+import dev.tomewisp.bridge.protocol.ServerAgentRequestChunker;
 import dev.tomewisp.bridge.protocol.ServerAgentCancelPayload;
 import java.util.Map;
 import java.util.UUID;
@@ -20,6 +21,7 @@ public final class FabricClientBridge {
     private final RemoteCapabilityStore capabilities = new RemoteCapabilityStore();
     private final Map<UUID, Consumer<ServerAgentEventPayload>> serverRequests =
             new ConcurrentHashMap<>();
+    private final ServerAgentRequestChunker requestChunker = new ServerAgentRequestChunker();
     private final java.util.List<Runnable> disconnectListeners =
             new java.util.concurrent.CopyOnWriteArrayList<>();
     private final java.util.List<Runnable> capabilityListeners =
@@ -73,8 +75,16 @@ public final class FabricClientBridge {
             return false;
         }
         serverRequests.put(request.requestId(), events);
-        send("agent_request", request);
-        return true;
+        try {
+            for (var chunk : requestChunker.split(
+                    request.requestId(), codec.encode(request), 24 * 1024)) {
+                send("agent_request_chunk", chunk);
+            }
+            return true;
+        } catch (RuntimeException failure) {
+            serverRequests.remove(request.requestId());
+            return false;
+        }
     }
 
     public boolean cancelServer(UUID requestId) {

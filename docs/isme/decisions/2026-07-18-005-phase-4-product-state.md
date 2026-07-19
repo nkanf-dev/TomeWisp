@@ -125,7 +125,7 @@ count as real integration proof.
 
 - canonical recipe provider, merge, reference, evidence, and viewer contracts
 - JEI, REI, EMI, and future optional recipe adapters
-- `GuideHistoryStore`, schema migrations, recovery, deletion, and partitions
+- `GuideHistoryStore`, current schema, recovery, deletion, and partitions
 - GuideService persistence projection and interruption recovery
 - context reducers, token budgeting, summaries, and provider adapters
 - semantic message schema, component validation, rendering, and actions

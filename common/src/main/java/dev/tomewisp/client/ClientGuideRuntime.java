@@ -6,15 +6,28 @@ import dev.tomewisp.agent.AgentEvent;
 import dev.tomewisp.agent.AgentRequest;
 import dev.tomewisp.agent.AgentResult;
 import dev.tomewisp.agent.GameGuideAgent;
+import dev.tomewisp.agent.context.ContextBudget;
+import dev.tomewisp.agent.context.ContextCheckpoint;
+import dev.tomewisp.agent.context.ContextCompactor;
+import dev.tomewisp.agent.context.ToolResultContextReducer;
+import dev.tomewisp.agent.context.Utf8ContextTokenEstimator;
 import dev.tomewisp.agent.session.AgentSessionKey;
 import dev.tomewisp.agent.session.AgentSessionStore;
 import dev.tomewisp.agent.trace.LiveTraceStore;
-import dev.tomewisp.agent.tool.LocalAgentToolExecutor;
 import dev.tomewisp.agent.tool.AgentToolExecutor;
 import dev.tomewisp.agent.tool.CompositeAgentToolExecutor;
+import dev.tomewisp.agent.tool.LocalAgentToolExecutor;
+import dev.tomewisp.capability.CapabilityPolicy;
+import dev.tomewisp.capability.ClientCapabilityResolver;
+import dev.tomewisp.capability.ClientCapabilitySnapshot;
 import dev.tomewisp.context.ToolInvocationContext;
 import dev.tomewisp.guide.GuideLocalEndpoint;
+import dev.tomewisp.guide.GuideContextSpec;
+import dev.tomewisp.guide.GuideMessage;
 import dev.tomewisp.model.ModelClient;
+import dev.tomewisp.model.ModelContent;
+import dev.tomewisp.model.ModelMessage;
+import dev.tomewisp.model.ModelRole;
 import dev.tomewisp.model.anthropic.AnthropicMessagesClient;
 import dev.tomewisp.model.config.ModelConfig;
 import dev.tomewisp.model.config.ModelConfigLoader;
@@ -22,8 +35,11 @@ import dev.tomewisp.model.openai.OpenAiChatClient;
 import dev.tomewisp.model.scheduling.ModelRequestScheduler;
 import dev.tomewisp.tool.ToolResult;
 import java.nio.file.Path;
+import java.time.Clock;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
@@ -31,13 +47,16 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Consumer;
 
 public final class ClientGuideRuntime implements GuideLocalEndpoint {
-    private final TomeWispRuntime runtime;
+    private final EndpointRuntime endpoint;
     private final AgentSessionStore sessions;
     private final GameGuideAgent agent;
     private final AgentToolExecutor toolExecutor;
     private final ClientEventDispatcher dispatcher;
     private final LiveTraceStore traces;
-    private final Map<UUID, String> selectedSessions = new ConcurrentHashMap<>();
+    private final ClientCapabilitySnapshot capabilities;
+    private final Gson gson;
+    private final AgentToolExecutor extension;
+    private final Map<UUID, String> selectedSessions;
 
     public ClientGuideRuntime(
             TomeWispRuntime runtime,
@@ -45,7 +64,7 @@ public final class ClientGuideRuntime implements GuideLocalEndpoint {
             AgentSessionStore sessions,
             Gson gson,
             ClientEventDispatcher dispatcher) {
-        this(runtime, model, sessions, gson, dispatcher, null, new LiveTraceStore(null, Set.of()));
+        this(runtime, model, sessions, gson, dispatcher, null, new LiveTraceStore(null, Set.of()), null, null);
     }
 
     public ClientGuideRuntime(
@@ -55,26 +74,91 @@ public final class ClientGuideRuntime implements GuideLocalEndpoint {
             Gson gson,
             ClientEventDispatcher dispatcher,
             AgentToolExecutor extension) {
-        this(runtime, model, sessions, gson, dispatcher, extension, new LiveTraceStore(null, Set.of()));
+        this(runtime, model, sessions, gson, dispatcher, extension, new LiveTraceStore(null, Set.of()), null, null);
     }
 
-    private ClientGuideRuntime(
+    ClientGuideRuntime(
             TomeWispRuntime runtime,
             ModelClient model,
             AgentSessionStore sessions,
             Gson gson,
             ClientEventDispatcher dispatcher,
             AgentToolExecutor extension,
-            LiveTraceStore traces) {
-        this.runtime = runtime;
-        this.sessions = sessions;
-        this.dispatcher = dispatcher;
-        this.traces = traces;
-        LocalAgentToolExecutor local = new LocalAgentToolExecutor(runtime.tools(), gson);
+            LiveTraceStore traces,
+            ContextBudget contextBudget,
+            String modelIdentifier) {
+        this(
+                model,
+                sessions,
+                gson,
+                dispatcher,
+                extension,
+                traces,
+                contextBudget,
+                modelIdentifier,
+                defaultCapabilities(runtime));
+    }
+
+    ClientGuideRuntime(
+            ModelClient model,
+            AgentSessionStore sessions,
+            Gson gson,
+            ClientEventDispatcher dispatcher,
+            AgentToolExecutor extension,
+            LiveTraceStore traces,
+            ContextBudget contextBudget,
+            String modelIdentifier,
+            ClientCapabilitySnapshot capabilities) {
+        this(
+                endpoint(model, gson, contextBudget, modelIdentifier),
+                sessions,
+                gson,
+                dispatcher,
+                extension,
+                traces,
+                capabilities,
+                new ConcurrentHashMap<>());
+    }
+
+    private ClientGuideRuntime(
+            EndpointRuntime endpoint,
+            AgentSessionStore sessions,
+            Gson gson,
+            ClientEventDispatcher dispatcher,
+            AgentToolExecutor extension,
+            LiveTraceStore traces,
+            ClientCapabilitySnapshot capabilities,
+            Map<UUID, String> selectedSessions) {
+        this.endpoint = Objects.requireNonNull(endpoint, "endpoint");
+        this.sessions = Objects.requireNonNull(sessions, "sessions");
+        this.dispatcher = Objects.requireNonNull(dispatcher, "dispatcher");
+        this.traces = Objects.requireNonNull(traces, "traces");
+        this.capabilities = Objects.requireNonNull(capabilities, "capabilities");
+        this.gson = Objects.requireNonNull(gson, "gson");
+        this.extension = extension;
+        this.selectedSessions = Objects.requireNonNull(selectedSessions, "selectedSessions");
+        LocalAgentToolExecutor local = new LocalAgentToolExecutor(capabilities.localTools(), gson);
         toolExecutor = extension == null
                 ? local
                 : new CompositeAgentToolExecutor(List.of(local, extension));
-        agent = new GameGuideAgent(new ModelRequestScheduler(model), toolExecutor, sessions, gson);
+        agent = new GameGuideAgent(
+                endpoint.scheduler(), toolExecutor, sessions, gson, endpoint.compactor());
+    }
+
+    ClientGuideRuntime withCapabilities(ClientCapabilitySnapshot replacement) {
+        return new ClientGuideRuntime(
+                endpoint,
+                sessions,
+                gson,
+                dispatcher,
+                extension,
+                traces,
+                replacement,
+                selectedSessions);
+    }
+
+    Object endpointIdentity() {
+        return endpoint.scheduler();
     }
 
     public static ToolResult<ClientGuideRuntime> create(
@@ -111,11 +195,36 @@ public final class ClientGuideRuntime implements GuideLocalEndpoint {
                 gson,
                 dispatcher,
                 extension,
-                new LiveTraceStore(null, Set.of(config.apiKey().reveal()))));
+                new LiveTraceStore(null, Set.of(config.apiKey().reveal())),
+                config.contextBudget(),
+                config.model()));
     }
 
     public Set<dev.tomewisp.context.ContextCapability> requiredContext() {
         return toolExecutor.requiredContext();
+    }
+
+    @Override
+    public Optional<GuideContextSpec> contextSpec(String profileId) {
+        if (endpoint.contextBudget() == null || endpoint.modelIdentifier() == null) {
+            return Optional.empty();
+        }
+        int promptAndTools = new Utf8ContextTokenEstimator().estimate(
+                systemPrompt(), List.of(), toolExecutor.definitions());
+        if (promptAndTools >= endpoint.contextBudget().inputTokens()) {
+            return Optional.empty();
+        }
+        return Optional.of(new GuideContextSpec(
+                endpoint.contextBudget(), promptAndTools, endpoint.modelIdentifier()));
+    }
+
+    @Override
+    public void hydrateContext(
+            UUID actor,
+            String sessionId,
+            List<ModelMessage> messages,
+            List<ContextCheckpoint> checkpoints) {
+        sessions.hydrate(new AgentSessionKey(actor, sessionId), messages, checkpoints);
     }
 
     public CompletableFuture<AgentResult> ask(
@@ -166,6 +275,22 @@ public final class ClientGuideRuntime implements GuideLocalEndpoint {
         selectedSessions.put(actor, sessionId);
     }
 
+    @Override
+    public void hydrateSession(
+            UUID actor,
+            String sessionId,
+            List<GuideMessage> messages,
+            List<ContextCheckpoint> checkpoints) {
+        List<ModelMessage> history = messages.stream()
+                .map(message -> new ModelMessage(
+                        message.role() == GuideMessage.Role.USER
+                                ? ModelRole.USER
+                                : ModelRole.ASSISTANT,
+                        List.of(new ModelContent.Text(message.text()))))
+                .toList();
+        sessions.hydrate(new AgentSessionKey(actor, sessionId), history, checkpoints);
+    }
+
     public List<String> sessions(UUID actor) {
         java.util.TreeSet<String> ids = new java.util.TreeSet<>(sessions.sessions(actor).stream()
                 .map(AgentSessionKey::sessionId).toList());
@@ -207,12 +332,41 @@ public final class ClientGuideRuntime implements GuideLocalEndpoint {
     }
 
     private String systemPrompt() {
-        return """
-                You are TomeWisp, an in-game modded Minecraft guide. Use tools for pack-specific facts.
-                Never claim unavailable data exists. Cite source IDs and provenance in factual answers.
-                Load a Skill when its metadata matches the request, then follow its workflow.
-
-                %s
-                """.formatted(runtime.skills().metadataPrompt());
+        return dev.tomewisp.agent.AgentSystemPrompt.compose(
+                capabilities.skills().metadataPrompt());
     }
+
+    private static EndpointRuntime endpoint(
+            ModelClient model,
+            Gson gson,
+            ContextBudget contextBudget,
+            String modelIdentifier) {
+        ModelRequestScheduler scheduler = new ModelRequestScheduler(model);
+        ContextCompactor compactor = contextBudget == null ? null : new ContextCompactor(
+                scheduler,
+                gson,
+                new Utf8ContextTokenEstimator(),
+                new ToolResultContextReducer(),
+                contextBudget,
+                modelIdentifier,
+                Clock.systemUTC());
+        return new EndpointRuntime(scheduler, compactor, contextBudget, modelIdentifier);
+    }
+
+    private static ClientCapabilitySnapshot defaultCapabilities(TomeWispRuntime runtime) {
+        ToolResult<ClientCapabilitySnapshot> resolved = new ClientCapabilityResolver().resolve(
+                CapabilityPolicy.defaults(), runtime.tools().registrations(), runtime.skills());
+        if (resolved instanceof ToolResult.Success<ClientCapabilitySnapshot> success) {
+            return success.value();
+        }
+        ToolResult.Failure<ClientCapabilitySnapshot> failure =
+                (ToolResult.Failure<ClientCapabilitySnapshot>) resolved;
+        throw new IllegalStateException(failure.code() + ": " + failure.message());
+    }
+
+    private record EndpointRuntime(
+            ModelRequestScheduler scheduler,
+            ContextCompactor compactor,
+            ContextBudget contextBudget,
+            String modelIdentifier) {}
 }

@@ -65,6 +65,7 @@ public final class TraceParser {
                 case "registries" -> ContextCapability.REGISTRIES;
                 case "recipes" -> ContextCapability.RECIPES;
                 case "player" -> ContextCapability.PLAYER;
+                case "observable_game_state" -> ContextCapability.OBSERVABLE_GAME_STATE;
                 default -> throw invalid("Unknown context capability: " + value);
             };
             if (!capabilities.add(capability)) {

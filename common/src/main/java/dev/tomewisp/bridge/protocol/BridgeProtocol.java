@@ -1,7 +1,7 @@
 package dev.tomewisp.bridge.protocol;
 
 public final class BridgeProtocol {
-    public static final int VERSION = 2;
+    public static final int VERSION = 5;
 
     private BridgeProtocol() {}
 

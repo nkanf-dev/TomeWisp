@@ -41,7 +41,9 @@ final class RecipeCatalogTest {
         assertEquals(
                 "minecraft:iron_block",
                 catalog.get(new RecipeReference(
-                                "minecraft:recipe_manager", "minecraft:iron_block"))
+                                "minecraft:recipe_manager",
+                                GroundedTestFixtures.RECIPE_GENERATION,
+                                "minecraft:iron_block"))
                         .orElseThrow()
                         .id());
         assertEquals(

@@ -6,6 +6,7 @@ import dev.tomewisp.context.EvidenceMetadata;
 import dev.tomewisp.context.RecipeSnapshot;
 import dev.tomewisp.context.ToolInvocationContext;
 import dev.tomewisp.recipe.RecipeCatalog;
+import dev.tomewisp.recipe.RecipeCatalogStatus;
 import dev.tomewisp.tool.Tool;
 import dev.tomewisp.tool.ToolAccess;
 import dev.tomewisp.tool.ToolDescriptor;
@@ -20,6 +21,7 @@ public final class FindItemUsagesTool
     public record Output(
             String itemId,
             List<RecipeCatalog.Usage> usages,
+            RecipeCatalogStatus catalog,
             List<EvidenceMetadata> evidence)
             implements EvidenceBearing {
         public Output {
@@ -55,6 +57,7 @@ public final class FindItemUsagesTool
         return new ToolResult.Success<>(new Output(
                 input.itemId(),
                 new RecipeCatalog(snapshot).usages(input.itemId()),
+                RecipeCatalogStatus.from(snapshot),
                 List.of(snapshot.evidence())));
     }
 }

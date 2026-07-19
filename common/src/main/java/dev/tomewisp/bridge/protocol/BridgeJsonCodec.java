@@ -9,14 +9,19 @@ import java.util.Set;
 
 public final class BridgeJsonCodec {
     private static final Map<Class<?>, Set<String>> FIELDS = Map.of(
-            CapabilityPayload.class, Set.of("version", "remoteTools", "serverModel"),
+            CapabilityPayload.class, Set.of(
+                    "version", "remoteTools", "serverModel",
+                    "serverContextWindowTokens", "serverMaxOutputTokens",
+                    "serverPromptAndToolTokens", "serverCanonicalModelId"),
             RemoteToolCallPayload.class,
                     Set.of("version", "correlationId", "sessionId", "toolId", "argumentsJson"),
             RemoteToolResultChunkPayload.class,
                     Set.of("version", "correlationId", "index", "total", "contentHash", "base64Data"),
             RemoteCancelPayload.class, Set.of("version", "correlationId"),
             ServerAgentRequestPayload.class,
-                    Set.of("version", "requestId", "sessionId", "question", "stream"),
+                    Set.of("version", "requestId", "sessionId", "question", "stream", "history"),
+            ServerAgentRequestChunkPayload.class,
+                    Set.of("version", "requestId", "index", "total", "contentHash", "base64Data"),
             ServerAgentCancelPayload.class, Set.of("version", "requestId"),
             ServerAgentEventPayload.class,
                     Set.of("version", "requestId", "eventType", "eventJson", "terminal"));
@@ -55,6 +60,42 @@ public final class BridgeJsonCodec {
             extra.removeAll(expected);
             throw new IllegalArgumentException(
                     "Bridge payload schema mismatch; missing=" + missing + ", extra=" + extra);
+        }
+        if (type == ServerAgentRequestPayload.class) {
+            JsonElement history = object.get("history");
+            if (history == null || !history.isJsonArray()) {
+                throw new IllegalArgumentException("Server Agent history must be an array");
+            }
+            for (JsonElement item : history.getAsJsonArray()) {
+                if (!item.isJsonObject()
+                        || !item.getAsJsonObject().keySet().equals(Set.of("role", "content"))) {
+                    throw new IllegalArgumentException("Server Agent history schema mismatch");
+                }
+                JsonElement content = item.getAsJsonObject().get("content");
+                if (content == null || !content.isJsonArray()) {
+                    throw new IllegalArgumentException("Server Agent history content must be an array");
+                }
+                for (JsonElement block : content.getAsJsonArray()) {
+                    if (!block.isJsonObject()) {
+                        throw new IllegalArgumentException(
+                                "Server Agent history content schema mismatch");
+                    }
+                    JsonObject contentObject = block.getAsJsonObject();
+                    JsonElement kind = contentObject.get("kind");
+                    Set<String> contentFields = kind == null ? Set.of() : switch (kind.getAsString()) {
+                        case "TEXT" -> Set.of("kind", "text");
+                        case "TOOL_USE" -> Set.of(
+                                "kind", "toolUseId", "toolName", "json");
+                        case "TOOL_RESULT" -> Set.of(
+                                "kind", "toolUseId", "json", "error");
+                        default -> Set.of();
+                    };
+                    if (!contentObject.keySet().equals(contentFields)) {
+                        throw new IllegalArgumentException(
+                                "Server Agent history content schema mismatch");
+                    }
+                }
+            }
         }
         T value = gson.fromJson(object, type);
         if (value == null) {

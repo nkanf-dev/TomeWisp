@@ -12,9 +12,9 @@ import dev.tomewisp.knowledge.KnowledgeKind;
 import dev.tomewisp.knowledge.KnowledgeLoad;
 import dev.tomewisp.knowledge.KnowledgeRegistry;
 import dev.tomewisp.knowledge.KnowledgeSourceProvider;
-import dev.tomewisp.platform.PlatformService;
 import dev.tomewisp.testing.GroundedTestFixtures;
 import dev.tomewisp.tool.ToolResult;
+import dev.tomewisp.tool.gamestate.GameStateSection;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -49,7 +49,8 @@ final class BuiltinEvidenceContractTest {
                 document.evidence())));
 
         List<ToolResult<?>> results = List.of(
-                new PlatformInfoTool(testPlatform()).invoke(context, new PlatformInfoTool.Input()),
+                new InspectGameStateTool().invoke(
+                        context, new InspectGameStateTool.Input(GameStateSection.OVERVIEW, "summary")),
                 new ResolveResourceTool().invoke(
                         context, new ResolveResourceTool.Input("minecraft:stone", null)),
                 new FindRecipesTool().invoke(
@@ -57,15 +58,21 @@ final class BuiltinEvidenceContractTest {
                 new SearchRecipesTool().invoke(
                         context, new SearchRecipesTool.Input(null, "minecraft:iron_block", null, null)),
                 new GetRecipeTool().invoke(
-                        context, new GetRecipeTool.Input("minecraft:recipe_manager", "minecraft:iron_block")),
+                        context,
+                        new GetRecipeTool.Input(
+                                "minecraft:recipe_manager",
+                                GroundedTestFixtures.RECIPE_GENERATION,
+                                "minecraft:iron_block")),
                 new FindItemUsagesTool().invoke(
                         context, new FindItemUsagesTool.Input("minecraft:iron_ingot")),
-                new PlayerContextTool().invoke(context, new PlayerContextTool.Input()),
                 new InspectInventoryTool().invoke(context, new InspectInventoryTool.Input()),
                 new CalculateCraftabilityTool().invoke(
                         context,
                         new CalculateCraftabilityTool.Input(
-                                "minecraft:recipe_manager", "minecraft:iron_block", 1)),
+                                "minecraft:recipe_manager",
+                                GroundedTestFixtures.RECIPE_GENERATION,
+                                "minecraft:iron_block",
+                                1)),
                 new ListKnowledgeSourcesTool(knowledge).invoke(
                         context, new ListKnowledgeSourcesTool.Input()),
                 new SearchKnowledgeTool(knowledge).invoke(
@@ -86,14 +93,5 @@ final class BuiltinEvidenceContractTest {
             assertFalse(evidence.gameVersion().isBlank());
             assertFalse(evidence.loader().isBlank());
         }
-    }
-
-    private static PlatformService testPlatform() {
-        return new PlatformService() {
-            @Override public String platformName() { return "common-test"; }
-            @Override public String gameVersion() { return "test"; }
-            @Override public boolean isModLoaded(String modId) { return false; }
-            @Override public boolean isDevelopmentEnvironment() { return true; }
-        };
     }
 }

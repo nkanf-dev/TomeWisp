@@ -24,12 +24,21 @@ import dev.tomewisp.context.RecipeSnapshot;
 import dev.tomewisp.context.RegistryEntrySnapshot;
 import dev.tomewisp.context.RegistrySnapshot;
 import dev.tomewisp.context.ToolInvocationContext;
+import dev.tomewisp.context.game.ObservableGameStateSnapshot;
+import dev.tomewisp.context.game.ObservableGameStateSnapshot.DiagnosticValue;
+import dev.tomewisp.context.game.ObservableGameStateSnapshot.SectionDiagnostic;
 import dev.tomewisp.platform.PlatformService;
 import dev.tomewisp.platform.PlatformServices;
+import dev.tomewisp.recipe.RecipeKnowledgeProvider;
+import dev.tomewisp.recipe.RecipeKnowledgeService;
+import dev.tomewisp.recipe.RecipeProviderSnapshot;
+import dev.tomewisp.recipe.RecipeVisibilityPolicy;
+import dev.tomewisp.tool.gamestate.WorldQueryOperation;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -52,10 +61,12 @@ import net.minecraft.world.item.crafting.display.ShapedCraftingRecipeDisplay;
 import net.minecraft.world.item.crafting.display.ShapelessCraftingRecipeDisplay;
 
 public final class MinecraftContextCapture {
+    private static final String CAPTURE_GENERATION_PLACEHOLDER = "0".repeat(64);
     private static final String REGISTRY_PROVENANCE = "minecraft:registry";
     private static final String RECIPE_PROVENANCE = "minecraft:recipe_manager";
     private final Gson gson;
     private final PlatformService platform;
+    private final RecipeKnowledgeService recipeKnowledge = new RecipeKnowledgeService();
 
     public MinecraftContextCapture(Gson gson) {
         this(gson, PlatformServices.load());
@@ -97,11 +108,20 @@ public final class MinecraftContextCapture {
         Optional<RecipeSnapshot> recipes = capabilities.contains(ContextCapability.RECIPES)
                 ? Optional.of(captureRecipes(source, capturedAt))
                 : Optional.empty();
+        Optional<ObservableGameStateSnapshot> observableGameState =
+                capabilities.contains(ContextCapability.OBSERVABLE_GAME_STATE)
+                        ? Optional.of(captureObservableGameState(
+                                source, serverPlayer, capturedAt,
+                                player.orElseGet(() -> serverPlayer == null
+                                        ? null
+                                        : capturePlayer(serverPlayer, capturedAt))))
+                        : Optional.empty();
 
         long bytes = serializedBytes(caller)
                 + serializedBytes(player.orElse(null))
                 + serializedBytes(registries.orElse(null))
-                + serializedBytes(recipes.orElse(null));
+                + serializedBytes(recipes.orElse(null))
+                + serializedBytes(observableGameState.orElse(null));
         ContextMetrics metrics = new ContextMetrics(
                 registries.map(value -> (long) value.entries().size()).orElse(0L),
                 recipes.map(value -> (long) value.recipes().size()).orElse(0L),
@@ -109,7 +129,136 @@ public final class MinecraftContextCapture {
                 bytes,
                 System.nanoTime() - started);
         return new ToolInvocationContext(
-                correlationId, capturedAt, caller, player, registries, recipes, metrics);
+                correlationId, capturedAt, caller, player, registries, recipes,
+                observableGameState, metrics);
+    }
+
+    private ObservableGameStateSnapshot captureObservableGameState(
+            CommandSourceStack source,
+            ServerPlayer serverPlayer,
+            Instant capturedAt,
+            PlayerSnapshot player) {
+        EvidenceMetadata unavailable = evidence(
+                DataCompleteness.UNKNOWN, capturedAt,
+                "minecraft:server_client_state", "minecraft:server_topology_boundary");
+        List<SectionDiagnostic> clientOnly = List.of(new SectionDiagnostic(
+                "client_state_not_visible_to_server",
+                "The server-hosted model cannot observe client-owned menus or configuration without a client adapter"));
+        // Loader metadata on a server is not the player's client-visible mod list. Do not expose
+        // server-only contacts, dependencies, licences, or private implementation metadata to an
+        // ordinary player merely because their model happens to be server hosted.
+        List<dev.tomewisp.platform.InstalledModMetadata> mods = List.of();
+        DataCompleteness modCompleteness = DataCompleteness.UNKNOWN;
+        List<SectionDiagnostic> modDiagnostics = List.of(new SectionDiagnostic(
+                "client_mod_list_not_visible_to_server",
+                "The server cannot attest the player's installed client mods"));
+        EvidenceMetadata playerEvidence = serverPlayer == null
+                ? unavailable
+                : evidence(
+                        DataCompleteness.COMPLETE, capturedAt,
+                        "minecraft:server_player", "minecraft:server_player");
+        List<DiagnosticValue> diagnostics = serverPlayer == null
+                ? List.of()
+                : List.of(
+                        new DiagnosticValue("position", "x", Double.toString(serverPlayer.getX())),
+                        new DiagnosticValue("position", "y", Double.toString(serverPlayer.getY())),
+                        new DiagnosticValue("position", "z", Double.toString(serverPlayer.getZ())),
+                        new DiagnosticValue("position", "dimension", player.dimension()),
+                        new DiagnosticValue("player", "game_mode", player.gameMode()));
+        var level = source.getLevel();
+        var border = level.getWorldBorder();
+        var spawn = level.getRespawnData();
+        Map<String, ObservableGameStateSnapshot.QueryValue> queries = new LinkedHashMap<>();
+        if (authorizedWorldQuery(source, WorldQueryOperation.TIME)) {
+            queries.put("time", serverQuery("time", Long.toString(level.getGameTime())));
+        }
+        if (authorizedWorldQuery(source, WorldQueryOperation.WEATHER)) {
+            queries.put("weather", serverQuery("weather",
+                    level.isThundering() ? "thunder" : level.isRaining() ? "rain" : "clear"));
+        }
+        if (authorizedWorldQuery(source, WorldQueryOperation.DIFFICULTY)) {
+            queries.put("difficulty", serverQuery(
+                    "difficulty", level.getDifficulty().getSerializedName()));
+        }
+        if (authorizedWorldQuery(source, WorldQueryOperation.WORLD_BORDER)) {
+            queries.put("world_border", serverQuery("world_border",
+                    "center=" + border.getCenterX() + "," + border.getCenterZ()
+                            + ",size=" + border.getSize()));
+        }
+        if (authorizedWorldQuery(source, WorldQueryOperation.SPAWN)) {
+            queries.put("spawn", serverQuery("spawn",
+                    spawn.dimension().identifier() + " " + spawn.pos().toShortString()));
+        }
+        boolean worldQueriesAuthorized = queries.size() == WorldQueryOperation.values().length;
+        return new ObservableGameStateSnapshot(
+                capturedAt,
+                new ObservableGameStateSnapshot.RuntimeState(
+                        platform.gameVersion(), platform.platformName(),
+                        platform.isDevelopmentEnvironment(), "server",
+                        evidence(DataCompleteness.COMPLETE, capturedAt,
+                                "tomewisp:observable_runtime", "minecraft:server_runtime"),
+                        List.of()),
+                new ObservableGameStateSnapshot.ModsState(
+                        mods,
+                        evidence(modCompleteness, capturedAt,
+                                "tomewisp:installed_mods", "tomewisp:loader_metadata"),
+                        modDiagnostics),
+                new ObservableGameStateSnapshot.OptionsState(List.of(), unavailable, clientOnly),
+                new ObservableGameStateSnapshot.PacksState(List.of(), List.of(), unavailable, clientOnly),
+                new ObservableGameStateSnapshot.ShaderState(
+                        false, "client_only", "", Map.of(), unavailable, clientOnly),
+                new ObservableGameStateSnapshot.DiagnosticsState(
+                        diagnostics, playerEvidence,
+                        serverPlayer == null
+                                ? List.of(new SectionDiagnostic(
+                                        "player_required",
+                                        "F3-style diagnostics require a player source"))
+                                : List.of(new SectionDiagnostic(
+                                        "client_f3_metrics_unavailable",
+                                        "Server capture includes authoritative player state but not client renderer metrics"))),
+                new ObservableGameStateSnapshot.PlayerUiState(
+                        player,
+                        serverPlayer == null
+                                ? "unavailable"
+                                : serverPlayer.containerMenu == serverPlayer.inventoryMenu
+                                ? "gameplay_or_player_inventory"
+                                : "open_synchronized_menu",
+                        serverPlayer == null
+                                || serverPlayer.containerMenu == serverPlayer.inventoryMenu
+                                        || serverPlayer.containerMenu.getType() == null
+                                ? ""
+                                : BuiltInRegistries.MENU.getKey(
+                                        serverPlayer.containerMenu.getType()).toString(),
+                        playerEvidence,
+                        serverPlayer == null
+                                ? List.of(new SectionDiagnostic(
+                                        "player_required",
+                                        "No player is associated with this server command source"))
+                                : clientOnly),
+                new ObservableGameStateSnapshot.WorldQueriesState(
+                        queries,
+                        evidence(worldQueriesAuthorized
+                                        ? DataCompleteness.COMPLETE
+                                        : DataCompleteness.UNKNOWN,
+                                capturedAt,
+                                "minecraft:server_world_queries", "minecraft:server_level_state"),
+                        worldQueriesAuthorized
+                                ? List.of()
+                                : List.of(new SectionDiagnostic(
+                                        "permission_required",
+                                        "Read-only server world queries require game-master command permission"))));
+    }
+
+    private static boolean authorizedWorldQuery(
+            CommandSourceStack source, WorldQueryOperation operation) {
+        Objects.requireNonNull(operation, "operation");
+        return source.permissions().hasPermission(Permissions.COMMANDS_GAMEMASTER);
+    }
+
+    private static ObservableGameStateSnapshot.QueryValue serverQuery(
+            String operation, String value) {
+        return new ObservableGameStateSnapshot.QueryValue(
+                operation, value, true, "server_authoritative");
     }
 
     private PlayerSnapshot capturePlayer(ServerPlayer player, java.time.Instant capturedAt) {
@@ -174,17 +323,37 @@ public final class MinecraftContextCapture {
 
     private RecipeSnapshot captureRecipes(
             CommandSourceStack source, java.time.Instant capturedAt) {
+        RecipeKnowledgeProvider recipeManager = new RecipeKnowledgeProvider() {
+            @Override
+            public String sourceId() {
+                return "minecraft:recipe_manager";
+            }
+
+            @Override
+            public RecipeProviderSnapshot capture() {
+                return captureRecipeManager(source, capturedAt);
+            }
+        };
+        return recipeKnowledge.capture(
+                evidence(
+                        DataCompleteness.UNKNOWN,
+                        capturedAt,
+                        "minecraft:recipe_manager",
+                        RECIPE_PROVENANCE),
+                RecipeVisibilityPolicy.ALL_KNOWN,
+                List.of(recipeManager));
+    }
+
+    private RecipeProviderSnapshot captureRecipeManager(
+            CommandSourceStack source, java.time.Instant capturedAt) {
         ContextMap displayContext = SlotDisplayContext.fromLevel(source.getLevel());
         List<RecipeEntrySnapshot> recipes = source.getServer().getRecipeManager().getRecipes()
                 .stream()
                 .map(holder -> captureRecipe(holder, displayContext, capturedAt))
                 .sorted(Comparator.comparing(RecipeEntrySnapshot::id))
                 .toList();
-        return new RecipeSnapshot(evidence(
-                DataCompleteness.COMPLETE,
-                capturedAt,
-                "minecraft:recipe_manager",
-                RECIPE_PROVENANCE), recipes);
+        return RecipeProviderSnapshot.available(
+                "minecraft:recipe_manager", DataCompleteness.COMPLETE, recipes, List.of());
     }
 
     private RecipeEntrySnapshot captureRecipe(
@@ -223,7 +392,8 @@ public final class MinecraftContextCapture {
                 "minecraft:recipe_manager",
                 RECIPE_PROVENANCE);
         return new RecipeEntrySnapshot(
-                new RecipeReference("minecraft:recipe_manager", recipeId),
+                new RecipeReference(
+                        "minecraft:recipe_manager", CAPTURE_GENERATION_PLACEHOLDER, recipeId),
                 recipeId,
                 type.toString(),
                 layout,

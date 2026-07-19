@@ -50,7 +50,7 @@ targets, not owners of TomeWisp recipe identity.
 ### 2.3 Rejected: persist live GuideService objects
 
 Serializing the current in-memory service graph would retain connection-scoped
-capabilities and couple migrations to implementation classes. Phase 4 instead
+capabilities and couple schema layout to implementation classes. Phase 4 instead
 persists versioned domain records and reconstructs a new connection-scoped
 service projection on load.
 
@@ -125,6 +125,16 @@ navigation is a disabled action with a diagnostic, not a fabricated success.
 
 ## 4. Durable history
 
+Implementation status on 2026-07-18: the current normal-mode projection,
+hashed player/connection partitions, ordered asynchronous SQLite repository,
+interruption recovery, GuideService lifecycle integration, Fabric/NeoForge
+packaging and lifecycle hooks, and player-visible persistence health are
+implemented. Privacy-safe compaction checkpoints and per-session/request model
+selection are also complete. SKMB-2026-07-18-011 removes all migration paths
+for unshipped development schemas. Developer-mode payloads, explicit partition/all-history
+management, paging, and retained graphical restart acceptance remain open
+Phase 4 work.
+
 ### 4.1 Ownership and partitioning
 
 `GuideService` remains the single owner of active connection-scoped request,
@@ -139,7 +149,7 @@ only the current partition. Capabilities, live recipe generations, inventories,
 and source availability never resume from an old connection.
 
 SQLite is the preferred implementation because it provides transactions,
-indexes, migrations, and recoverable local tooling. Adoption is conditional on
+indexes, strict schema metadata, and recoverable local tooling. Adoption is conditional on
 a retained Java 25, Fabric, NeoForge, Windows, macOS, and Linux packaging proof.
 If that proof fails, selecting a different embedded database requires a new
 accepted decision; the implementation must not silently fall back to ad-hoc
@@ -154,18 +164,18 @@ The versioned schema stores:
 - semantic message nodes and player-visible card projections;
 - source and evidence summaries;
 - structured terminal, cancelled, interrupted, and error states;
-- model mode and a redacted model identifier;
+- per-session selection and each request's captured credential-free selection;
 - compaction checkpoints and their source-message ranges;
-- schema and migration metadata.
+- schema metadata.
 
 Normal mode does not retain full inventory snapshots, raw provider bodies,
 authorization data, model reasoning, or full normalized tool results. It stores
 only the structured projection required to reconstruct the player UI.
 
-Developer mode additionally retains complete normalized tool arguments and
+Debug mode additionally retains complete normalized tool arguments and
 results, GuideService transitions, queue and retry events, compaction details,
-and redacted traces. Developer data is separately identifiable, exportable, and
-deletable. Developer mode is disabled by default and affects only future
+and redacted traces. Debug data is separately identifiable, exportable, and
+deletable. Debug mode is disabled by default and affects only future
 requests.
 
 No mode stores API keys, authorization headers, cookies, raw secrets, or model
@@ -249,6 +259,15 @@ prompt/schema version, creation time, result, and failure state. Older
 checkpoints may be summarized into a higher-level checkpoint while original
 messages remain intact.
 
+The model identifier is generation provenance, not ownership. Sessions retain
+a provider-neutral transcript and are never bound to one provider or model.
+Changing the selected model affects future requests only: TomeWisp serializes
+the same common history through the newly selected adapter, validates any
+checkpoint by source hash and summary version, and re-estimates it against the
+new model's context budget. Provider-side prompt/KV cache reuse may be lost,
+but semantic conversation context is preserved. A valid derived checkpoint may
+therefore cross both provider and model boundaries.
+
 A summary is derived conversation memory, never factual game evidence. Current
 inventory, recipes, quest state, position, capabilities, and knowledge must be
 validated through current evidence or a fresh tool call.
@@ -323,6 +342,16 @@ Recipe and item components may offer recipe, usage, inventory-check, and viewer
 navigation actions. Actions send typed intents through existing services; they
 do not execute arbitrary model-authored behavior.
 
+Normal tool/source details are player-facing cards, not diagnostics. They show
+localized names, Minecraft item icons, quantities, inputs/outputs, workstation
+or processing facts, available/required/missing materials, steps, and friendly
+errors. Raw tool/request IDs, confidence, authority/completeness enums, capture
+timestamps, provenance, stable internal handles, normalized JSON, and technical
+failure codes are hidden. The player-facing “调试模式” / “Debug Mode” setting
+may append those redacted diagnostics in a visibly separate section; it never
+reveals reasoning, credentials, authorization data, raw provider bodies, or
+another player's state.
+
 Animation is never the state source. Closing and reopening the screen rebuilds
 the same content from immutable semantic records.
 
@@ -392,18 +421,21 @@ disabled.
 
 ## 7. Configuration and diagnostics
 
-The native settings flow covers model protocol, base URL, model ID, API-key
-environment-variable name, timeouts, output tokens, recipe visibility, enabled
-sources, preferred viewer, database health, history management, compaction
-state, developer mode, animation, accessibility, reload, and a redacted
-connection test.
+The native settings flow manages multiple named model profiles. Each profile
+covers protocol, base URL, model ID, API-key environment-variable name,
+context/output limits, timeouts, and a redacted connection test. Players select
+the profile used by future requests without rebinding or clearing the current
+session; an active request retains the profile selected when it started.
+Settings also cover recipe visibility, enabled sources, preferred viewer,
+database health, history management, compaction state, debug mode, animation,
+accessibility, and reload. Debug mode is disabled by default.
 
 The GUI may report whether a named environment variable is present but never
 read out or persist its value.
 
-Developer diagnostics expose request/session IDs, topology, provider and recipe
+Debug diagnostics expose request/session IDs, topology, provider and recipe
 source capability, snapshot generation and counts, tool and evidence data,
-queue and 429 state, database schema and migrations, compaction checkpoints,
+queue and 429 state, current database schema, compaction checkpoints,
 token estimates, and redacted trace export. They never expose reasoning,
 credentials, authorization headers, or another player's data.
 
@@ -468,15 +500,15 @@ count as a successful viewer, Patchouli, or sample-mod smoke claim.
 2. Introduce the recipe-provider contract and deterministic merge tests.
 3. Verify 26.2 viewer APIs and implement compatible JEI/REI/EMI adapters.
 4. Add the common viewer bridge and first-class recipe/item actions.
-5. Implement `GuideHistoryStore`, database schema, migrations, and recovery.
+5. Implement `GuideHistoryStore`, the current database schema, and recovery.
 6. Restore durable sessions as inactive projections and add explicit retry.
 7. Implement reducer, token-budget, tool-result reduction, and checkpoints.
 8. Add semantic message parsing, validation, and streaming reconciliation.
 9. Replace the flattened request projection with the ordered timeline and
    version its local, remote, and durable identities.
 10. Add native item/recipe renderers and controlled component registry.
-11. Add settings, developer diagnostics, paging, and accessibility.
-12. Extend deterministic, race, migration, redaction, and loader tests.
+11. Add settings, debug diagnostics, paging, and accessibility.
+12. Extend deterministic, race, schema-rejection, redaction, and loader tests.
 13. Run the full build, then execute and retain the approved modded client smoke.
 
 Each implementation work package receives a focused plan and verification
@@ -497,7 +529,7 @@ Phase 4 is complete only when all applicable items are proven:
 6. Interrupted requests never automatically repeat a provider call.
 7. Normal and developer persistence retain exactly their approved data classes;
    secrets and reasoning never enter either store.
-8. Database migration, corruption, failed writes, concurrent reads, deletion,
+8. Database schema rejection, corruption, failed writes, concurrent reads, deletion,
    and disconnect behavior have deterministic coverage.
 9. Context reduction preserves system and tool-message structure, summaries
    never become factual evidence, and compaction failure is explicit.

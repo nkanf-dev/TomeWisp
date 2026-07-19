@@ -123,6 +123,8 @@ final class AnthropicMessagesClientTest {
             assertEquals("铁锭", turn.text());
             assertTrue(events.stream().anyMatch(event -> event instanceof ModelEvent.TextDelta delta
                     && delta.text().equals("铁锭")));
+            assertTrue(events.stream().anyMatch(ModelEvent.AttemptStarted.class::isInstance));
+            assertTrue(events.stream().anyMatch(ModelEvent.ResponseStarted.class::isInstance));
             assertEquals(2, turn.usage().outputTokens());
         }
     }
@@ -145,6 +147,7 @@ final class AnthropicMessagesClientTest {
                 uri.resolve("v1/"),
                 "mimo-v2.5-pro",
                 SecretValue.of("test-secret"),
+                128_000,
                 1024,
                 Duration.ofSeconds(5),
                 Duration.ofSeconds(10));

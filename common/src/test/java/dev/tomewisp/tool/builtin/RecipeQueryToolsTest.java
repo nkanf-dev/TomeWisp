@@ -21,6 +21,8 @@ final class RecipeQueryToolsTest {
                                 null, "minecraft:iron_block", null, null)));
 
         assertEquals(1, search.value().recipes().size());
+        assertEquals(1, search.value().catalog().recipeCount());
+        assertEquals(0, search.value().catalog().semanticGroupCount());
         assertTrue(search.value() instanceof EvidenceBearing);
         assertEquals(
                 "minecraft:iron_block",
@@ -31,9 +33,32 @@ final class RecipeQueryToolsTest {
                 new GetRecipeTool().invoke(
                         GroundedTestFixtures.fullContext(),
                         new GetRecipeTool.Input(
-                                "minecraft:recipe_manager", "minecraft:iron_block")));
+                                "minecraft:recipe_manager",
+                                GroundedTestFixtures.RECIPE_GENERATION,
+                                "minecraft:iron_block")));
         assertEquals(9, details.value().recipe().ingredients().getFirst().count());
+        assertEquals(1, details.value().catalog().recipeCount());
         assertTrue(!details.value().evidence().isEmpty());
+    }
+
+    @Test
+    void distinguishesMalformedAndStaleRecipeReferences() {
+        GetRecipeTool tool = new GetRecipeTool();
+        ToolResult.Failure<GetRecipeTool.Output> invalid = assertInstanceOf(
+                ToolResult.Failure.class,
+                tool.invoke(
+                        GroundedTestFixtures.fullContext(),
+                        new GetRecipeTool.Input(
+                                "minecraft:recipe_manager", "not-a-digest", "minecraft:iron_block")));
+        assertEquals("invalid_arguments", invalid.code());
+
+        ToolResult.Failure<GetRecipeTool.Output> stale = assertInstanceOf(
+                ToolResult.Failure.class,
+                tool.invoke(
+                        GroundedTestFixtures.fullContext(),
+                        new GetRecipeTool.Input(
+                                "minecraft:recipe_manager", "f".repeat(64), "minecraft:iron_block")));
+        assertEquals("stale_reference", stale.code());
     }
 
     @Test
@@ -46,6 +71,7 @@ final class RecipeQueryToolsTest {
         assertEquals(
                 RecipeCatalog.UsageRole.INPUT,
                 usages.value().usages().getFirst().role());
+        assertEquals(1, usages.value().catalog().recipeCount());
 
         ToolResult.Failure<SearchRecipesTool.Output> invalid = assertInstanceOf(
                 ToolResult.Failure.class,

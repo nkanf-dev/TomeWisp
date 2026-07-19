@@ -37,6 +37,11 @@ public final class NeoForgeGuideCommands {
                         .then(literal("sources").executes(context -> invoke(
                                 context.getSource(), guide::sources)))
                         .then(literal("model")
+                                .then(literal("list").executes(context -> invoke(
+                                        context.getSource(), sink -> guide.models(actor(), sink))))
+                                .then(literal("profile").then(argument("id", word()).executes(
+                                        context -> invoke(context.getSource(), sink -> guide.modelProfile(
+                                                actor(), getString(context, "id"), sink)))))
                                 .then(literal("client").executes(context -> invoke(
                                         context.getSource(), sink -> guide.model(
                                                 actor(), GuideModelMode.CLIENT, sink))))

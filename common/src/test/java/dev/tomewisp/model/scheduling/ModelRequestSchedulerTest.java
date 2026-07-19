@@ -61,6 +61,36 @@ final class ModelRequestSchedulerTest {
         assertEquals("resumed", result.text());
         assertEquals(2, calls.get());
         assertTrue(events.stream().anyMatch(event -> event instanceof ModelEvent.RateLimited));
+        assertEquals(
+                List.of(1, 2),
+                events.stream()
+                        .filter(ModelEvent.AttemptStarted.class::isInstance)
+                        .map(ModelEvent.AttemptStarted.class::cast)
+                        .map(ModelEvent.AttemptStarted::attempt)
+                        .toList());
+    }
+
+    @Test
+    void preservesTransportAttemptBudgetWhileReplacingItsLocalAttemptNumber() {
+        long attemptTimeoutMillis = 10_000;
+        ModelRequestScheduler scheduler = new ModelRequestScheduler(
+                (request, events, cancellation) -> {
+                    events.accept(new ModelEvent.AttemptStarted(99, attemptTimeoutMillis));
+                    return CompletableFuture.completedFuture(turn("done"));
+                });
+        List<ModelEvent> events = new ArrayList<>();
+
+        scheduler.complete(request("one"), events::add, new CancellationSignal()).join();
+
+        List<ModelEvent.AttemptStarted> attempts = events.stream()
+                .filter(ModelEvent.AttemptStarted.class::isInstance)
+                .map(ModelEvent.AttemptStarted.class::cast)
+                .toList();
+        assertEquals(2, attempts.size());
+        assertEquals(1, attempts.getFirst().attempt());
+        assertEquals(null, attempts.getFirst().attemptTimeoutMillis());
+        assertEquals(1, attempts.getLast().attempt());
+        assertEquals(attemptTimeoutMillis, attempts.getLast().attemptTimeoutMillis());
     }
 
     @Test

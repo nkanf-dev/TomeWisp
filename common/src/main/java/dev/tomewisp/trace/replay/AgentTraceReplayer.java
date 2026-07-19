@@ -121,6 +121,7 @@ public final class AgentTraceReplayer {
                 case REGISTRIES -> context.registries().isPresent();
                 case RECIPES -> context.recipes().isPresent();
                 case PLAYER -> context.player().isPresent();
+                case OBSERVABLE_GAME_STATE -> context.observableGameState().isPresent();
             };
             if (!present) {
                 return "missing_context: " + capability.name().toLowerCase();

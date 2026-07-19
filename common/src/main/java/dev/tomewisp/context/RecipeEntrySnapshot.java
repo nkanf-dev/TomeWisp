@@ -7,6 +7,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.TreeMap;
+import dev.tomewisp.recipe.RecipeUnlockState;
 
 public record RecipeEntrySnapshot(
         RecipeReference reference,
@@ -22,6 +23,7 @@ public record RecipeEntrySnapshot(
         RecipeProcessingSnapshot processing,
         List<String> conditions,
         Map<String, JsonObject> extensions,
+        RecipeUnlockState unlockState,
         EvidenceMetadata evidence) {
     public RecipeEntrySnapshot {
         Objects.requireNonNull(reference, "reference");
@@ -40,7 +42,41 @@ public record RecipeEntrySnapshot(
         conditions = List.copyOf(conditions);
         conditions.forEach(value -> ContextValidation.nonBlank(value, "condition"));
         extensions = immutableExtensions(extensions);
+        Objects.requireNonNull(unlockState, "unlockState");
         Objects.requireNonNull(evidence, "evidence");
+    }
+
+    public RecipeEntrySnapshot(
+            RecipeReference reference,
+            String id,
+            String type,
+            RecipeLayoutSnapshot layout,
+            String workstation,
+            List<IngredientRequirementSnapshot> ingredients,
+            List<IngredientRequirementSnapshot> catalysts,
+            List<FluidRequirementSnapshot> fluids,
+            List<RecipeOutputSnapshot> outputs,
+            List<RecipeOutputSnapshot> byproducts,
+            RecipeProcessingSnapshot processing,
+            List<String> conditions,
+            Map<String, JsonObject> extensions,
+            EvidenceMetadata evidence) {
+        this(
+                reference,
+                id,
+                type,
+                layout,
+                workstation,
+                ingredients,
+                catalysts,
+                fluids,
+                outputs,
+                byproducts,
+                processing,
+                conditions,
+                extensions,
+                RecipeUnlockState.UNKNOWN,
+                evidence);
     }
 
     @Override
@@ -48,6 +84,25 @@ public record RecipeEntrySnapshot(
         TreeMap<String, JsonObject> copy = new TreeMap<>();
         extensions.forEach((key, value) -> copy.put(key, value.deepCopy()));
         return Collections.unmodifiableMap(copy);
+    }
+
+    public RecipeEntrySnapshot withReference(RecipeReference replacement) {
+        return new RecipeEntrySnapshot(
+                replacement,
+                id,
+                type,
+                layout,
+                workstation,
+                ingredients,
+                catalysts,
+                fluids,
+                outputs,
+                byproducts,
+                processing,
+                conditions,
+                extensions,
+                unlockState,
+                evidence);
     }
 
     private static List<IngredientRequirementSnapshot> copyRequirements(

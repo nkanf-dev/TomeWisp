@@ -6,6 +6,7 @@ public record GuideUiLayout(
         Rect topBar,
         Rect sessionRail,
         Rect transcript,
+        Rect progress,
         Rect composer,
         Rect detail,
         boolean detailOverlay) {
@@ -13,13 +14,17 @@ public record GuideUiLayout(
         if (width < 240 || height < 180) throw new IllegalArgumentException("screen is too small");
         int margin = 8;
         int top = 44;
+        int progressHeight = 22;
+        int progressGap = 4;
         int composerHeight = Math.min(72, Math.max(54, height / 4));
         boolean narrow = width < 560;
         int railWidth = narrow ? 0 : 128;
         boolean inlineDetail = detailOpen && width >= 760;
         int detailWidth = inlineDetail ? 220 : 0;
         int bodyTop = top + margin;
-        int bodyBottom = height - composerHeight - margin;
+        int composerTop = height - composerHeight;
+        int progressTop = composerTop - progressGap - progressHeight;
+        int bodyBottom = progressTop - margin;
         int transcriptLeft = margin + railWidth + (railWidth == 0 ? 0 : margin);
         int transcriptRight = width - margin - detailWidth - (detailWidth == 0 ? 0 : margin);
         Rect transcript = new Rect(
@@ -38,7 +43,8 @@ public record GuideUiLayout(
                 new Rect(margin, margin, width - margin * 2, top - margin),
                 railWidth == 0 ? Rect.EMPTY : new Rect(margin, bodyTop, railWidth, bodyBottom - bodyTop),
                 transcript,
-                new Rect(transcriptLeft, height - composerHeight, transcript.width(), composerHeight - margin),
+                new Rect(transcriptLeft, progressTop, transcript.width(), progressHeight),
+                new Rect(transcriptLeft, composerTop, transcript.width(), composerHeight - margin),
                 detail,
                 detailOpen && !inlineDetail);
     }

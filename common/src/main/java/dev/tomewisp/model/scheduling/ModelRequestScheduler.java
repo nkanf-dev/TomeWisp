@@ -117,8 +117,25 @@ public final class ModelRequestScheduler implements ModelClient {
     }
 
     private void dispatch(Pending pending) {
+        if (pending.cancellation.isCancelled() || pending.result.isDone()) {
+            return;
+        }
         pending.attempt++;
-        delegate.complete(pending.request, pending.events, pending.cancellation)
+        pending.events.accept(new ModelEvent.AttemptStarted(pending.attempt, null));
+        delegate.complete(
+                        pending.request,
+                        event -> {
+                            if (!pending.cancellation.isCancelled()
+                                    && !pending.result.isDone()) {
+                                pending.events.accept(
+                                        event instanceof ModelEvent.AttemptStarted started
+                                                ? new ModelEvent.AttemptStarted(
+                                                        pending.attempt,
+                                                        started.attemptTimeoutMillis())
+                                                : event);
+                            }
+                        },
+                        pending.cancellation)
                 .whenComplete((turn, throwable) -> {
                     Throwable cause = unwrap(throwable);
                     if (cause instanceof ModelRateLimitException limited

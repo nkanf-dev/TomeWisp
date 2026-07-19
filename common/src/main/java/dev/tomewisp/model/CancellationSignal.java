@@ -4,7 +4,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
 
-public final class CancellationSignal {
+public final class CancellationSignal implements dev.tomewisp.net.HttpCancellation {
     private final AtomicBoolean cancelled = new AtomicBoolean();
     private final List<Runnable> listeners = new ArrayList<>();
 

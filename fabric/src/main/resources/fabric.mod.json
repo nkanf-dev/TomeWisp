@@ -19,6 +19,12 @@
         ],
         "client": [
             "dev.tomewisp.fabric.TomeWispFabricClient"
+        ],
+        "jei_mod_plugin": [
+            "dev.tomewisp.fabric.TomeWispFabricJeiPlugin"
+        ],
+        "rei_client": [
+            "dev.tomewisp.integration.rei.TomeWispReiClientPlugin"
         ]
     },
     "depends": {
@@ -28,5 +34,8 @@
         "fabric-networking-api-v1": "*",
         "minecraft": "~${minecraft_version}",
         "java": ">=${java_version}"
+    },
+    "breaks": {
+        "architectury": "<=21.0.2"
     }
 }

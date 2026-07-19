@@ -32,28 +32,232 @@ Dedicated validation is headless. Fabric accepts `--args nogui`; NeoForge's
 development launcher is already headless and must be run without Gradle
 `--args`, because that option replaces its launch main class.
 
+The accepted Fabric 26.2 full-mod development profile uses Architectury Fabric
+21.0.4. Versions through 21.0.2 are declared incompatible when the optional mod
+is present because their screen-input delegate breaks character entry.
+TomeWisp does not require Architectury, and the NeoForge profile is unaffected
+by this Fabric-only compatibility boundary.
+
 ## Client model configuration
 
-The main mode is pure client-side. Put configuration at
-`config/tomewisp/model.json` in the client game directory. Keep the credential
-in an environment variable:
+The main mode is pure client-side. The current player-managed format is
+`config/tomewisp/models.json` schema 2. It contains no secret: each profile
+retains only a qualified `credentialRef`. `model.json` remains an import path
+only when the new file is absent.
+
+Ordinary players enter an API key through the native masked password field.
+TomeWisp stores it under an immutable `local:<uuid>` reference in
+`config/tomewisp/credentials.sqlite3`; a saved key is never filled back into
+the widget or exposed through copy/cut, settings snapshots, diagnostics, logs,
+packets, prompts, or history. On POSIX systems the credential database receives
+owner-only permissions on a best-effort basis. This is local restrictive
+storage, not an OS-native vault.
+
+Externally authored development or headless configurations may instead name an
+environment reference. This form is not requested by the normal player UI:
 
 ```json
 {
-  "enabled": true,
-  "protocol": "anthropic_messages",
-  "baseUrl": "https://provider.example/v1/",
-  "model": "model-id",
-  "apiKeyEnv": "TOMEWISP_API_KEY",
-  "maxOutputTokens": 8192,
-  "connectTimeoutSeconds": 30,
-  "requestTimeoutSeconds": 300
+  "schemaVersion": 2,
+  "defaultProfileId": "openrouter-main",
+  "profiles": [
+    {
+      "id": "openrouter-main",
+      "displayName": "OpenRouter Main",
+      "enabled": true,
+      "protocol": "openai_chat",
+      "baseUrl": "https://openrouter.ai/api/v1/",
+      "model": "provider/model-id",
+      "credentialRef": "env:OPENROUTER_API_KEY",
+      "contextWindowTokens": 256000,
+      "maxOutputTokens": 8192,
+      "connectTimeoutSeconds": 30,
+      "requestTimeoutSeconds": 300
+    }
+  ]
 }
 ```
 
-`openai_chat` is the second protocol. Remote endpoints require HTTPS; HTTP is
-accepted only for loopback development. The API key is redacted from model
-configuration diagnostics and live traces.
+`anthropic_messages` is the other protocol. Remote endpoints require HTTPS;
+HTTP is accepted only for loopback development. Inline `apiKey` and legacy
+player-facing `apiKeyEnv` are invalid in schema 2. `contextWindowTokens` is
+required unless trusted
+provider metadata or its local cache resolves it; an explicit value always
+wins. The `256000` value above is an example, not a fallback.
+
+`connectTimeoutSeconds` covers establishment of the provider connection.
+`requestTimeoutSeconds` is the total budget for one dispatched model attempt,
+including response headers, streaming body consumption, and decoding. A
+scheduled cancellable watchdog closes a stalled body and reports the stable
+`model_timeout` failure; cancellation, timeout, or completion wins exactly once
+and late bytes cannot mutate the request.
+
+OpenRouter metadata uses the official `GET /api/v1/models` catalog fields
+`id`, `canonical_slug`, `context_length`, and the optional
+`top_provider.max_completion_tokens`. Startup reads
+`config/tomewisp/model-metadata.json` asynchronously. A cache miss refreshes in
+the background without blocking startup; successful credential-free metadata
+is cached across launches, and a failed refresh leaves explicit configuration
+and prior cache intact. The cache is configuration-layer state, not an Agent
+tool. Model providers and future online knowledge tools reuse the JDK HTTP
+transport mechanics but retain separate credentials, permissions, codecs, and
+evidence policy.
+
+The guide screen's compact model control cycles through the selected session's
+available named profiles and the server model when offered. Switching during
+an active request changes only the next request; the status line continues to
+show the model captured by the running request. Commands provide the same
+semantics:
+
+```text
+/guide model list
+/guide model profile <profile-id>
+/guide model client
+/guide model server
+```
+
+The last two forms remain compatibility shortcuts. `client` restores that
+session's last named client profile and never silently chooses another one.
+
+The Guide screen's gear button opens the common native settings screen on both
+Fabric and NeoForge. Its Models page can create, edit, enable/disable, delete,
+select the default profile, reload external edits, manually refresh trusted
+metadata, and run one explicit connection test. Saving validates the whole
+candidate and stages a new immutable local credential where needed, atomically
+replaces `models.json`, and only then publishes the already-prepared runtime for
+future requests. Active requests retain the runtime they captured at
+submission. Replacing a key never overwrites the credential used by an active
+profile; unreachable rows are collected only after successful publication.
+
+The top-level settings sections are General, Models, Tools, Skills, History,
+and Diagnostics. Tools and Skills are separate master-detail pages. Selecting a
+Tool in the left pane shows its description, explicit enable control, settings,
+and source editor on the right; selection never implicitly toggles the Tool.
+Local Tool enablement remains a deny-only restriction over registered code and
+cannot register a Tool or widen its authority. Tool enablement and its sources
+are saved together in the Tool-owned file described below, so there is no
+second generic Tool/Skill toggle document. Server-owned capabilities remain
+read-only advertised state. Skills are documents rather than Tool-style
+toggles; their filesystem packages, validation, provenance, and override rules
+are described below.
+
+The connection test displays a cost warning and requires a second confirmation.
+It sends one non-streaming, non-retrying request capped at 64 output tokens with
+no Guide history, Tools, Skills, game state, evidence, or trace. Assistant text
+and provider bodies are discarded. The result contains only a stable category,
+redacted endpoint authority, protocol, completion time, and latency. Model
+metadata refresh/listing is a separate configuration operation and never counts
+as a successful inference test. Closing settings cancels only an active probe;
+an already-confirmed atomic save continues to its terminal result.
+
+If neither model file exists, TomeWisp presents one disabled in-memory draft and
+does not create a file until the player explicitly saves. Invalid startup files
+remain untouched and produce a redacted settings notice. The screen receives
+only credential presence and transient password-input state; it cannot read or
+render a stored value.
+
+Every knowledge or recipe source belongs to exactly one logical Tool. Strict,
+independently versioned files live at
+`config/tomewisp/tools/<tool-family-id>.json`. The common envelope is:
+
+```json
+{
+  "schemaVersion": 1,
+  "toolId": "tomewisp:guides",
+  "enabled": true,
+  "sources": [
+    {
+      "sourceId": "user:minecraft-notes",
+      "sourceKind": "local_markdown",
+      "displayName": "Minecraft Notes",
+      "enabled": true,
+      "config": {
+        "directory": "minecraft-notes",
+        "locale": "zh_cn"
+      }
+    }
+  ]
+}
+```
+
+The common envelope accepts no arbitrary source-kind fields. A trusted
+`ToolSourceKind` registry supplies the strict config codec, localized controls,
+lifecycle capabilities, capture/refresh implementation, evidence contract, and
+optional credential-reference support for each owning Tool and `sourceKind`.
+Built-in/discovered sources can be inspected, enabled/disabled, refreshed where
+meaningful, and restored, but cannot be deleted or have their identity/kind
+edited. Registered user-source kinds may support add, edit, delete, test, and
+refresh. The initial user-creatable Guides kind is `local_markdown`, confined
+below TomeWisp's managed configuration root. It does not grant arbitrary path or
+network authority.
+
+Recipes owns recipe search, exact lookup, item usage, all-known/unlocked
+visibility, recipe sources, and preferred viewer selection. Inventory and
+Craftability remain separate Tools. Guides owns knowledge search, exact
+document loading, and Patchouli/FTB/local-document sources. JEI and REI adapters
+are available where compatible; EMI is not fabricated when no verified 26.2
+adapter exists. Web Fetch is a future Tool, not a source.
+
+The Recipes family envelope at `tools/recipes.json` owns Tool enablement and
+source enablement. Its typed behavior options (all-known/unlocked visibility and
+preferred viewer) remain independently strict at
+`tools/recipes-options.json`; both files belong only to the Recipes detail page
+and neither creates a top-level settings domain.
+
+Player-facing tool details are controlled separately by
+`config/tomewisp/display.json` on both loaders. A missing file uses the safe
+default below:
+
+```json
+{
+  "schemaVersion": 2,
+  "debugMode": false,
+  "animationsEnabled": true
+}
+```
+
+Normal mode renders scrollable recipe, inventory, usage, and craftability cards
+with native item icons, counts, tooltips, and typed recipe-viewer actions. It
+does not expose tool/invocation IDs, evidence authority/completeness enums,
+capture timestamps, provenance, internal failure codes, or normalized JSON.
+Setting `debugMode` to `true` appends a clearly separated local diagnostic
+section containing the already-redacted technical projection. An invalid file
+keeps Debug Mode off and displays a localized notice; it never rewrites the
+malformed file. The General page edits Debug Mode through the shared
+`GuideDisplayRuntime`; an atomic save immediately reprojects both the settings
+screen and newly rendered Guide content without requiring a restart. Reload
+retains the last valid projection on malformed external edits.
+
+`animationsEnabled` controls only subtle progress presentation. It does not
+change semantic content, action availability, evidence, layout identity, or
+narration. Schema 1 is pre-release development state and is rejected rather
+than migrated. Normal diagnostics say that history is loaded on demand and
+show current-page loading/failure in friendly terms. Debug diagnostics add
+only count-based window cursors, loaded/total counts, semantic cache hits and
+misses, fallback counts, and context-token estimates; they never include raw
+cursor/request payloads, transcripts, paths, provider bodies, actors, or scope
+identifiers.
+
+The History page projects only friendly connection kind, persistence health,
+active-request state, and pending-write/deletion status. It can delete the
+current player/world-or-server partition or all partitions belonging to the
+current local player identity. Both actions require a fresh one-use
+confirmation and are rejected as `history_delete_busy` while matching requests
+or ordered writes are active. Whole-database reset is visible only in Debug
+Mode and requires a distinct second confirmation. Settings delegates every
+operation to the current `GuideService`/ordered repository; it never receives a
+raw scope identifier, database path, or SQL string.
+
+Diagnostics always presents localized, player-friendly cards for model,
+knowledge/capability, recipe, history, and context health. Debug Mode adds a
+separate whitelisted technical section containing only redacted endpoint
+authority, metadata/checkpoint/source generations, counts, and stable status
+codes. Neither projection can contain provider bodies, reasoning, transcript
+content, credential values, raw history scopes, or filesystem paths. Closing
+the screen discards drafts and confirmation tokens but does not cancel an
+already confirmed history/configuration transaction; shutdown disconnects the
+Guide service, closes ordered history, cancels any live probe, and closes the
+metadata cache asynchronously on both loaders.
 
 For an optional server-hosted model, use
 `config/tomewisp/server-model.json` on the server. The capability is advertised
@@ -93,9 +297,59 @@ tool location are independent.
 Commands, the Phase 3C screen, and development probes consume one
 connection-scoped `GuideService`. It owns immutable request/session snapshots,
 model mode, topology, cancellation, retry, sources, and disconnect cleanup.
-The server Agent event protocol is version 2 and is decoded once in common
+Each active snapshot carries only redacted lifecycle progress: phase, request
+and phase start, most recent progress, attempt, and optional retry/deadline.
+The GUI derives elapsed/countdown text locally in a fixed-height strip; clocks
+do not append transcript rows or create history writes.
+Across the client/server bridge, an attempt carries its relative timeout budget
+rather than a server wall-clock epoch. The receiving client derives a local
+display-only deadline, so clock skew cannot shorten, extend, or invalidate the
+server-owned watchdog.
+The server Agent protocol is version 5 and is decoded once in common
 code. Unknown or malformed events fail only their correlated request; there is
-no silent client/server fallback.
+no silent client/server fallback. Server-model requests carry only the
+partition's visible user/completed-assistant history; they never carry restored
+capabilities, live evidence, reasoning, credentials, or full normalized tool
+results. Protocol v5 also carries the selected server model's actual context
+budget and canonical model identity, and splits the encoded request into independently strict,
+SHA-256-checked 24 KiB transport chunks so long histories do not depend on one
+Minecraft custom-payload string.
+
+Normal-mode guide history is stored at `config/tomewisp/history.sqlite3` in the
+single current pre-release SQLite schema, currently schema 5. Because TomeWisp
+has not shipped, recognized TomeWisp schemas 1, 2, 3, and 4 are not migrated: on
+startup their application tables are transactionally rebuilt as schema 5.
+Rollback preserves the recognized older database if rebuild fails and reports
+`history_schema_rebuild_failed`. A future schema, corrupt database, missing or
+inconsistent metadata, unrecognized tables, or foreign file still fails closed
+without deletion. This automatic rebuild policy must be removed or replaced by
+an explicit shipped-schema compatibility decision before formal release. Each
+partition key is a SHA-256 digest of the player
+UUID, connection kind, and normalized integrated-world path or multiplayer
+address; the raw path/address is not stored. Database work runs on one ordered
+background worker and never blocks the client or render thread.
+
+The durable projection contains sessions, their selected model profiles, user
+messages, chronological visible assistant/tool/status entries, each request's
+captured model selection, evidence summaries, and terminal request state. It
+excludes model reasoning, credentials, authorization data,
+raw provider bodies, full inventory snapshots, and full normalized tool
+results. Loading temporarily disables submission. A load or write failure keeps
+the in-memory Agent usable and shows that new messages are not durable. Work
+left active by process loss restores as `INTERRUPTED`; continuing it always
+requires an explicit retry with a new request ID. Versioned compaction
+checkpoints are retained separately as derived, non-evidence memory and reused
+only when their source hash and prompt/schema versions match. The generating
+model ID is provenance, not a reuse lock: changing provider or model keeps the
+session transcript and a valid checkpoint, then re-estimates the projection
+against the newly selected model's own budget. Player history administration
+and redacted normal/debug diagnostics are available in native settings.
+Startup restores partition/session metadata without materializing request
+bodies. The screen requests viewport-sized history pages independently from
+provider-neutral context reads, which use the selected model's actual budget.
+Safe Markdown, validated Minecraft references, registered controlled
+components, semantic fallback text, variable-height virtualization, stable
+anchors, and presentation-only animation are implemented in common code.
 
 The real-client probe is disabled unless `tomewisp.e2e.enabled=true`. When
 enabled, it waits for a real client player, submits through the same
@@ -112,12 +366,34 @@ the selected graphical development client:
 ./scripts/run-real-client-e2e.sh neoforge
 ```
 
-Connect the launched client to a disposable world or test server. The fixture
-requests the grounded iron-block chain: recipe search, exact recipe, inventory,
-then deterministic craftability. The script is intentionally opt-in because it
-opens a graphical client. CI validates the controller, both loader hooks, shell
-syntax and fixture syntax, but does not claim a real-client run. A release may
-claim that coverage only when the generated report is retained and reviewed.
+Connect the launched client to a disposable world or test server, or set
+`TOMEWISP_E2E_QUICK_PLAY_WORLD` to an existing disposable single-player world.
+The fixture waits for durable hydration and every enabled installed recipe
+viewer to publish a non-empty current catalog. It streams deliberately split
+Markdown/component tokens through a grounded five-tool chronology: recipe
+search, exact lookup, inventory, deterministic craftability, and knowledge
+sources. The report records redacted semantic/component/fallback counts and
+history-window/cache metrics, and the script rejects any outcome other than
+`COMPLETED`.
+
+Set `TOMEWISP_E2E_HISTORY_SEED_REQUESTS` to create sequential durable seed
+requests before the reported scenario. `TOMEWISP_E2E_MIN_HISTORY_REQUESTS`
+asserts the durable total; `TOMEWISP_E2E_REQUIRE_PAGED_HISTORY=true` additionally
+requires a restart to hydrate fewer requests than the durable total and expose
+an earlier-page cursor. The harness temporarily replaces `models.json` with an
+isolated loopback profile and restores the exact prior file on exit.
+
+The harness is intentionally opt-in because it opens a graphical client. CI
+validates the controller, both loader hooks, shell syntax, and fixture syntax,
+but does not claim a real-client run. Earlier Phase 4C Fabric reports, redacted
+logs, exact JEI navigation screenshots, artifact URLs, and hashes are retained
+under `docs/verification/phase-4c-all-known-recipes/`. Earlier consolidated
+Fabric/NeoForge semantic-history reports and compatibility boundaries are under
+`docs/verification/phase-4-final-acceptance/`; those artifacts predate the
+manual-acceptance correction set and do not close it.
+The closing correction reports, 12 reviewed screenshots, exact game-state Tool
+probes, runtime artifact provenance, and production hashes are retained under
+`docs/verification/phase-4-final-corrections/`.
 
 ## Player GUI
 
@@ -128,18 +404,25 @@ the UI subscription, so active work continues and reopening reconstructs from
 the latest immutable GuideSnapshot.
 
 The screen provides a responsive session rail/overlay, virtualized wrapped
-transcript, multiline composer (`Ctrl+Enter` sends), stop/retry controls, and an
-explicit local/server model selector. Only model text deltas are visible;
-reasoning is absent from the UI view type. Grounded recipe, inventory and
-craftability tools receive first-class summaries, while other tools use a
-deterministic normalized-result fallback. Clicking a tool or source opens an
-in-game evidence detail panel; no browser is launched. Session switches and
-disconnect cleanup remove stale detail state.
+transcript, multiline composer (Enter sends, Shift+Enter inserts a line break,
+and Ctrl+Enter remains a compatibility shortcut), stop/retry controls, and an
+explicit local/server model selector. Enter outside the focused composer keeps
+the selected widget/card action. Only model text deltas are visible;
+reasoning is absent from the UI view type. Assistant segments and tool cards
+render in actual Agent event order, and a running card updates in place by its
+tool invocation ID before later assistant text appears. Grounded recipe,
+inventory and craftability tools receive first-class summaries, while other
+tools use a deterministic friendly fallback. Clicking a tool opens a scrollable
+card detail panel; clicking an answer's evidence link shows a player-friendly
+explanation in normal mode. Technical evidence metadata and normalized JSON are
+only representable when the local default-off Debug Mode is enabled. No browser
+is launched. Session switches and disconnect cleanup remove stale detail state.
 
 If the selected model is unavailable, the screen still opens and shows the
-configuration/capability state. Client configuration remains at
-`config/tomewisp/model.json`; credentials are never displayed. Model-mode
-changes affect future requests only and never trigger silent fallback.
+configuration/capability state. Client profiles remain at
+`config/tomewisp/models.json`; the Models page accepts a transient masked API
+key but never displays a stored secret. Model-mode changes affect future
+requests only and never trigger silent fallback.
 
 ## Grounded built-in tools
 
@@ -169,6 +452,53 @@ Incomplete recipe or inventory evidence may show an observed positive result,
 but `conclusive` remains false. `tomewisp:find_recipes` is retained only as a
 deprecated compatibility projection over the same recipe catalog.
 
+### Player-observable outer game state
+
+Outer client/game context is exposed through one Tool ID rather than dozens of
+small Tools:
+
+```text
+tomewisp:inspect_game_state
+```
+
+Its strict `section` enum is `OVERVIEW`, `MODS`, `OPTIONS`, `PACKS`, `SHADERS`,
+`DIAGNOSTICS`, `PLAYER`, or `WORLD_QUERY`. The optional `query` is parsed only
+by the selected section. `WORLD_QUERY` accepts only the registered read-only
+operations `time`, `weather`, `difficulty`, `world_border`, and `spawn`; it is
+not a Minecraft command string or expression language. Recipes and Guides stay
+in their own high-volume Tool families.
+
+`MODS` with no exact ID returns the complete lightweight installed index (ID,
+name, version, environment). Supplying an exact mod ID returns its public
+description, authors, licenses, contacts, and dependency metadata; the list
+path never implicitly dumps those large detail records into model context.
+Each server-authoritative `WORLD_QUERY` operation is permission-checked before
+lookup. An unauthorized operation returns `permission_denied` and no fact.
+
+Client-local capture runs on the Minecraft client thread and detaches immutable
+client-visible values before Tool/model work. It covers public loader metadata,
+Minecraft options exposed through verified APIs, resource-pack state,
+F3/HUD-style diagnostics including coordinates where available, and the
+player's own UI-visible state. A server-side capture or enhancement can return
+only the state the server can authoritatively observe. It cannot read the
+client's options, resource packs, or shader configuration unless a future
+accepted, authorized bridge explicitly transports a detached allowed snapshot.
+
+Completeness is deliberately honest. An option not exposed through a verified
+public API is omitted and makes only its section partial. Shader information is
+unavailable when no shader mod is loaded; if a shader mod such as Iris is
+present without a verified compatible public adapter, the result reports the
+scoped `public_shader_adapter_unavailable` diagnostic instead of guessing a
+selected pack or options. Resource/data-pack visibility likewise reflects the
+current topology and API surface rather than an assumed complete catalog.
+
+The Tool is read-only and cannot execute raw commands, modify settings/world or
+inventory state, use arbitrary paths/classes/reflection, scan maps/nearby
+blocks/entities/structures, or inspect external containers such as nearby
+chests. The player's own inventory is allowed because it is already
+player-owned UI-visible state. Future write commands and spatial interaction
+require separate accepted authority and approval designs.
+
 ## Knowledge and Skills
 
 Patchouli is read directly from active client resource packs, without a binary
@@ -182,9 +512,32 @@ API reports visible for the current team enter the snapshot. On 26.2, where no
 compatible FTB Quests release is currently available, the source reports an
 explicit integration diagnostic and the rest of the Agent continues normally.
 
-Bundled Skills use metadata-first progressive disclosure. The runtime supports
-declared read-only references, but does not execute `scripts/`, fetch URLs, read
-arbitrary paths, or let Skills register tools or permissions.
+Skills follow a constrained Agent Skills filesystem format:
+
+```text
+skills/<skill-name>/
+├── SKILL.md
+├── references/     # optional read-only Markdown/text
+└── assets/         # optional non-executable resources
+```
+
+`SKILL.md` contains YAML frontmatter and Markdown instructions. `name` and
+`description` are required and the directory name matches `name`; optional
+Agent Skills fields and TomeWisp namespaced string metadata remain strictly
+validated. `allowed-tools` expresses a dependency only and never grants a
+permission. Scripts, URL references, root escape, unsafe symlinks, arbitrary
+paths, and unsupported files are rejected.
+
+Bundled packages under the mod resources are read-only and use uppercase
+`SKILL.md`. Local packages live under `config/tomewisp/skills/`; a valid local
+package with the same name overrides its bundled package. Editing a bundled
+Skill first creates an atomic local copy. An invalid override leaves the prior
+valid or bundled Skill active and reports only a source-scoped diagnostic. The
+Skills settings page shows installed documents, provenance, instructions,
+references, and explicit override/edit actions; it has no generic Tool-style
+enable toggle. Player editing does not authorize the Agent to create or modify
+Skills, and Skills cannot execute scripts, fetch URLs, register tools, or grant
+permissions.
 
 ## Live provider acceptance
 
@@ -202,13 +555,33 @@ TOMEWISP_MODEL_PROTOCOL=ANTHROPIC_MESSAGES \
 
 Never commit a model JSON containing `apiKey`.
 
+To exercise exactly the native settings connection-probe contract from a
+headless script, place a strict schema-2 `models.json`-format file in an ignored
+path such as `run/tomewisp/settings-probe.json`. The externally authored file
+uses `"credentialRef": "env:PROVIDER_KEY_NAMED_BY_THE_FILE"`; export that
+environment variable in the shell, then run:
+
+```bash
+export TOMEWISP_SETTINGS_PROBE_CONFIG="$PWD/run/tomewisp/settings-probe.json"
+export PROVIDER_KEY_NAMED_BY_THE_FILE='...'
+./scripts/live-model-smoke.sh settings-probe
+```
+
+The script never accepts a credential on argv. It rejects inline `apiKey`,
+legacy `apiKeyEnv`, URL credentials/query/fragment, and non-HTTPS remote
+endpoints through the strict production loader. This environment-reference path
+is for external/headless operation and is not a player settings workflow.
+Retained output contains only the terminal code and, on success, profile ID,
+protocol, redacted authority, and latency; it never prints assistant output or
+raw provider bodies.
+
 ## Development commands
 
 The following commands require game-master permission:
 
 ```text
 /tomewisp dev tools
-/tomewisp dev invoke tomewisp:platform_info
+/tomewisp dev invoke tomewisp:inspect_game_state {"section":"OVERVIEW","query":"summary"}
 /tomewisp dev replay platform-info
 /tomewisp dev replay iron-ingot-recipe
 /tomewisp dev replay iron-block-craftability
@@ -218,7 +591,8 @@ The following commands require game-master permission:
 
 The initial development tool surface is intentionally read-only. It does not
 provide shell execution, arbitrary code execution, server-command execution,
-file-system access, or world mutation.
+file-system access, unrestricted reflection, arbitrary command parsing, world
+or settings mutation, spatial scans, or external-container inspection.
 
 ## Deterministic Agent trace replay
 

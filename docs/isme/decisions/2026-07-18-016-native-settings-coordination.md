@@ -36,7 +36,8 @@ Persistent configuration remains separated by domain:
 - `capabilities.json` owns player-disabled local tool and Skill identities;
 - capability-owned files such as `recipes.json` own only that tool/source
   family's typed preferences;
-- `display.json` schema 2 owns exactly `debugMode` and `animationsEnabled`;
+- `display.json` schema 3 owns exactly `assistantName`, `debugMode`, and
+  `animationsEnabled`;
 - `model-metadata.json` remains an automatically managed credential-free cache;
 - `history.sqlite3` remains owned by the ordered history repository.
 
@@ -102,11 +103,15 @@ schema policy as other development state: production does not accumulate
 migrations for unshipped formats. Unsupported explicit schema versions fail
 closed and the prior runtime remains active.
 
-For the current pre-release display schema, a missing file defaults to Debug
-Mode off and presentation animation on. Explicit schema 1 or any unknown
-schema fails closed without migration and retains the last valid runtime.
+For the current pre-release display schema, a missing file defaults the local
+assistant name to `OpenAllay`, Debug Mode off, and presentation animation on.
+The name is trimmed, must remain non-blank, and cannot contain control
+characters. Explicit schema 1 or 2 and any unknown schema fail closed without
+migration and retain the last valid runtime.
 Animation changes only transient progress glyph presentation; semantic state,
 actions, evidence, layout cache identity, and narration are invariant.
+The assistant name is presentation identity only: changing it does not rewrite
+history, rename sessions, alter model/tool authority, or modify evidence.
 
 ## States and Transitions
 
@@ -137,6 +142,8 @@ actions, evidence, layout cache identity, and narration are invariant.
    projection decisions.
 7. History actions use actor-scoped GuideService/repository coordination and
    never bypass active-request or pending-write checks.
+8. Display toggles preserve the configured assistant name, and renaming the
+   assistant preserves every other display field.
 
 ## Failure Semantics
 

@@ -30,7 +30,7 @@ neoForge {
         client {
             client()
             gameDirectory = this.mkdir(this.file('runs/client'))
-            def quickPlayWorld = System.getProperty('tomewisp.e2e.quickPlayWorld')
+            def quickPlayWorld = System.getProperty('openallay.e2e.quickPlayWorld')
             if (quickPlayWorld != null && !quickPlayWorld.isBlank()) {
                 programArguments.addAll '--quickPlaySingleplayer', quickPlayWorld
             }
@@ -60,7 +60,7 @@ tasks.named('runServer') {
 }
 
 tasks.matching { it.name == 'runClient' }.configureEach {
-    System.properties.findAll { key, value -> key.toString().startsWith('tomewisp.e2e.') }
+    System.properties.findAll { key, value -> key.toString().startsWith('openallay.e2e.') }
             .each { key, value -> systemProperty(key.toString(), value.toString()) }
 }
 

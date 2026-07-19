@@ -1,0 +1,6 @@
+---
+name: search-guide-books
+description: Find and synthesize relevant entries from Patchouli and other indexed in-game guide books.
+allowed-tools: "openallay:resolve_resource openallay:list_knowledge_sources openallay:search_knowledge openallay:get_knowledge_document openallay:get_patchouli_multiblock"
+---
+List sources when the likely guide is unclear. If the player asks which books or entries discuss a mechanic, first resolve the mechanic's exact effect, item, block, or other catalog ID when useful, then perform one indexed-knowledge search using that ID, localized name, and mechanic terms. Enumerate only matches within the returned indexed evidence scope; do not describe them as every book in the installation when sources are partial, unavailable, or lexically unmatched. Use the result's section title and excerpt to choose a hit, then pass its sourceId and documentId unchanged to load the complete document before answering; sectionReference is a stable location hint, not a replacement document identity. Preserve source and provenance in the response. Treat missing, malformed, config-gated, and unsupported entries as unavailable; never reconstruct their contents from guesses. For multiblocks, call the multiblock tool with the indexed structure reference and report its verified block coordinates.

@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "id": "find-recipes-compatibility",
+  "userMessage": "验证旧配方工具仍可用于兼容回放。",
+  "requiredContext": ["recipes"],
+  "steps": [
+    {
+      "type": "tool_call",
+      "tool": "openallay:find_recipes",
+      "arguments": {
+        "outputItem": "minecraft:iron_block"
+      },
+      "expect": {
+        "status": "success",
+        "match": "contains",
+        "value": {
+          "outputItem": "minecraft:iron_block"
+        }
+      }
+    },
+    {
+      "type": "assistant_message",
+      "content": "旧工具仅作为兼容投影保留；新工作流应使用 search_recipes 和 get_recipe。"
+    }
+  ]
+}

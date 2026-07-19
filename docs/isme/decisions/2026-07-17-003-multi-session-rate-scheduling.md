@@ -19,7 +19,7 @@ A player may maintain multiple independent conversations. Serializing all work
 by player unnecessarily prevents independent sessions from using provider
 capacity. Conversely, parallel requests inside one conversation can race its
 history. Provider rate limits are endpoint behavior and are reported with HTTP
-429 rather than a universal concurrency value TomeWisp can infer.
+429 rather than a universal concurrency value OpenAllay can infer.
 
 ## Decision
 
@@ -28,11 +28,11 @@ each session, while different sessions owned by the same player may execute in
 parallel in both client-local and server-hosted modes. A same-session concurrent
 request returns `agent_busy`.
 
-TomeWisp applies no default global concurrency cap. A scheduler is scoped to one
+OpenAllay applies no default global concurrency cap. A scheduler is scoped to one
 effective endpoint/credential configuration. HTTP 429 is not a terminal Agent
 failure: the request is requeued, the endpoint gate closes for `Retry-After`, or
 for cancellable exponential backoff when the header is absent, and sessions are
-selected fairly when dispatch resumes. A queue has no TomeWisp-defined count
+selected fairly when dispatch resumes. A queue has no OpenAllay-defined count
 limit. Cancellation removes queued/running work for that session; disconnect
 removes all sessions owned by the actor.
 

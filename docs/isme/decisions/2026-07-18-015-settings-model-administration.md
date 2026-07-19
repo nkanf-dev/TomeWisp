@@ -39,7 +39,7 @@ profile may be saved while its named environment variable is absent; it is
 then retained as explicitly unavailable for repair rather than silently
 discarded or replaced.
 
-After preparation succeeds, TomeWisp writes the complete strict `models.json`
+After preparation succeeds, OpenAllay writes the complete strict `models.json`
 document to a temporary sibling and atomically replaces the target. Only after
 that move succeeds does it publish the already-prepared registry state in one
 replacement. A validation, preparation, temporary-write, or atomic-move

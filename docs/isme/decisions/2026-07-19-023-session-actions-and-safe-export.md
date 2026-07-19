@@ -29,7 +29,7 @@ order. A failed page read fails the export; it does not silently emit a partial
 conversation.
 
 The filesystem writer accepts the Minecraft game directory only and derives
-the fixed `tomewisp/exports` child itself. It rejects symlink escape, writes
+the fixed `openallay/exports` child itself. It rejects symlink escape, writes
 UTF-8 plain text through a temporary file, and atomically publishes a safe,
 deterministic name. The document contains user and assistant text, request
 state, and closed Tool chronology only. It excludes normalized Tool payloads,

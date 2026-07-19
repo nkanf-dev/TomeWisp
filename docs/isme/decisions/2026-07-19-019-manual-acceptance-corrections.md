@@ -31,7 +31,7 @@ Markdown packages rather than hard-coded option cards.
 ## Decision
 
 1. Fabric declares Architectury through 21.0.2 incompatible when present and
-   the accepted full-mod profile uses Architectury 21.0.4. TomeWisp does not
+   the accepted full-mod profile uses Architectury 21.0.4. OpenAllay does not
    add a hard Architectury dependency.
 2. The normal client model editor accepts a masked API key. Secrets are stored
    in the dedicated local `credentials.sqlite3` store; `models.json` schema 2
@@ -47,9 +47,9 @@ Markdown packages rather than hard-coded option cards.
    disabled/restored but not deleted. User-created sources support add, edit,
    delete, test, and refresh where the registered kind implements them.
 5. Bundled Skills use uppercase `SKILL.md` and are read-only. Local Agent Skills
-   live under `config/tomewisp/skills/`; editing a bundled Skill creates a local
+   live under `config/openallay/skills/`; editing a bundled Skill creates a local
    override. Scripts and Skill-granted permissions remain unsupported.
-6. During the unshipped period, recognized TomeWisp history schemas 1, 2, 3,
+6. During the unshipped period, recognized OpenAllay history schemas 1, 2, 3,
    and 4 are transactionally rebuilt to the single current schema 5. Future, corrupt,
    missing/inconsistent-metadata, foreign, or otherwise unrecognized databases
    still fail closed without mutation. No migration branch is added.
@@ -68,7 +68,7 @@ Markdown packages rather than hard-coded option cards.
   and validate an external override; invalid content retains the prior valid or
   bundled document.
 - `history_schema_older_recognized -> rebuilding -> history_schema_current`:
-  rebuild TomeWisp application tables in one transaction.
+  rebuild OpenAllay application tables in one transaction.
 - `history_schema_future_or_unrecognized -> persistence_unavailable`: mutate
   nothing and expose an actionable diagnostic.
 
@@ -90,7 +90,7 @@ Markdown packages rather than hard-coded option cards.
 6. Active requests retain captured Tool/source/Skill/model state while later
    settings changes affect future requests only.
 7. Automatic history rebuild applies only to explicitly recognized unshipped
-   TomeWisp schemas 1 through 3 and never to a future, corrupt, missing- or
+   OpenAllay schemas 1 through 3 and never to a future, corrupt, missing- or
    inconsistent-metadata, foreign, or otherwise unrecognized file.
 8. Fabric and NeoForge share the credential, Tool/source, Skill, history, and UI
    semantics in common code.
@@ -123,7 +123,7 @@ Markdown packages rather than hard-coded option cards.
 
 ## Supersedes
 
-- Supersedes SKMB-2026-07-18-011 only for recognized older unshipped TomeWisp
+- Supersedes SKMB-2026-07-18-011 only for recognized older unshipped OpenAllay
   schemas: they now rebuild automatically instead of failing until manual
   deletion. Future/unrecognized/corrupt files still fail closed.
 - Supersedes SKMB-2026-07-18-015's environment-only client credential policy.

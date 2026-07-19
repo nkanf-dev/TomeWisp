@@ -7,7 +7,7 @@ administration, history controls, and redacted diagnostics
 
 ## 1. Outcome and boundaries
 
-TomeWisp gains one Minecraft-native settings experience backed by a common
+OpenAllay gains one Minecraft-native settings experience backed by a common
 service rather than loader-specific screens or direct file edits. It manages
 named model profiles, general presentation state, registered knowledge sources,
 local Tools, bundled Skills, capability-owned settings such as recipe sources,
@@ -53,7 +53,7 @@ for file preparation and atomic writes, reuses the existing metadata and
 history asynchronous owners, and publishes completions through
 `ClientEventDispatcher` on the Minecraft client thread.
 
-The native `TomeWispSettingsScreen` is a projection and draft editor. It owns
+The native `OpenAllaySettingsScreen` is a projection and draft editor. It owns
 focus, navigation, unsaved field values, and confirmation overlays only. It
 never opens files, constructs provider clients, touches SQLite, refreshes
 metadata directly, or mutates Guide/runtime state. Closing it detaches its
@@ -159,7 +159,7 @@ widen permissions.
 
 An enabled Skill must have every declared allowed Tool enabled. Dependency
 conflicts reject the complete candidate as `capability_dependency_conflict`;
-TomeWisp never silently changes another toggle.
+OpenAllay never silently changes another toggle.
 
 ### 4.3 Capability-owned recipe settings
 
@@ -208,7 +208,7 @@ discard confirmation.
 descriptors. Each descriptor has a stable ID, kind (`KNOWLEDGE_SOURCE`, `TOOL`,
 or `SKILL`), localization keys, availability, enabled state, friendly status,
 optional dependencies, and an optional typed child-page route. Registration is
-performed only by TomeWisp bootstrap or trusted loader integrations; model
+performed only by OpenAllay bootstrap or trusted loader integrations; model
 output, Skills, knowledge documents, resource packs, and provider responses
 cannot register controls or callbacks.
 
@@ -297,7 +297,7 @@ success never marks a connection probe successful.
 
 ## 8. Native screen structure
 
-The existing TomeWisp screen keeps a settings button. It opens a native screen
+The existing OpenAllay screen keeps a settings button. It opens a native screen
 with these top-level sections:
 
 - `常规 / General`: Debug Mode and implemented presentation preferences;
@@ -329,7 +329,7 @@ The History page operates on the current actor supplied by the active
 `GuideService`; it never accepts an actor ID from a text field. Normal actions
 delete the current partition or all partitions owned by the current actor.
 They are unavailable while the actor has an active request or the ordered
-history repository has pending writes. TomeWisp does not cancel work to make
+history repository has pending writes. OpenAllay does not cancel work to make
 deletion succeed.
 
 Successful deletion transactionally removes the selected rows and resets the

@@ -1,14 +1,14 @@
-# TomeWisp Multi-Model Profiles Design
+# OpenAllay Multi-Model Profiles Design
 
 ## Goal
 
-Allow a player to change model or provider inside an existing TomeWisp
+Allow a player to change model or provider inside an existing OpenAllay
 conversation without losing semantic context, while keeping active requests,
 credentials, persistence, and failure behavior explicit.
 
 ## Product behavior
 
-TomeWisp stores a provider-neutral transcript. A model selection is the runtime
+OpenAllay stores a provider-neutral transcript. A model selection is the runtime
 used for the next request, not a property of the conversation itself. Each
 session remembers its own current selection. Changing the selected profile in
 one session does not affect another session and does not reroute an active
@@ -22,7 +22,7 @@ factual evidence.
 
 ## Configuration model
 
-`config/tomewisp/models.json` is a strict versioned document containing:
+`config/openallay/models.json` is a strict versioned document containing:
 
 - `schemaVersion`;
 - `defaultProfileId` for newly created sessions;
@@ -102,7 +102,7 @@ The current pre-release guide history schema stores a selection object per
 session and per captured request. It has no global `modelMode` authority or
 migration-only compatibility columns. Under SKMB-2026-07-18-011, earlier
 development layouts are unsupported test data and are not migrated; developers
-delete the ignored database and let TomeWisp create the current format.
+delete the ignored database and let OpenAllay create the current format.
 
 If a recovered selection references a profile that is no longer present, it is
 retained and shown as unavailable. Submission fails closed until the player

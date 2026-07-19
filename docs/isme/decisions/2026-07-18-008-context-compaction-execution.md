@@ -32,7 +32,7 @@ new designer-attributed product policy.
 ## Decision
 
 Each model configuration has a positive `contextWindowTokens`. It is explicit
-and may be supplied by `TOMEWISP_CONTEXT_WINDOW_TOKENS`; no provider-independent
+and may be supplied by `OPENALLAY_CONTEXT_WINDOW_TOKENS`; no provider-independent
 window is guessed. A future trusted provider metadata adapter may resolve a
 missing value, records its provenance and capture time, and never overrides an
 explicit value. The usable input budget reserves the

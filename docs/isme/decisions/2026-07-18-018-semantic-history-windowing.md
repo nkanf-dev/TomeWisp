@@ -30,10 +30,10 @@ viewport so neither path materializes an unbounded transcript.
 
 ### Semantic content
 
-TomeWisp uses `org.commonmark:commonmark:0.28.0` plus its GFM table extension
+OpenAllay uses `org.commonmark:commonmark:0.28.0` plus its GFM table extension
 as a narrow parser dependency. The library AST never becomes the product or
 persistence contract. Common code immediately translates supported nodes into
-a versioned sealed TomeWisp semantic tree. HTML, image/embed nodes, link
+a versioned sealed OpenAllay semantic tree. HTML, image/embed nodes, link
 destinations, and unsupported extension nodes become readable literal/fallback
 text with no action.
 
@@ -45,7 +45,7 @@ localized name, but it is explicitly presentation-only and never creates
 evidence. A stable source/recipe/evidence handle is actionable only when it is
 present in the same request's validated tool/source reference index.
 
-Controlled components use a fenced `tomewisp-component` block containing one
+Controlled components use a fenced `openallay-component` block containing one
 strict envelope with `schemaVersion`, registered `type`, type-specific
 references, and allowlisted presentation properties. It is not an arbitrary UI
 tree. Version 1 registers item rows, recipe grids, ingredient checks,
@@ -56,11 +56,11 @@ malformed values fail closed to the block's readable text equivalent.
 No semantic node can name a class, script, callback, command, URL, texture,
 path, NBT selector, Tool, permission, network request, or world mutation.
 Interactive nodes emit only registered typed intents already implemented by
-TomeWisp services. Every component stores a non-empty text/narration fallback.
+OpenAllay services. Every component stores a non-empty text/narration fallback.
 
 Streaming parsing is block-incremental. Completed immutable blocks are cached
 by content hash; only the mutable tail is reparsed. An incomplete Markdown or
-TomeWisp token remains literal text until it closes and validates. Terminal
+OpenAllay token remains literal text until it closes and validates. Terminal
 assistant segments persist the strict semantic tree plus fallback text;
 streaming cache state is never durable.
 
@@ -108,7 +108,7 @@ bottom. Scrolling up transfers ownership to the player until they explicitly
 return to the bottom. Loading an earlier page preserves the same anchor row and
 pixel offset. Keyboard focus and narration follow stable semantic node IDs;
 color is never the only status signal. Presentation animation is optional,
-stored in schema-2 `display.json`, and never owns state, actions, evidence,
+stored in schema-3 `display.json`, and never owns state, actions, evidence,
 layout identity, or narration. Window diagnostics expose only friendly page
 state in normal mode and redacted counts in Debug Mode; cursor UUIDs,
 transcripts, component payloads, actor/scope identities, paths, and provider

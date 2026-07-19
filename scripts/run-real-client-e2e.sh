@@ -7,17 +7,17 @@ if [[ "$loader" != "fabric" && "$loader" != "neoforge" ]]; then
   exit 2
 fi
 
-fixture_port="${TOMEWISP_E2E_FIXTURE_PORT:-18765}"
-model_mode="${TOMEWISP_E2E_MODEL_MODE:-client}"
+fixture_port="${OPENALLAY_E2E_FIXTURE_PORT:-18765}"
+model_mode="${OPENALLAY_E2E_MODEL_MODE:-client}"
 if [[ "$model_mode" != "client" && "$model_mode" != "server" ]]; then
-  echo "TOMEWISP_E2E_MODEL_MODE must be client or server" >&2
+  echo "OPENALLAY_E2E_MODEL_MODE must be client or server" >&2
   exit 2
 fi
 run_dir="$loader/runs/client"
-report="${TOMEWISP_E2E_REPORT:-$PWD/build/e2e/$loader-real-client.json}"
-mkdir -p "$run_dir/config/tomewisp" "$(dirname "$report")"
-model_config="$run_dir/config/tomewisp/models.json"
-server_model_config="$run_dir/config/tomewisp/server-model.json"
+report="${OPENALLAY_E2E_REPORT:-$PWD/build/e2e/$loader-real-client.json}"
+mkdir -p "$run_dir/config/openallay" "$(dirname "$report")"
+model_config="$run_dir/config/openallay/models.json"
+server_model_config="$run_dir/config/openallay/server-model.json"
 config_backup_dir="$(mktemp -d)"
 had_model_config=false
 had_server_model_config=false
@@ -30,8 +30,8 @@ if [[ -f "$server_model_config" ]]; then
   had_server_model_config=true
 fi
 for credential_file in credentials.sqlite3 credentials.sqlite3-wal credentials.sqlite3-shm; do
-  if [[ -f "$run_dir/config/tomewisp/$credential_file" ]]; then
-    cp "$run_dir/config/tomewisp/$credential_file" "$config_backup_dir/$credential_file"
+  if [[ -f "$run_dir/config/openallay/$credential_file" ]]; then
+    cp "$run_dir/config/openallay/$credential_file" "$config_backup_dir/$credential_file"
   fi
 done
 fixture_pid=""
@@ -53,9 +53,9 @@ cleanup() {
   # therefore collect the ordinary development profile's rows, so restore the whole SQLite
   # database triplet after the graphical client has closed.
   for credential_file in credentials.sqlite3 credentials.sqlite3-wal credentials.sqlite3-shm; do
-    rm -f "$run_dir/config/tomewisp/$credential_file"
+    rm -f "$run_dir/config/openallay/$credential_file"
     if [[ -f "$config_backup_dir/$credential_file" ]]; then
-      cp "$config_backup_dir/$credential_file" "$run_dir/config/tomewisp/$credential_file"
+      cp "$config_backup_dir/$credential_file" "$run_dir/config/openallay/$credential_file"
     fi
   done
   rm -rf "$config_backup_dir"
@@ -70,12 +70,12 @@ path.write_text(json.dumps({
     "defaultProfileId": "e2e-fixture",
     "profiles": [{
         "id": "e2e-fixture",
-        "displayName": "TomeWisp E2E Fixture",
+        "displayName": "OpenAllay E2E Fixture",
         "enabled": True,
         "protocol": "openai_chat",
         "baseUrl": f"http://127.0.0.1:{sys.argv[2]}/v1/",
-        "model": "tomewisp-e2e-fixture",
-        "apiKeyEnv": "TOMEWISP_E2E_FIXTURE_KEY",
+        "model": "openallay-e2e-fixture",
+        "apiKeyEnv": "OPENALLAY_E2E_FIXTURE_KEY",
         "contextWindowTokens": 256000,
         "maxOutputTokens": 8192,
         "connectTimeoutSeconds": 10,
@@ -91,8 +91,8 @@ path.write_text(json.dumps({
     "enabled": True,
     "protocol": "openai_chat",
     "baseUrl": f"http://127.0.0.1:{sys.argv[2]}/v1/",
-    "model": "tomewisp-e2e-server-fixture",
-    "apiKeyEnv": "TOMEWISP_E2E_FIXTURE_KEY",
+    "model": "openallay-e2e-server-fixture",
+    "apiKeyEnv": "OPENALLAY_E2E_FIXTURE_KEY",
     "contextWindowTokens": 256000,
     "maxOutputTokens": 8192,
     "connectTimeoutSeconds": 10,
@@ -100,7 +100,7 @@ path.write_text(json.dumps({
 }), encoding="utf-8")
 PY
 fi
-export TOMEWISP_E2E_FIXTURE_KEY="$(python3 -c 'import secrets; print(secrets.token_hex(16))')"
+export OPENALLAY_E2E_FIXTURE_KEY="$(python3 -c 'import secrets; print(secrets.token_hex(16))')"
 
 python3 scripts/e2e-model-fixture.py --port "$fixture_port" &
 fixture_pid=$!
@@ -108,24 +108,29 @@ fixture_pid=$!
 echo "The harness is opt-in and will open a graphical Minecraft client."
 echo "Connect it to a test world/server; the probe starts after a player exists."
 client_args=()
-if [[ -n "${TOMEWISP_E2E_QUICK_PLAY_WORLD:-}" ]]; then
+if [[ -n "${OPENALLAY_E2E_QUICK_PLAY_WORLD:-}" ]]; then
   if [[ "$loader" == "fabric" ]]; then
-    client_args=("--args=--quickPlaySingleplayer \"$TOMEWISP_E2E_QUICK_PLAY_WORLD\"")
+    client_args=("--args=--quickPlaySingleplayer \"$OPENALLAY_E2E_QUICK_PLAY_WORLD\"")
   else
-    client_args=("-Dtomewisp.e2e.quickPlayWorld=$TOMEWISP_E2E_QUICK_PLAY_WORLD")
+    client_args=("-Dopenallay.e2e.quickPlayWorld=$OPENALLAY_E2E_QUICK_PLAY_WORLD")
   fi
 fi
-./gradlew-curl ":$loader:runClient" --max-workers=1 \
-  "${client_args[@]}" \
-  -Dtomewisp.e2e.enabled=true \
-  -Dtomewisp.e2e.question="${TOMEWISP_E2E_QUESTION:-请查询铁块的配方，精确读取后检查库存并计算是否可制作，最后列出当前知识来源。}" \
-  -Dtomewisp.e2e.report="$report" \
-  -Dtomewisp.e2e.scenario="${TOMEWISP_E2E_SCENARIO:-phase-4-semantic-history}" \
-  -Dtomewisp.e2e.modelMode="$model_mode" \
-  -Dtomewisp.e2e.historySeedRequests="${TOMEWISP_E2E_HISTORY_SEED_REQUESTS:-0}" \
-  -Dtomewisp.e2e.screenshotRoot="${TOMEWISP_E2E_SCREENSHOT_ROOT:-}" \
-  -Dtomewisp.e2e.shutdownAfterScreenshots="${TOMEWISP_E2E_SHUTDOWN_AFTER_SCREENSHOTS:-false}" \
-  -Dtomewisp.e2e.shutdown="${TOMEWISP_E2E_SHUTDOWN:-true}"
+gradle_command=(./gradlew-curl ":$loader:runClient" --max-workers=1)
+if [[ ${#client_args[@]} -gt 0 ]]; then
+  gradle_command+=("${client_args[@]}")
+fi
+gradle_command+=(
+  -Dopenallay.e2e.enabled=true \
+  -Dopenallay.e2e.question="${OPENALLAY_E2E_QUESTION:-请查询铁块的配方，精确读取后检查库存并计算是否可制作，最后列出当前知识来源。}" \
+  -Dopenallay.e2e.report="$report" \
+  -Dopenallay.e2e.scenario="${OPENALLAY_E2E_SCENARIO:-phase-4-semantic-history}" \
+  -Dopenallay.e2e.modelMode="$model_mode" \
+  -Dopenallay.e2e.historySeedRequests="${OPENALLAY_E2E_HISTORY_SEED_REQUESTS:-0}" \
+  -Dopenallay.e2e.screenshotRoot="${OPENALLAY_E2E_SCREENSHOT_ROOT:-}" \
+  -Dopenallay.e2e.shutdownAfterScreenshots="${OPENALLAY_E2E_SHUTDOWN_AFTER_SCREENSHOTS:-false}" \
+  -Dopenallay.e2e.shutdown="${OPENALLAY_E2E_SHUTDOWN:-true}"
+)
+"${gradle_command[@]}"
 
 test -s "$report"
 python3 - "$report" <<'PY'
@@ -146,12 +151,12 @@ if scenario == "phase-4-game-state":
         "DIAGNOSTICS", "PLAYER", "WORLD_QUERY",
     ]
     probes = report.get("toolProbes", [])
-    if tool_ids != ["tomewisp:inspect_game_state"] * len(expected_sections):
+    if tool_ids != ["openallay:inspect_game_state"] * len(expected_sections):
         raise SystemExit("E2E did not inspect every registered outer game-state section")
     if len(probes) != len(expected_sections):
         raise SystemExit("E2E game-state probe count is incomplete")
     for expected, probe in zip(expected_sections[:7], probes[:7]):
-        if (probe.get("toolId") != "tomewisp:inspect_game_state"
+        if (probe.get("toolId") != "openallay:inspect_game_state"
                 or probe.get("status") != "SUCCEEDED"
                 or probe.get("section") != expected
                 or probe.get("failureCode") is not None):
@@ -159,7 +164,7 @@ if scenario == "phase-4-game-state":
                              + repr({"expected": expected, "probe": probe}))
     world_query = probes[-1]
     if not (
-            world_query.get("toolId") == "tomewisp:inspect_game_state"
+            world_query.get("toolId") == "openallay:inspect_game_state"
             and (world_query.get("status") == "SUCCEEDED"
                  or (world_query.get("status") == "FAILED"
                      and world_query.get("failureCode") == "permission_denied"))):
@@ -176,7 +181,7 @@ if scenario == "phase-4-server-client-tools":
         "OVERVIEW", "MODS", "OPTIONS", "PACKS", "SHADERS",
         "DIAGNOSTICS", "PLAYER", "WORLD_QUERY",
     ]
-    if report.get("toolIds", []) != ["tomewisp:inspect_game_state"] * 8:
+    if report.get("toolIds", []) != ["openallay:inspect_game_state"] * 8:
         raise SystemExit("E2E did not route the complete game-state Tool sequence")
     for expected, probe in zip(expected_sections[:7], probes[:7]):
         if (probe.get("section") != expected or probe.get("status") != "SUCCEEDED"):
@@ -205,14 +210,14 @@ if metrics.get("semanticFallbacks", 0) < 1:
     raise SystemExit("E2E did not retain malformed-component fallback")
 if "semantic_component_unsupported" not in report.get("semanticDiagnosticCodes", []):
     raise SystemExit("E2E missing redacted fallback diagnostic")
-if "tomewisp:list_knowledge_sources" not in report.get("toolIds", []):
+if "openallay:list_knowledge_sources" not in report.get("toolIds", []):
     raise SystemExit("E2E missing knowledge-source tool")
 minimum_history = int(__import__("os").environ.get(
-    "TOMEWISP_E2E_MIN_HISTORY_REQUESTS", "1"))
+    "OPENALLAY_E2E_MIN_HISTORY_REQUESTS", "1"))
 history = report.get("historyMetrics", {})
 if history.get("totalRequests", 0) < minimum_history:
     raise SystemExit("E2E history total is below the required minimum")
-if __import__("os").environ.get("TOMEWISP_E2E_REQUIRE_PAGED_HISTORY") == "true":
+if __import__("os").environ.get("OPENALLAY_E2E_REQUIRE_PAGED_HISTORY") == "true":
     if history.get("loadedRequests", 0) >= history.get("totalRequests", 0):
         raise SystemExit("E2E did not restore a windowed history projection")
     if history.get("hasEarlier") != 1:

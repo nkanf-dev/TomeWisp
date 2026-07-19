@@ -1,4 +1,4 @@
-# TomeWisp Phase 4 Knowledge, Persistence, and Rich UI Design
+# OpenAllay Phase 4 Knowledge, Persistence, and Rich UI Design
 
 Status: approved by the designer through the Phase 4 roadmap discussion on
 2026-07-18. The designer approved one consolidated Phase 4, default access to
@@ -13,7 +13,7 @@ Phase 4 turns the completed grounded Agent and native screen into a durable,
 modpack-aware Minecraft knowledge product. It has three product outcomes:
 
 1. Recipe discovery no longer treats the vanilla recipe book as an authority
-   boundary. TomeWisp consumes every compatible, authorized recipe source it
+   boundary. OpenAllay consumes every compatible, authorized recipe source it
    can actually observe, including viewer integrations.
 2. Sessions, messages, summaries, and player-visible evidence survive restart
    without leaking state between worlds, servers, or players.
@@ -45,7 +45,7 @@ provider capabilities to fail independently.
 Using JEI, REI, or EMI as the only recipe truth would make client-only behavior
 depend on one optional mod, create different semantics across installations,
 and erase server authority and provenance. Viewers are sources and navigation
-targets, not owners of TomeWisp recipe identity.
+targets, not owners of OpenAllay recipe identity.
 
 ### 2.3 Rejected: persist live GuideService objects
 
@@ -184,7 +184,7 @@ reasoning.
 ### 4.3 Recovery and failure
 
 An active request that loses its process or client becomes `interrupted` when
-history is next loaded. TomeWisp preserves the user message, any committed
+history is next loaded. OpenAllay preserves the user message, any committed
 visible output, and a diagnostic, but never automatically sends the request
 again. Retry is an explicit player action with a new request ID.
 
@@ -202,7 +202,7 @@ traces, or all durable history through explicit actions.
 
 ### 5.1 Provider-neutral reducer pipeline
 
-TomeWisp follows the reducer/compaction pattern used by current LangChain,
+OpenAllay follows the reducer/compaction pattern used by current LangChain,
 Semantic Kernel, and Anthropic agent guidance while keeping semantics portable
 across Anthropic Messages and OpenAI-compatible Chat Completions.
 
@@ -250,7 +250,7 @@ stable references, authority, completeness, capture time, and failure codes.
 When deterministic reduction is insufficient, the selected request topology
 generates a structured summary containing goals, preferences, completed topics,
 current tasks, important decisions, unresolved questions, and evidence
-references. TomeWisp does not silently switch to a different model or payer for
+references. OpenAllay does not silently switch to a different model or payer for
 summarization. A separately configured summary model may be added later only
 through explicit player configuration.
 
@@ -261,7 +261,7 @@ messages remain intact.
 
 The model identifier is generation provenance, not ownership. Sessions retain
 a provider-neutral transcript and are never bound to one provider or model.
-Changing the selected model affects future requests only: TomeWisp serializes
+Changing the selected model affects future requests only: OpenAllay serializes
 the same common history through the newly selected adapter, validates any
 checkpoint by source hash and summary version, and re-estimates it against the
 new model's context budget. Provider-side prompt/KV cache reuse may be lost,
@@ -279,7 +279,7 @@ fixed message count. The assembler reserves space for system instructions,
 Skills, tool declarations, output, and expected tool continuation before
 allocating history.
 
-If summary generation fails, TomeWisp keeps all durable history and attempts a
+If summary generation fails, OpenAllay keeps all durable history and attempts a
 deterministic reduced projection. If that projection fits, the request may
 continue with a visible diagnostic. Otherwise it fails as
 `context_compaction_failed`; it never silently removes the current request or
@@ -320,7 +320,7 @@ readable invalid-reference text.
 
 ### 6.3 Controlled dynamic components
 
-The model may select only versioned component types registered by TomeWisp,
+The model may select only versioned component types registered by OpenAllay,
 such as item rows, recipe grids, ingredient checks, craftability summaries,
 progress steps, source summaries, status badges, and bounded choice groups.
 Properties may reference only validated domain handles and allowlisted display
@@ -396,7 +396,7 @@ Reasoning remains unrepresentable. The timeline exposes only player-visible
 assistant text, typed tool activity, authorized evidence, and product status.
 
 Sources remain attached to their producing tool or an explicit semantic
-reference. TomeWisp does not attach every request source to every assistant
+reference. OpenAllay does not attach every request source to every assistant
 segment and imply unsupported claim-level attribution.
 
 ### 6.6 Streaming and long-history performance
@@ -451,7 +451,7 @@ navigation. Behavior and diagnostics remain in parity even when the actually
 available viewer artifacts differ by loader.
 
 Optional integration dependencies are development/runtime inputs only where
-possible. They must not become mandatory TomeWisp runtime dependencies, and
+possible. They must not become mandatory OpenAllay runtime dependencies, and
 downloaded mod JARs remain outside Git.
 
 ## 9. Modded real-client smoke matrix
@@ -470,7 +470,7 @@ For each loader under test:
    provides one.
 3. Install a compatible Patchouli artifact and a small retained test book. If
    no 26.2 Patchouli artifact exists, record that fact and use the retained
-   resource-based book to test TomeWisp parsing without claiming binary
+   resource-based book to test OpenAllay parsing without claiming binary
    Patchouli compatibility.
 4. Install Farmer's Delight when a compatible 26.2 artifact exists. Otherwise
    select a maintained, recipe-rich sample mod with custom recipe types and

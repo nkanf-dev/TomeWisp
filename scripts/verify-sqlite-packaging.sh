@@ -2,7 +2,14 @@
 set -euo pipefail
 
 repository=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
-proof_dir=$(mktemp -d "${TMPDIR:-/tmp}/tomewisp-sqlite-packaging.XXXXXX")
+proof_dir=$(mktemp -d "${TMPDIR:-/tmp}/openallay-sqlite-packaging.XXXXXX")
+version=$(sed -n 's/^version=//p' "$repository/gradle.properties")
+minecraft_version=$(sed -n 's/^minecraft_version=//p' "$repository/gradle.properties")
+sqlite_version=$(sed -n 's/^sqlite_jdbc_version=//p' "$repository/gradle.properties")
+sqlite_runtime_version=${sqlite_version%.0}
+test -n "$version"
+test -n "$minecraft_version"
+test -n "$sqlite_version"
 support_classpath=$(
   cd "$repository"
   ./gradlew -q :common:testClasses :common:printSqliteProofSupportClasspath | tail -n 1
@@ -37,8 +44,8 @@ verify_loader() {
 
   local probe
   probe=$(java -cp "$extracted:$support_classpath" \
-    dev.tomewisp.guide.history.SqliteRuntimeCompatibilityTest "$extracted")
-  grep -q '^sqlite=3\.50\.3 source=' <<< "$probe"
+    dev.openallay.guide.history.SqliteRuntimeCompatibilityTest "$extracted")
+  grep -q "^sqlite=${sqlite_runtime_version//./\\.} source=" <<< "$probe"
 
   printf '%s mod_sha256=%s driver_sha256=%s %s\n' \
     "$loader" "$(sha256 "$mod_jar")" "$(sha256 "$extracted")" "$probe"
@@ -46,12 +53,12 @@ verify_loader() {
 
 verify_loader \
   fabric \
-  "$repository/fabric/build/libs/tomewisp-fabric-26.2-0.1.0-SNAPSHOT.jar" \
-  'META-INF/jars/sqlite-jdbc-3.50.3.0.jar'
+  "$repository/fabric/build/libs/openallay-fabric-${minecraft_version}-${version}.jar" \
+  "META-INF/jars/sqlite-jdbc-${sqlite_version}.jar"
 verify_loader \
   neoforge \
-  "$repository/neoforge/build/libs/tomewisp-neoforge-26.2-0.1.0-SNAPSHOT.jar" \
-  'META-INF/jarjar/sqlite-jdbc-3.50.3.0.jar'
+  "$repository/neoforge/build/libs/openallay-neoforge-${minecraft_version}-${version}.jar" \
+  "META-INF/jarjar/sqlite-jdbc-${sqlite_version}.jar"
 
 printf 'native_targets=Linux/x86_64,Linux/aarch64,Mac/x86_64,Mac/aarch64,Windows/x86_64,Windows/aarch64\n'
 printf 'proof_directory=%s\n' "$proof_dir"

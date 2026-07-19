@@ -2,32 +2,32 @@
 
 - status: accepted
 - decided_by: designer
-- approval_source: designer stated that TomeWisp has never shipped, all current durable data is test data, and pre-release schema changes should be intentionally breaking instead of accumulating migrations
+- approval_source: designer stated that OpenAllay has never shipped, all current durable data is test data, and pre-release schema changes should be intentionally breaking instead of accumulating migrations
 - date: 2026-07-18
 - commit: pending
 - patterns:
   - B_state_persistence
   - F_fail_semantics
   - G_irreversible_action
-- scope: durable history schema changes before TomeWisp's first formal release
+- scope: durable history schema changes before OpenAllay's first formal release
 
 ## Context
 
 Phase 4 development introduced successive internal SQLite layouts while no
-TomeWisp version had been formally released. Treating those development-only
+OpenAllay version had been formally released. Treating those development-only
 layouts as installed user formats created migration code and compatibility
 columns for data that the designer confirmed is disposable test state.
 
 ## Decision
 
-Until the first formal TomeWisp release, the repository maintains one current
+Until the first formal OpenAllay release, the repository maintains one current
 durable history schema only. A schema change may replace the development
 layout directly. Production code does not migrate, import, or retain
 compatibility columns for earlier pre-release layouts.
 
 Opening an earlier or otherwise unsupported schema fails closed as
 `history_schema_unsupported` without mutating it. Developers delete the ignored
-development database and let TomeWisp create the current schema. Automatic
+development database and let OpenAllay create the current schema. Automatic
 deletion is not performed because a mismatched file may have been supplied
 accidentally and failure should remain observable.
 
@@ -68,5 +68,5 @@ recovery, context authority, or per-session model-selection semantics.
 ## Superseded By
 
 SKMB-2026-07-19-019 supersedes only the manual-deletion requirement for
-recognized older unshipped TomeWisp schemas. Future, corrupt, or unrecognized
+recognized older unshipped OpenAllay schemas. Future, corrupt, or unrecognized
 databases still fail closed without mutation.

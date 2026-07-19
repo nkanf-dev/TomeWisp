@@ -1,19 +1,19 @@
 # AGENTS.md
 
 This file is the repository-level operating contract for coding agents working
-on TomeWisp. It applies to the entire repository unless a deeper `AGENTS.md`
+on OpenAllay. It applies to the entire repository unless a deeper `AGENTS.md`
 explicitly narrows a rule for its subtree.
 
 ## 1. Product intent
 
-TomeWisp（书灵）is a lightweight, in-game knowledge companion for modded
+OpenAllay is a lightweight, in-game knowledge companion for modded
 Minecraft. It connects trusted game and mod knowledge to a small tool-using
 Agent, gives players grounded answers through commands and a native screen, and
 will later turn structures and documentation into guided visual tutorials.
 
 The product is client-first:
 
-- a pure client installation must remain useful without TomeWisp on the server;
+- a pure client installation must remain useful without OpenAllay on the server;
 - a server installation may add authoritative read tools or host a shared model;
 - model location and tool location are independent choices;
 - Fabric and NeoForge are equal, first-class loaders;
@@ -56,9 +56,9 @@ appropriate source of truth as part of the change.
   parity with Fabric.
 - `build-logic/`: shared Gradle conventions and multi-loader source/resource
   composition.
-- `common/src/main/resources/assets/tomewisp/tomewisp_skills/`: bundled,
+- `common/src/main/resources/assets/openallay/openallay_skills/`: bundled,
   non-executable Agent Skills.
-- `common/src/main/resources/data/tomewisp/agent_traces/`: strict deterministic
+- `common/src/main/resources/data/openallay/agent_traces/`: strict deterministic
   replay fixtures.
 - `scripts/`: opt-in live-provider and real-client development harnesses. These
   are not runtime Agent tools.
@@ -147,7 +147,7 @@ appropriate source of truth as part of the change.
   and keep `conclusive=false` when recipe or inventory evidence is incomplete.
 - Do not ask the model to perform arithmetic or allocation that deterministic
   Java code can perform.
-- Keep `tomewisp:find_recipes` only as a deprecated compatibility projection;
+- Keep `openallay:find_recipes` only as a deprecated compatibility projection;
   new workflows use resource resolution, recipe search, exact recipe lookup,
   inventory inspection, and craftability.
 
@@ -181,7 +181,7 @@ Do not hide a product decision inside a convenient implementation default. Do
 not claim designer approval that is not recorded. Preserve traceability from
 design to decision to tests to commits.
 
-TomeWisp currently has no project-defined caps for document size, result size,
+OpenAllay currently has no project-defined caps for document size, result size,
 history length, queue length, recipe count, inventory count, trace steps, or
 report length. Do not introduce arbitrary limits preemptively. Add a limit only
 after observed operational evidence and an explicit decision define its
@@ -193,7 +193,7 @@ semantics.
   endpoints containing credentials, or model configuration with an inline
   `apiKey`.
 - Supply credentials through environment variables such as
-  `TOMEWISP_API_KEY`. Configuration should name `apiKeyEnv`.
+  `OPENALLAY_API_KEY`. Configuration should name `apiKeyEnv`.
 - Credentials must never enter packets, prompts, traces, logs, normalized tool
   results, GUI text, test fixtures, screenshots, or exception messages.
 - Keep trace redaction tests current when adding protocols, headers, or config
@@ -280,8 +280,8 @@ Use the checked-in wrapper. The primary local gate is:
 During iteration, run the smallest relevant tests first, for example:
 
 ```bash
-./gradlew :common:test --tests 'dev.tomewisp.guide.*'
-./gradlew :common:test --tests 'dev.tomewisp.tool.builtin.*'
+./gradlew :common:test --tests 'dev.openallay.guide.*'
+./gradlew :common:test --tests 'dev.openallay.tool.builtin.*'
 ```
 
 If Maven networking is unreliable, use the retrying wrapper:
@@ -293,7 +293,7 @@ If Maven networking is unreliable, use the retrying wrapper:
 With FLClash, an explicit proxy is supported:
 
 ```bash
-TOMEWISP_CURL_PROXY=socks5h://127.0.0.1:7890 ./gradlew-curl build
+OPENALLAY_CURL_PROXY=socks5h://127.0.0.1:7890 ./gradlew-curl build
 ```
 
 For every behavior change:

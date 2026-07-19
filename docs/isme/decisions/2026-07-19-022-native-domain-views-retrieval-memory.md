@@ -2,7 +2,7 @@
 
 - status: accepted
 - decided_by: designer
-- approval_source: the designer approved the recommended embedded-native-view, hybrid retrieval, and selective player-memory design on 2026-07-19, then clarified that TomeWisp must embed JEI/REI or mod-provided views when available and must not imitate a mod GUI in its fallback
+- approval_source: the designer approved the recommended embedded-native-view, hybrid retrieval, and selective player-memory design on 2026-07-19, then clarified that OpenAllay must embed JEI/REI or mod-provided views when available and must not imitate a mod GUI in its fallback
 - date: 2026-07-19
 - commit: pending
 - patterns:
@@ -45,10 +45,10 @@ Recipe rendering prefers, in order:
 
 1. the exact JEI layout drawable registered by the recipe owner;
 2. the exact REI category widgets registered by the recipe owner;
-3. a TomeWisp-owned generic canvas that clearly presents inputs, catalysts,
+3. a OpenAllay-owned generic canvas that clearly presents inputs, catalysts,
    outputs, byproducts, station, and processing metadata.
 
-The generic canvas uses TomeWisp's own neutral Minecraft-native visual grammar.
+The generic canvas uses OpenAllay's own neutral Minecraft-native visual grammar.
 It does not copy or imitate Farmer's Delight or another mod's screen, textures,
 coordinates, or live menu. An optional provider failure affects only that view
 and immediately falls through to the next provider or readable fallback.

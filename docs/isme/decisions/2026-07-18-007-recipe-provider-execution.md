@@ -25,7 +25,7 @@ The accepted product decision requires source-scoped stable references,
 generation-aware stale failure, independent optional integrations, conflict
 preservation, and explicit viewer navigation. It does not select the capture
 thread, generation representation, or behavior for viewer entries that cannot
-be losslessly represented by TomeWisp's canonical recipe record.
+be losslessly represented by OpenAllay's canonical recipe record.
 
 ## Decision
 
@@ -37,7 +37,7 @@ captured context.
 
 The synchronized vanilla recipe book is always available when connected but is
 `PARTIAL` under `ALL_KNOWN`. JEI and REI are compile-only optional integrations
-against their verified public APIs; neither is a TomeWisp runtime dependency.
+against their verified public APIs; neither is a OpenAllay runtime dependency.
 An installed provider publishes `AVAILABLE`, `UNAVAILABLE`, or `FAILED` plus a
 stable diagnostic. A failure changes aggregate completeness but does not remove
 records from other providers.
@@ -111,7 +111,7 @@ NeoForge production builds.
 
 The retained Fabric 26.2 client smoke installed JEI, REI, and Farmer's Delight
 Refabricated together. It completed the all-known six-tool scenario and opened
-the exact JEI apple-cider cooking page from TomeWisp. Artifact provenance,
+the exact JEI apple-cider cooking page from OpenAllay. Artifact provenance,
 redacted report/log, screenshots, hashes, the Patchouli resource-fixture
 boundary, and the explicit no-EMI/no-Patchouli-runtime claim are recorded under
 `docs/verification/phase-4c-all-known-recipes/`.
@@ -126,7 +126,7 @@ The consolidated Phase 4 run additionally launched NeoForge 26.2.0.25-beta
 with JEI 30.12.0.72 and Cooking for Blockheads 26.2.0.2. The current NeoForge
 REI 26.2.820 artifact displayed an upstream `@OnlyIn` member-stripping warning,
 so it was disabled and is not claimed as a passing NeoForge integration. This
-is an `integration_degraded` optional-adapter boundary, not a TomeWisp or sample
+is an `integration_degraded` optional-adapter boundary, not a OpenAllay or sample
 mod failure. Fabric remains the retained JEI+REI+Farmer's Delight coexistence
 proof.
 

@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 1,
+  "id": "platform-info",
+  "userMessage": "OpenAllay 当前运行在哪个模组加载器上？",
+  "requiredContext": ["observable_game_state"],
+  "steps": [
+    {
+      "type": "tool_call",
+      "tool": "openallay:inspect_game_state",
+      "arguments": {"section": "OVERVIEW", "query": "summary"},
+      "expect": {
+        "status": "success",
+        "match": "schema",
+        "outputType": "dev.openallay.tool.builtin.InspectGameStateTool$Output"
+      }
+    },
+    {
+      "type": "assistant_message",
+      "content": "平台信息来自当前运行中的 OpenAllay 工具注册表。"
+    }
+  ]
+}

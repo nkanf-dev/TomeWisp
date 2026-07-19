@@ -15,7 +15,7 @@
 
 ## Context
 
-TomeWisp currently registers local tools and bundled Skills at bootstrap. Model
+OpenAllay currently registers local tools and bundled Skills at bootstrap. Model
 runtimes capture tool definitions when constructed, while Skill lookup uses a
 shared repository. Recipe preferences separately hard-code vanilla, JEI, and
 REI booleans. That shape cannot present all sources/tools/Skills coherently,
@@ -28,7 +28,7 @@ The native top-level section is “知识与能力” (`Knowledge & Capabilities
 common, code-owned catalog publishes immutable entries of three kinds:
 knowledge source, tool, and Skill. Entries have stable IDs, localized labels,
 availability/enablement state, friendly diagnostics, and an optional registered
-child-settings route. Catalog data can originate only from trusted TomeWisp or
+child-settings route. Catalog data can originate only from trusted OpenAllay or
 loader integration registration; neither model output nor arbitrary resource
 JSON can register settings actions or capabilities.
 
@@ -52,7 +52,7 @@ but cannot create a tool, enable an unregistered integration, widen a Skill's
 declared tool set, expose a server tool, or bypass server authorization.
 
 Saving a capability candidate validates dependency closure. An enabled Skill
-whose declared allowed tool is disabled is a conflict; TomeWisp rejects the
+whose declared allowed tool is disabled is a conflict; OpenAllay rejects the
 candidate and asks the player to keep the tool enabled or also disable the
 Skill. It never silently re-enables a tool or disables a Skill. The per-runtime
 Skill view exposes only enabled Skills, and its `load_skill` tool resolves only

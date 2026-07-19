@@ -33,7 +33,7 @@ native rich interaction as one product phase.
 ### Recipe visibility and sources
 
 The default recipe visibility is `ALL_KNOWN`. Vanilla recipe-book unlock state
-is evidence and an optional filter, not a default access boundary. TomeWisp
+is evidence and an optional filter, not a default access boundary. OpenAllay
 merges immutable snapshots from every compatible authorized source, including
 client, server, and optional viewer adapters, without allowing one source to
 silently overwrite a conflicting record from another source.
@@ -86,7 +86,7 @@ required evidence.
 
 ### Semantic rich UI
 
-Markdown is the base text layer, not the complete rendering contract. TomeWisp
+Markdown is the base text layer, not the complete rendering contract. OpenAllay
 adds validated Minecraft semantic references, first-class domain cards, and a
 versioned allowlist of controlled dynamic components. The model may select a
 registered component and bind it to validated references; it cannot provide

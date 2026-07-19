@@ -2,7 +2,7 @@
 
 ## Outcome
 
-Finish the gap between TomeWisp's validated semantic messages and genuinely
+Finish the gap between OpenAllay's validated semantic messages and genuinely
 Minecraft-native data views. The result embeds viewer/mod recipe layouts when
 available, provides a clear neutral fallback, renders real tables, stabilizes
 streaming and selection behavior, improves local guide retrieval, and records a
@@ -19,7 +19,7 @@ presentation model. A client `NativeDomainViewRegistry` selects a renderer.
 model component + same-request reference index
         -> validated DomainViewBinding
         -> detached presentation model
-        -> JEI native / REI native / TomeWisp generic provider
+        -> JEI native / REI native / OpenAllay generic provider
         -> measured visible-row view + typed hit regions + narration
 ```
 
@@ -47,7 +47,7 @@ the registered category/display widgets when a stable exact display can be
 resolved. Neither adapter is recipe truth; both are optional presentations.
 
 The generic recipe canvas is not a simulated mod screen. It uses a consistent
-TomeWisp panel with labelled slot groups, arrows, station and processing facts.
+OpenAllay panel with labelled slot groups, arrows, station and processing facts.
 It always remains available from the detached recipe snapshot.
 
 ## Semantic layout
@@ -110,4 +110,3 @@ implementation checkpoint.
 - graphical fallback evidence with viewers unavailable;
 - wide/narrow table screenshots and multi-profile selector screenshot;
 - no secret/provider body/native live object in history, logs or reports.
-

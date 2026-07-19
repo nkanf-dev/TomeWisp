@@ -5,8 +5,8 @@ project_dir="$(cd "$(dirname "$0")" && pwd)"
 mirror_dir="$project_dir/.gradle/curl-mirror"
 log_dir="$project_dir/.gradle/curl-fallback"
 log_file="$log_dir/gradle.log"
-max_rounds="${TOMEWISP_GRADLE_DOWNLOAD_ROUNDS:-60}"
-curl_proxy="${TOMEWISP_CURL_PROXY:-}"
+max_rounds="${OPENALLAY_GRADLE_DOWNLOAD_ROUNDS:-60}"
+curl_proxy="${OPENALLAY_CURL_PROXY:-}"
 
 if [[ -z "$curl_proxy" && "$(uname -s)" == "Darwin" ]] && command -v scutil >/dev/null 2>&1; then
     curl_proxy="$(scutil --proxy | awk '

@@ -176,7 +176,7 @@ The Agent sees exactly one new Tool:
 
 ```json
 {
-  "name": "tomewisp:inspect_game_state",
+  "name": "openallay:inspect_game_state",
   "input": {
     "section": "mods | options | diagnostics | packs | player | world_query | ...",
     "query": "optional section-specific selector"

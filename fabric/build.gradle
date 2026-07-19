@@ -40,7 +40,7 @@ loom {
 }
 
 tasks.matching { it.name == 'runClient' }.configureEach {
-    System.properties.findAll { key, value -> key.toString().startsWith('tomewisp.e2e.') }
+    System.properties.findAll { key, value -> key.toString().startsWith('openallay.e2e.') }
             .each { key, value -> systemProperty(key.toString(), value.toString()) }
 }
 

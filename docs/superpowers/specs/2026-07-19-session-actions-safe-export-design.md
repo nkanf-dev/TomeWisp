@@ -13,9 +13,9 @@ captures the selected session and, when history is windowed, reads every
 durable page without changing the viewport window. It returns an immutable,
 credential-free export snapshot. A client-only writer formats that snapshot as
 plain text and atomically writes it beneath the fixed Minecraft game-directory
-child `tomewisp/exports`.
+child `openallay/exports`.
 
-`TomeWispScreen` owns only presentation intents. Delete opens two native
+`OpenAllayScreen` owns only presentation intents. Delete opens two native
 `ConfirmScreen` instances bound to the originally selected session ID. Export
 runs asynchronously and reports a relative filename or friendly failure.
 User/assistant headers expose a copy action that delegates to Minecraft's

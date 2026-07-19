@@ -34,7 +34,7 @@ list, never a validation restriction or proof of inference.
 
 ## Model ownership and selection
 
-`ClientSettingsService` and `TomeWispSettingsScreen` continue to manage only
+`ClientSettingsService` and `OpenAllaySettingsScreen` continue to manage only
 `models.json` and the local credential store. The page is titled “Client
 models”. The Guide selector separately labels client profiles and the
 server-synchronized canonical model. No client action edits the latter.

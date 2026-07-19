@@ -13,7 +13,7 @@
 
 ## Decision
 
-TomeWisp has one engine-neutral HTTP contract for requests, response headers,
+OpenAllay has one engine-neutral HTTP contract for requests, response headers,
 stream decoding, cancellation, and timeouts. It deliberately does not expose
 JDK, OkHttp, Apache, loader, or Minecraft HTTP types to domain adapters. The
 current JDK engine owns connection pooling, asynchronous send, redirect refusal,
@@ -22,7 +22,7 @@ future online knowledge tools may reuse that transport but remain separate
 domain adapters with separate request construction, response codecs, failure
 mapping, credentials, and authority.
 
-OpenRouter model metadata is a TomeWisp configuration-layer request. It is not
+OpenRouter model metadata is a OpenAllay configuration-layer request. It is not
 an Agent tool, is not included in tool declarations, and cannot be invoked by
 model output. Future MC Encyclopedia, Minecraft Wiki, or general Web Fetch
 features belong to the knowledge/tool layer and require their own accepted

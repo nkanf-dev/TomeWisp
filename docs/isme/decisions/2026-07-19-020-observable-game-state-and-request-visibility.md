@@ -91,7 +91,7 @@ databases follow the accepted rebuild-without-migration policy.
 
 ### One player-observable game-state Tool
 
-TomeWisp exposes one common Agent Tool, `tomewisp:inspect_game_state`, for the
+OpenAllay exposes one common Agent Tool, `openallay:inspect_game_state`, for the
 outer game/client state layer. Its strict input selects one registered section
 and an optional section-specific query. It never returns an unbounded dump.
 Initial registered sections cover, without defining the future ceiling:

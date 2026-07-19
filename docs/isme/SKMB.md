@@ -1,6 +1,6 @@
 # State Machine Knowledge Base
 
-This index records externally visible state and failure decisions for TomeWisp.
+This index records externally visible state and failure decisions for OpenAllay.
 Designer decisions are authoritative only when the referenced decision is
 accepted and contains explicit approval evidence.
 
@@ -31,6 +31,7 @@ accepted and contains explicit approval evidence.
 | SKMB-2026-07-19-021 | accepted | model ownership, authenticated model listing, Tool alias recovery, and player client Tool bridge | A, B, C, D, E, F | decisions/2026-07-19-021-model-ownership-and-player-tool-bridge.md | 48ed4c1 |
 | SKMB-2026-07-19-022 | accepted | embedded native domain views, local retrieval, stable presentation, and future player-memory boundary | A, B, C, D, E, F | decisions/2026-07-19-022-native-domain-views-retrieval-memory.md | pending |
 | SKMB-2026-07-19-023 | accepted | double-confirmed session deletion, managed conversation export, and visible chat copying | B, C, E, F, G | decisions/2026-07-19-023-session-actions-and-safe-export.md | pending |
+| SKMB-2026-07-19-024 | accepted | ordered parallel Tool turns, typed batch/query surfaces, fixed online knowledge, provider recovery, and client-visible location routing | A, B, C, D, E, F | decisions/2026-07-19-024-batch-query-and-provider-recovery.md | pending |
 
 SKMB-2026-07-18-006 is implemented by `a0eaeff`, `19ab90f`, and `c6ca6bc`.
 Its deterministic clean-build and packaged-driver evidence is recorded in the
@@ -68,8 +69,9 @@ have deterministic coverage. Retained graphical evidence for those earlier
 slices is recorded under `docs/verification/phase-4-final-acceptance/`, but it
 does not prove the SKMB-019 correction set.
 
-SKMB-2026-07-18-010/016/018 now use display schema 2 with Debug Mode off and
-presentation animation on by default. Animation is presentation-only, while
+SKMB-2026-07-18-010/016/018 now use display schema 3 with assistant name
+`OpenAllay`, Debug Mode off, and presentation animation on by default. The
+assistant name and animation are presentation-only, while
 normal history diagnostics expose friendly on-demand/page state and Debug Mode
 adds only redacted performance counts. The final presentation implementation
 is recorded in `11a6ace`; deterministic scale/package evidence is retained in
@@ -128,9 +130,12 @@ graphical evidence review all passed. Phase 4 is closed.
 | client_tool_wait | A server-hosted Agent is waiting for one correlated Tool result from the requesting player's client | ServerAgentService | Actor/request/invocation scoped; cancel and disconnect suppress late results | SKMB-2026-07-19-021 |
 | native_view_resolving | A visible validated component is resolving an exact optional or generic native presentation | NativeDomainViewRegistry | Client-thread-only; no live view enters semantic/history state | SKMB-2026-07-19-022 |
 | native_view_ready | One exact optional provider owns the visible component view | NativeDomainViewRegistry | Released when the row leaves the visible lifecycle | SKMB-2026-07-19-022 |
-| native_view_fallback | The component uses a detached TomeWisp generic canvas or readable fallback | NativeDomainViewRegistry | Never imitates an optional mod GUI | SKMB-2026-07-19-022 |
+| native_view_fallback | The component uses a detached OpenAllay generic canvas or readable fallback | NativeDomainViewRegistry | Never imitates an optional mod GUI | SKMB-2026-07-19-022 |
 | knowledge_index_building | One detached knowledge generation is being indexed off the Minecraft thread | KnowledgeRegistry | Prior valid generation remains readable | SKMB-2026-07-19-022 |
 | knowledge_index_degraded | The newest knowledge index failed and the prior valid/local lexical path remains active | KnowledgeRegistry | Source-scoped diagnostic; never fabricated empty knowledge | SKMB-2026-07-19-022 |
+| tool_group_wait | Independent calls from one model turn are settling into indexed correlated slots | GameGuideAgent | Provider continuation waits for the complete ordered group | SKMB-2026-07-19-024 |
+| model_transport_retry_wait | A no-progress transport failure is waiting for its bounded retry | ModelRequestScheduler | Cancellable; never entered after visible response progress | SKMB-2026-07-19-024 |
+| online_knowledge_degraded | One fixed public-documentation adapter failed while local/other sources remain usable | SearchKnowledgeTool | Source-scoped and partial; no arbitrary URL fallback | SKMB-2026-07-19-024 |
 
 ## Transition Decisions
 
@@ -166,7 +171,7 @@ graphical evidence review all passed. Phase 4 is closed.
 | T28 | preparing | deterministic context estimate exceeds configured input budget | compacting | Protect the current request and structural tool pairs, then reduce old tool results | SKMB-2026-07-18-008 |
 | T29 | compacting | deterministic projection still exceeds budget | compacting | Use the same selected model topology to create a source-hashed structured summary checkpoint | SKMB-2026-07-18-008 |
 | T30 | compacting | cancel arrives | cancelled | Cancel summary work, store no successful checkpoint, and suppress primary dispatch | SKMB-2026-07-18-008 |
-| T31 | history_loading | recognized TomeWisp schema 1, 2, 3, or 4 opens | history_schema_rebuilding | Transactionally drop only TomeWisp application tables and recreate the single current schema without migration | SKMB-2026-07-19-019 |
+| T31 | history_loading | recognized OpenAllay schema 1, 2, 3, or 4 opens | history_schema_rebuilding | Transactionally drop only OpenAllay application tables and recreate the single current schema without migration | SKMB-2026-07-19-019 |
 | T32 | any non-active session state | selected model/provider changes | unchanged | Keep the provider-neutral transcript/checkpoints; assemble the next request with the new model and its budget | SKMB-2026-07-18-008 |
 | T33 | any session state | session model selection changes | unchanged | Store the preference for that session's future requests; an active request retains its captured runtime | SKMB-2026-07-18-009 |
 | T34 | any UI state | debug mode changes | unchanged | Rebuild only the local normal/debug projection; do not rewrite history or change active work | SKMB-2026-07-18-010 |
@@ -210,7 +215,7 @@ graphical evidence review all passed. Phase 4 is closed.
 
 | id | invariant | source |
 | --- | --- | --- |
-| I1 | Client-local mode works without TomeWisp installed on the server | SKMB-2026-07-17-001 |
+| I1 | Client-local mode works without OpenAllay installed on the server | SKMB-2026-07-17-001 |
 | I2 | At most one Agent request is active per `(actorId, sessionId)`; other sessions may run concurrently | SKMB-2026-07-17-003 |
 | I3 | API credentials never enter packets, prompts, traces, logs, or tool results | SKMB-2026-07-17-001 |
 | I4 | Only registered read-only tools are callable in Phase 2 | SKMB-2026-07-17-001 |
@@ -259,6 +264,7 @@ graphical evidence review all passed. Phase 4 is closed.
 | I47 | Connection testing is an explicit isolated real request with no Guide context/tools/history, no retry/fallback, and no retained secret/body/output | SKMB-2026-07-18-015 |
 | I48 | Native settings use one common operation/snapshot service while model/credential, Tool/source, Skill, display, metadata, and history persistence remain independently versioned | SKMB-2026-07-18-016, SKMB-2026-07-19-019 |
 | I49 | Settings file/provider/SQLite work never runs on a Minecraft-owned thread, and screen detach never owns or rolls back a confirmed durable mutation | SKMB-2026-07-18-016 |
+| I49a | The schema-3 local assistant name is validated presentation identity; rename and display-toggle writes preserve every unaffected display field and never rewrite history, evidence, sessions, tools, or model authority | SKMB-2026-07-18-016 |
 | I50 | Tool settings can only narrow registered local Tool access, while Skill documents and `allowed-tools` dependencies grant no authority; every active request retains one captured immutable Tool/source/Skill snapshot | SKMB-2026-07-19-019 |
 | I51 | Tool-specific source settings use stable registered IDs under that tool's child page; adding JEI/REI/EMI/future adapters does not add top-level mod settings fields | SKMB-2026-07-18-017 |
 | I52 | Semantic output is a versioned closed AST; HTML, URLs, embeds, arbitrary UI trees, code, callbacks, commands, and mutations are unrepresentable | SKMB-2026-07-18-018 |
@@ -270,7 +276,7 @@ graphical evidence review all passed. Phase 4 is closed.
 | I58 | Client model schema 2 and all observable settings state retain only qualified credential references/presence; raw API keys exist only in the transient masked input, SecretValue, provider header boundary, and local `credentials.sqlite3`, while `env:<name>` remains external/headless-only | SKMB-2026-07-19-019 |
 | I59 | Every source is owned and strictly validated by one logical Tool; built-in sources cannot be deleted, while registered user source kinds may support full CRUD | SKMB-2026-07-19-019 |
 | I60 | Bundled Skills are read-only Agent Skills packages with uppercase `SKILL.md`; local edits are external overrides and never grant scripts, paths, tools, or Agent write authority | SKMB-2026-07-19-019 |
-| I61 | Only recognized unshipped TomeWisp history schemas 1 through 4 rebuild automatically; future, corrupt, foreign, missing/inconsistent-metadata, or otherwise unrecognized databases remain untouched | SKMB-2026-07-19-019, SKMB-2026-07-19-020 |
+| I61 | Only recognized unshipped OpenAllay history schemas 1 through 4 rebuild automatically; future, corrupt, foreign, missing/inconsistent-metadata, or otherwise unrecognized databases remain untouched | SKMB-2026-07-19-019, SKMB-2026-07-19-020 |
 | I62 | Every active request has a redacted observable phase, elapsed basis, last-progress time and optional retry/deadline; clocks never create transcript or persistence writes | SKMB-2026-07-19-020 |
 | I63 | The configured model request timeout covers complete response-body consumption, and cancel/timeout/disconnect suppress every late stream event | SKMB-2026-07-19-020 |
 | I64 | Rendering never owns scroll mutation; streaming keeps a stable literal tail and preserves manual viewport anchors | SKMB-2026-07-19-020 |
@@ -279,15 +285,20 @@ graphical evidence review all passed. Phase 4 is closed.
 | I67 | Player-observable state is captured on the owning Minecraft thread into immutable evidence-bearing records; missing sections degrade independently and never become fabricated empty facts | SKMB-2026-07-19-020 |
 | I68 | Remote Tool failures in either direction are complete model-visible Tool results unless the enclosing request is cancelled/disconnected; partial bridge assemblies are sparse, active-request scoped, and bounded by the five-minute bridge deadline | SKMB-2026-07-19-021 |
 | I69 | Model-authored semantic data cannot name native widget classes, textures, slots, coordinates, callbacks, commands, URLs, or arbitrary view trees | SKMB-2026-07-19-022 |
-| I70 | Exact JEI/REI/mod views are embedded only through verified public APIs; the generic fallback is neutral TomeWisp UI and never imitates a mod screen | SKMB-2026-07-19-022 |
+| I70 | Exact JEI/REI/mod views are embedded only through verified public APIs; the generic fallback is neutral OpenAllay UI and never imitates a mod screen | SKMB-2026-07-19-022 |
 | I71 | Live native-view objects exist only for visible rows on the Minecraft client thread and never enter history, bridge payloads, model context, or workers | SKMB-2026-07-19-022 |
 | I72 | Table structure, focus identity, viewport ownership, and streaming row identity survive incremental rendering; a missing focus ID is never selected | SKMB-2026-07-19-022 |
 | I73 | Knowledge retrieval remains useful offline, preserves stable provenance/evidence, and never requires an embedding provider | SKMB-2026-07-19-022 |
 | I74 | Conversation history, derived summaries, player memory, and live game facts remain distinct; neither summary nor player memory satisfies factual evidence requirements | SKMB-2026-07-19-022 |
 | I75 | Durable player-memory writes require explicit player confirmation and remain disabled until their management UI and persistence contract are implemented | SKMB-2026-07-19-022 |
 | I76 | Session deletion requires two affirmative native confirmations bound to one captured session ID; dismissing either confirmation mutates nothing | SKMB-2026-07-19-023 |
-| I77 | Player conversation export has no arbitrary-path input, publishes only complete atomic files under `gameDir/tomewisp/exports`, and excludes credentials, normalized Tool data, checkpoints, model settings, and raw diagnostics | SKMB-2026-07-19-023 |
+| I77 | Player conversation export has no arbitrary-path input, publishes only complete atomic files under `gameDir/openallay/exports`, and excludes credentials, normalized Tool data, checkpoints, model settings, and raw diagnostics | SKMB-2026-07-19-023 |
 | I78 | Clipboard writes are explicit local player actions over already-visible user or assistant text and are never exposed as an Agent Tool | SKMB-2026-07-19-023 |
+| I79 | Same-turn Tool calls may execute concurrently, but the complete provider continuation preserves original ToolUse order and exact invocation identity | SKMB-2026-07-19-024 |
+| I80 | The analytical game-content surface is a closed typed virtual dataset over detached snapshots; shell text, scripts, arbitrary paths/URLs, reflection, and mutation are unrepresentable | SKMB-2026-07-19-024 |
+| I81 | Automatic model transport retry is allowed only before response progress and is bounded to two retries; HTTP 4xx, timeout, partial stream, cancel, and Tool execution are never replayed | SKMB-2026-07-19-024 |
+| I82 | Fixed online documentation sources fail independently, remain partial public evidence, and never replace current-game authoritative snapshots | SKMB-2026-07-19-024 |
+| I83 | Current biome, coordinates, dimension, and direction are client-visible diagnostics and never require server command permission | SKMB-2026-07-19-024 |
 
 ## Fail Semantics
 
@@ -343,6 +354,11 @@ graphical evidence review all passed. Phase 4 is closed.
 | F48 | Knowledge indexing/reranking fails or embeddings are unavailable | Retain the last valid index or deterministic local lexical path and expose a source-scoped diagnostic; never fabricate empty results | SKMB-2026-07-19-022 |
 | F49 | Session export paging, confinement, redaction, or atomic publication fails | Publish no final file, remove temporary output where possible, retain conversation state, and show a localized failure | SKMB-2026-07-19-023 |
 | F50 | Clipboard access fails | Preserve the transcript and show a localized copy failure without exposing exception details | SKMB-2026-07-19-023 |
+| F51 | One parallel Tool call fails while sibling calls settle | Publish the correlated structured failure and every sibling result in original order; never send a partial or reordered group | SKMB-2026-07-19-024 |
+| F52 | A virtual query is malformed or its unprojected result is too large | Fail `invalid_tool_arguments` or `result_too_large` with exact schema/cardinality guidance; never silently truncate or execute arbitrary expressions | SKMB-2026-07-19-024 |
+| F53 | A provider returns HTTP 400 or another non-retryable 4xx | Classify a bounded allowlisted error as request/context/protocol rejection, retain redacted diagnostics, and require a corrected request; never expose or automatically replay the body | SKMB-2026-07-19-024 |
+| F54 | A pre-progress model transport attempt fails | Retry at most twice with cancellable short backoff; after progress or exhaustion, retain chronology and end with a friendly retryable transport failure | SKMB-2026-07-19-024 |
+| F55 | One fixed online knowledge source times out, rejects, or changes format | Retain local and other source results, mark only that adapter degraded, and return partial evidence rather than fabricated absence | SKMB-2026-07-19-024 |
 
 ## Reviewed Statistical Defaults
 

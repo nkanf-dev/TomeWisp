@@ -20,10 +20,10 @@ not prove:
 3. the combined Knowledge & Capabilities page mixed sources, Agent tools, and
    Skills into toggle cards and left the detail pane without an understandable
    selection/configuration model;
-4. an ignored schema-1 development history database caused schema-4 TomeWisp to
+4. an ignored schema-1 development history database caused schema-4 OpenAllay to
    disable persistence indefinitely.
 
-The designer confirmed that TomeWisp has not shipped, current durable state is
+The designer confirmed that OpenAllay has not shipped, current durable state is
 test data, API keys must be entered like passwords and stored locally, sources
 belong to the Tool that consumes them, built-in sources are disable-only while
 user sources support full CRUD, and bundled Skills are read-only Agent Skills
@@ -50,7 +50,7 @@ with external file overrides.
 - Agent-authored Skill writes are not granted in this change. Player-driven
   local editing prepares the storage/service boundary; a later accepted write-
   tool decision must authorize Agent creation or editing.
-- TomeWisp will not execute Agent Skill `scripts/` directories.
+- OpenAllay will not execute Agent Skill `scripts/` directories.
 - This design does not add arbitrary Web Fetch, Wiki HTTP, MC Wiki, or MC
   encyclopedia network authority. Future source kinds must receive their own
   endpoint, permission, cache, and evidence decisions.
@@ -70,13 +70,13 @@ artifact.
 The full-mod development profile moves to Architectury Fabric 21.0.4. Fabric
 metadata declares Architectury versions through 21.0.2 incompatible when that
 optional mod is present, so affected packs fail during dependency resolution
-with an actionable upgrade instead of freezing every character event. TomeWisp
+with an actionable upgrade instead of freezing every character event. OpenAllay
 does not gain a hard Architectury runtime dependency. NeoForge remains
 unchanged because the failing Fabric input delegate does not exist there.
 
 The deterministic boundary test checks the Fabric metadata conflict. The
 retained normal-client acceptance must type ASCII, Chinese IME text, backspace,
-paste, Tab focus movement, and Ctrl+Enter into TomeWisp after JEI, REI, and
+paste, Tab focus movement, and Ctrl+Enter into OpenAllay after JEI, REI, and
 Farmer's Delight finish loading.
 
 ## 2. Stored Credential Architecture
@@ -109,7 +109,7 @@ create table credentials(
 
 The database is global to the local client configuration, not partitioned by
 player/world, and is never stored inside guide history. On POSIX filesystems
-TomeWisp applies owner-read/write permissions best-effort; permission failure is
+OpenAllay applies owner-read/write permissions best-effort; permission failure is
 diagnosed and prevents claiming hardened storage, but never logs the key.
 
 ### 2.2 Atomic profile replacement
@@ -175,13 +175,13 @@ callable tool IDs or invocation correlation.
 ### 3.2 Source schema
 
 Every source is stored under exactly one owning Tool in
-`config/tomewisp/tools/<tool-family-id>.json`. Files are independently versioned
+`config/openallay/tools/<tool-family-id>.json`. Files are independently versioned
 and strict. The common envelope is:
 
 ```json
 {
   "schemaVersion": 1,
-  "toolId": "tomewisp:guides",
+  "toolId": "openallay:guides",
   "enabled": true,
   "sources": [
     {
@@ -221,7 +221,7 @@ written back as user configuration.
 - User sources can be created only from registered user-creatable kinds and can
   be edited, deleted, tested, refreshed, and restored before save.
 - Phase 4 initially supplies a managed `local_markdown` Guides source rooted
-  below TomeWisp's own configuration directory. It cannot point to arbitrary
+  below OpenAllay's own configuration directory. It cannot point to arbitrary
   paths. Online source kinds remain unavailable until separately accepted.
 - Recipe viewers remain children of Recipes. Patchouli/FTB/local documents
   remain children of Guides. Web Fetch is a future Tool, not a source.
@@ -233,7 +233,7 @@ and source state.
 
 ## 4. Agent Skills Subset
 
-TomeWisp follows the public Agent Skills directory format while deliberately
+OpenAllay follows the public Agent Skills directory format while deliberately
 supporting a safe subset:
 
 ```text
@@ -246,9 +246,9 @@ skills/<skill-name>/
 `SKILL.md` uses YAML frontmatter plus Markdown body. `name` and `description`
 follow Agent Skills limits and the directory name must match `name`. Optional
 `license`, `compatibility`, string metadata, and an `allowed-tools` dependency
-declaration may be parsed. TomeWisp-specific required-mod information is stored
+declaration may be parsed. OpenAllay-specific required-mod information is stored
 under namespaced string metadata rather than extra non-standard top-level YAML
-fields. In TomeWisp, `allowed-tools` is a dependency check, never a permission
+fields. In OpenAllay, `allowed-tools` is a dependency check, never a permission
 grant. Tool permission continues to come only from code and the captured Tool
 policy.
 
@@ -258,7 +258,7 @@ reference chaining, unavailable required Tool dependencies, and unsupported
 files. References are relative and loaded progressively only when requested.
 
 Bundled Skills move from lowercase `skill.md` to uppercase `SKILL.md` and are
-read-only. Local Skills live under `config/tomewisp/skills/`. A local package
+read-only. Local Skills live under `config/openallay/skills/`. A local package
 with the same valid name overrides its bundled package. “Edit bundled Skill”
 first creates an atomic local copy; subsequent saves replace only the local
 copy. An invalid local override leaves the last valid/bundled Skill active and
@@ -280,7 +280,7 @@ The current history schema is 5. On startup, `SqliteGuideHistoryStore` applies
 an explicit pre-release schema policy:
 
 - fresh database: create schema 5 transactionally;
-- recognized TomeWisp schema 1, 2, 3, or 4: transactionally drop only TomeWisp
+- recognized OpenAllay schema 1, 2, 3, or 4: transactionally drop only OpenAllay
   application tables and create schema 5;
 - schema 5: open normally;
 - future schema greater than 5, missing/inconsistent metadata, unrecognized

@@ -17,7 +17,7 @@
 
 ## Context
 
-TomeWisp must provide a useful Agent on an unmodified multiplayer server while
+OpenAllay must provide a useful Agent on an unmodified multiplayer server while
 also supporting optional server-owned knowledge and optional server-funded model
 inference. Model requests are asynchronous, tools may execute locally or across
 an authenticated game connection, and traces can contain player questions and
@@ -26,9 +26,9 @@ tool facts.
 ## Decision
 
 The product is client-first. Client-local mode is the default and requires no
-TomeWisp server. Model location is independently selectable: the client can call
-its configured model, or an installed TomeWisp server can host the model. A
-TomeWisp server may additionally expose only player-scoped, read-only tools to a
+OpenAllay server. Model location is independently selectable: the client can call
+its configured model, or an installed OpenAllay server can host the model. A
+OpenAllay server may additionally expose only player-scoped, read-only tools to a
 client-local Agent.
 
 Each player/client has at most one active request. A second request fails as
@@ -50,7 +50,7 @@ fail closed. Phase 2 performs no world mutation.
 
 ## Rationale
 
-The user wants the mod to remain useful when only the client has TomeWisp. The
+The user wants the mod to remain useful when only the client has OpenAllay. The
 client already owns player-visible registries, recipes, inventory, Patchouli
 assets, and synchronized quest state. Server installation is therefore an
 enhancement rather than a prerequisite. Separating model location from tool

@@ -7,24 +7,21 @@
     "authors": [
         "${mod_author}"
     ],
-    "contact": {
-        "homepage": "https://github.com/nkanf-dev/TomeWisp",
-        "sources": "https://github.com/nkanf-dev/TomeWisp"
-    },
     "license": "${license}",
+    "icon": "assets/openallay/icon.png",
     "environment": "*",
     "entrypoints": {
         "main": [
-            "dev.tomewisp.fabric.TomeWispFabric"
+            "dev.openallay.fabric.OpenAllayFabric"
         ],
         "client": [
-            "dev.tomewisp.fabric.TomeWispFabricClient"
+            "dev.openallay.fabric.OpenAllayFabricClient"
         ],
         "jei_mod_plugin": [
-            "dev.tomewisp.fabric.TomeWispFabricJeiPlugin"
+            "dev.openallay.fabric.OpenAllayFabricJeiPlugin"
         ],
         "rei_client": [
-            "dev.tomewisp.integration.rei.TomeWispReiClientPlugin"
+            "dev.openallay.integration.rei.OpenAllayReiClientPlugin"
         ]
     },
     "depends": {
@@ -36,6 +33,7 @@
         "java": ">=${java_version}"
     },
     "breaks": {
-        "architectury": "<=21.0.2"
+        "architectury": "<=21.0.2",
+        "tomewisp": "*"
     }
 }

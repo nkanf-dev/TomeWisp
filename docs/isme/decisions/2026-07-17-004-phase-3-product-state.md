@@ -131,7 +131,7 @@ dependency groups retain the existing mirror order and offline bootstrap path.
     GuideService; loader adapters do not reinterpret event semantics.
 13. Disabled E2E instrumentation has no session, model, file, or shutdown side
     effects, and its filesystem writer is never exposed to the model.
-14. Closing or replacing TomeWispScreen detaches only its subscription; request
+14. Closing or replacing OpenAllayScreen detaches only its subscription; request
     cancellation remains an explicit GuideService intent.
 15. A detail drawer cannot retain evidence after its session/source disappears
     from the current GuideSnapshot.

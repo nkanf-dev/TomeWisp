@@ -1,0 +1,114 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Publish ${{ github.ref_name }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    permissions:
+      attestations: write
+      contents: write
+      id-token: write
+    steps:
+      - name: Check out annotated tag history
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+          persist-credentials: false
+
+      - name: Set up Java 25
+        uses: actions/setup-java@03ad4de0992f5dab5e18fcb136590ce7c4a0ac95 # v5.6.0
+        with:
+          distribution: temurin
+          java-version: "25"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@3f131e8634966bd73d06cc69884922b02e6faf92 # v6.2.0
+        with:
+          cache-provider: basic
+          cache-read-only: true
+
+      - name: Validate tag and release vacancy
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: ./scripts/verify-release-tag.sh "${GITHUB_REF_NAME}" "${GITHUB_SHA}"
+
+      - name: Validate Modrinth credential
+        env:
+          MODRINTH_TOKEN: ${{ secrets.MODRINTH_TOKEN }}
+        run: test -n "${MODRINTH_TOKEN}"
+
+      - name: Run clean test and loader build gate
+        run: ./gradlew clean :common:test :fabric:build :neoforge:build
+
+      - name: Verify Phase 4 package
+        run: ./scripts/verify-phase4-package.sh
+
+      - name: Verify SQLite packaging
+        run: ./scripts/verify-sqlite-packaging.sh
+
+      - name: Verify built distribution
+        run: ./scripts/verify-distribution.sh
+
+      - name: Stage the two production artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="${GITHUB_REF_NAME#v}"
+          minecraft_version=$(sed -n 's/^minecraft_version=//p' gradle.properties)
+          mkdir release
+          cp "fabric/build/libs/openallay-fabric-${minecraft_version}-${version}.jar" release/
+          cp "neoforge/build/libs/openallay-neoforge-${minecraft_version}-${version}.jar" release/
+          ./scripts/verify-distribution.sh release
+          (cd release && sha256sum openallay-*.jar > SHA256SUMS)
+
+      - name: Generate release notes
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >-
+          python3 scripts/generate-release-notes.py
+          "${GITHUB_REF_NAME}"
+          --repository "${GITHUB_REPOSITORY}"
+          --output release-notes.md
+
+      - name: Publish Fabric and NeoForge to Modrinth
+        env:
+          MODRINTH_TOKEN: ${{ secrets.MODRINTH_TOKEN }}
+        run: ./scripts/publish-modrinth.sh "${GITHUB_REF_NAME}"
+
+      - name: Attest release artifacts
+        uses: actions/attest-build-provenance@0f67c3f4856b2e3261c31976d6725780e5e4c373 # v4.1.1
+        with:
+          subject-path: release/*
+
+      - name: Publish GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          release_flags=()
+          if [[ "${GITHUB_REF_NAME}" == *-* ]]; then
+            release_flags+=(--prerelease)
+          fi
+          gh release create "${GITHUB_REF_NAME}" \
+            release/openallay-*.jar \
+            release/SHA256SUMS \
+            --fail-on-no-commits \
+            --notes-file release-notes.md \
+            --title "OpenAllay ${GITHUB_REF_NAME}" \
+            --verify-tag \
+            "${release_flags[@]}"

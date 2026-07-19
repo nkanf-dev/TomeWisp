@@ -9,30 +9,30 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 
 STEP_NAMES = (
-    "tomewisp__search_recipes",
-    "tomewisp__get_recipe",
-    "tomewisp__inspect_inventory",
-    "tomewisp__calculate_craftability",
-    "tomewisp__list_knowledge_sources",
+    "openallay__search_recipes",
+    "openallay__get_recipe",
+    "openallay__inspect_inventory",
+    "openallay__calculate_craftability",
+    "openallay__list_knowledge_sources",
 )
 
 GAME_STATE_STEPS = (
-    ("tomewisp__inspect_game_state", {"section": "OVERVIEW", "query": "summary"}),
-    ("tomewisp__inspect_game_state", {"section": "MODS", "query": "list"}),
-    ("tomewisp__inspect_game_state", {"section": "OPTIONS", "query": "groups"}),
-    ("tomewisp__inspect_game_state", {"section": "PACKS", "query": "summary"}),
-    ("tomewisp__inspect_game_state", {"section": "SHADERS", "query": "summary"}),
-    ("tomewisp__inspect_game_state", {"section": "DIAGNOSTICS", "query": "categories"}),
-    ("tomewisp__inspect_game_state", {"section": "PLAYER", "query": "summary"}),
-    ("tomewisp__inspect_game_state", {"section": "WORLD_QUERY", "query": "time"}),
+    ("openallay__inspect_game_state", {"section": "OVERVIEW", "query": "summary"}),
+    ("openallay__inspect_game_state", {"section": "MODS", "query": "list"}),
+    ("openallay__inspect_game_state", {"section": "OPTIONS", "query": "groups"}),
+    ("openallay__inspect_game_state", {"section": "PACKS", "query": "summary"}),
+    ("openallay__inspect_game_state", {"section": "SHADERS", "query": "summary"}),
+    ("openallay__inspect_game_state", {"section": "DIAGNOSTICS", "query": "categories"}),
+    ("openallay__inspect_game_state", {"section": "PLAYER", "query": "summary"}),
+    ("openallay__inspect_game_state", {"section": "WORLD_QUERY", "query": "time"}),
 )
 
 RECIPE_OUTPUT = os.environ.get(
-    "TOMEWISP_E2E_RECIPE_OUTPUT", "minecraft:iron_block")
+    "OPENALLAY_E2E_RECIPE_OUTPUT", "minecraft:iron_block")
 RECIPE_ID = os.environ.get(
-    "TOMEWISP_E2E_RECIPE_ID", "minecraft:iron_block")
-RECIPE_LABEL = os.environ.get("TOMEWISP_E2E_RECIPE_LABEL", "铁块")
-RECIPE_SOURCE = os.environ.get("TOMEWISP_E2E_RECIPE_SOURCE")
+    "OPENALLAY_E2E_RECIPE_ID", "minecraft:iron_block")
+RECIPE_LABEL = os.environ.get("OPENALLAY_E2E_RECIPE_LABEL", "铁块")
+RECIPE_SOURCE = os.environ.get("OPENALLAY_E2E_RECIPE_SOURCE")
 
 
 def recipe_reference(request, output_item=None, recipe_id=None, recipe_type=None):
@@ -169,7 +169,7 @@ def assistant_content(request, completed):
         return """
 已获得搜索证据，现在读取精确配方。
 
-```tomewisp-component
+```openallay-component
 {"schemaVersion":1,"type":"status_badge","properties":{"state":"INFO","label":"配方搜索完成"},"fallback":"配方搜索完成","narration":"配方搜索完成"}
 ```
 """.strip()
@@ -196,9 +196,9 @@ def assistant_content(request, completed):
             "fallback": "配方产出 1 个" + RECIPE_LABEL,
             "narration": "配方产出：一个" + RECIPE_LABEL,
         }
-        return "## 精确配方\n\n" + "```tomewisp-component\n" \
+        return "## 精确配方\n\n" + "```openallay-component\n" \
             + json.dumps(component, ensure_ascii=False, separators=(",", ":")) \
-            + "\n```\n\n```tomewisp-component\n" \
+            + "\n```\n\n```openallay-component\n" \
             + json.dumps(item_row, ensure_ascii=False, separators=(",", ":")) \
             + "\n```\n\n下一步检查玩家库存。"
     if completed == 3:
@@ -215,11 +215,11 @@ def assistant_content(request, completed):
   - 只包含玩家自己的背包
 - 下一步：计算一次制作
 
-```tomewisp-component
+```openallay-component
 INGREDIENT_CHECK
 ```
 
-```tomewisp-component
+```openallay-component
 {"schemaVersion":1,"type":"world_mutation","properties":{"command":"/give"},"fallback":"不支持的组件已安全降级为文本","narration":"不支持的组件"}
 ```
 """.replace("INGREDIENT_CHECK", json.dumps(
@@ -243,10 +243,10 @@ INGREDIENT_CHECK
         return """
 > 可制作性由 Java 确定性计算，不交给模型猜测。
 
-```tomewisp-component
+```openallay-component
 {"schemaVersion":1,"type":"progress_steps","properties":{"steps":[{"id":"recipe","label":"配方证据","state":"COMPLETE"},{"id":"inventory","label":"库存证据","state":"COMPLETE"},{"id":"knowledge","label":"知识来源","state":"ACTIVE"}]},"fallback":"配方和库存已检查，正在读取知识来源","narration":"验收进度：配方和库存完成，知识来源进行中"}
 ```
-""".strip() + "\n\n```tomewisp-component\n" \
+""".strip() + "\n\n```openallay-component\n" \
             + json.dumps(craftability, ensure_ascii=False, separators=(",", ":")) \
             + "\n```"
     sources = knowledge_sources(request)
@@ -285,10 +285,10 @@ no writes <- read-only tools only
 [外部链接](https://example.invalid) 与 ![外部图片](https://example.invalid/image.png)
 不会变成可执行控件；<button onclick="danger()">HTML</button> 也只会安全降级。
 
-```tomewisp-component
+```openallay-component
 {"schemaVersion":1,"type":"choice_group","properties":{"prompt":"下一步想查看什么？","choices":[{"id":"recipe","label":"配方详情"},{"id":"usage","label":"物品用途"}]},"fallback":"可选择配方详情或物品用途","narration":"显示两个安全选项"}
 ```
-""".strip() + "\n\n```tomewisp-component\n" \
+""".strip() + "\n\n```openallay-component\n" \
         + json.dumps(source_component, ensure_ascii=False, separators=(",", ":")) \
         + "\n```"
 
@@ -394,7 +394,7 @@ def current_user_turn(request):
 
 
 class Handler(BaseHTTPRequestHandler):
-    server_version = "TomeWispFixture/1"
+    server_version = "OpenAllayFixture/1"
 
     def do_POST(self):
         if self.path != "/v1/chat/completions":
@@ -405,10 +405,10 @@ class Handler(BaseHTTPRequestHandler):
         user_text, turn_messages = current_user_turn(request)
         completed = sum(1 for message in turn_messages
                         if message.get("role") == "tool")
-        history_seed = user_text.startswith("TomeWisp E2E 历史分页种子 ")
+        history_seed = user_text.startswith("OpenAllay E2E 历史分页种子 ")
         server_client_tools = user_text.startswith(
-            "TomeWisp E2E 服务端模型反向工具验收")
-        game_state = (user_text.startswith("TomeWisp E2E 游戏外层状态验收")
+            "OpenAllay E2E 服务端模型反向工具验收")
+        game_state = (user_text.startswith("OpenAllay E2E 游戏外层状态验收")
                       or server_client_tools)
         world_query_permission_denied = False
         if game_state:
@@ -456,8 +456,8 @@ class Handler(BaseHTTPRequestHandler):
         events = []
         for index, delta in enumerate(deltas):
             event = {
-                "id": "tomewisp-fixture",
-                "model": "tomewisp-e2e-fixture",
+                "id": "openallay-fixture",
+                "model": "openallay-e2e-fixture",
                 "choices": [{
                     "index": 0,
                     "delta": delta,
@@ -489,7 +489,7 @@ def main():
     parser.add_argument("--port", type=int, default=18765)
     args = parser.parse_args()
     server = ThreadingHTTPServer(("127.0.0.1", args.port), Handler)
-    print(f"TomeWisp E2E model fixture listening on 127.0.0.1:{args.port}", flush=True)
+    print(f"OpenAllay E2E model fixture listening on 127.0.0.1:{args.port}", flush=True)
     server.serve_forever()
 
 

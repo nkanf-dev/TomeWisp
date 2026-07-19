@@ -1,135 +1,151 @@
-# TomeWisp
+# OpenAllay
 
-TomeWisp（书灵）is an in-game knowledge companion for modded Minecraft. It is
-designed to connect trusted, read-only mod knowledge to a lightweight agent and,
-in later phases, turn structures and documentation into guided visual tutorials.
+[简体中文](README.zh-CN.md)
 
-The main development line targets Minecraft 26.2 and Java 25, with Fabric and
-NeoForge treated as equal first-class loaders.
+OpenAllay is a modern Minecraft Agent for modded play. Ask a question in plain
+language and it can look at your game, search recipes and guides, check your
+inventory, and bring the useful details together in one answer.
 
-## Build
+It works with the model you choose and is designed to grow with knowledge and
+integrations created by players, modpacks, and communities.
 
-```bash
-./gradlew build
-```
+![OpenAllay brings Skills, Extensions, shared models, rich interfaces, and visual guidance into Minecraft](docs/media/openallay-banner.png)
 
-On an unstable connection, use the curl-backed wrapper, which mirrors failed
-Maven downloads locally and retries the Gradle command:
+*Ask naturally, follow the progress, and explore rich answers without leaving
+Minecraft.*
 
-```bash
-./gradlew-curl build
-```
+## Why OpenAllay?
 
-## Development runs
+### Answers grounded in your game
 
-```bash
-./gradlew :fabric:runClient
-./gradlew :fabric:runServer
-./gradlew :neoforge:runClient
-./gradlew :neoforge:runServer
-```
+OpenAllay does more than generate Minecraft-flavoured text. It can inspect the
+mods and settings in your current instance, search recipes and guide books, and
+compare recipe requirements with the items you actually have. For more involved
+questions, it can work through several steps before giving you an answer.
 
-See [the development guide](docs/development.md) for testing, loader boundaries,
-and development commands.
+### A native in-game experience
 
-## Status
+Answers can include item icons, ingredient slots, recipe layouts, tables,
+progress steps, and expandable details. The screen stays responsive while an
+answer is being prepared, and you can close it without cancelling the request.
 
-Phase 2 provides a working client-first guide Agent on Fabric and NeoForge.
-Phase 3A provides the grounded tool substrate, while Phase 3B now routes both
-loaders through one shared GuideService and an opt-in real-client probe:
+### Your model, your choice
 
-- Anthropic Messages and OpenAI-compatible HTTP adapters with streaming and
-  tool-result continuation;
-- independent multi-session conversations, one active request per session;
-- no artificial global concurrency cap, with endpoint-scoped fair retry after
-  provider HTTP 429;
-- progressive, non-executable Agent Skills;
-- deterministic search over Patchouli assets and optional visible FTB Quests;
-- optional authenticated server read tools and optional server-hosted models;
-- redacted live traces and deterministic Phase 1 trace replay.
-- evidence-bearing client/server snapshots with explicit authority,
-  completeness, capture time, source, provenance, game version, and loader;
-- stable recipe search, exact detail, item usage, and inventory inspection;
-- deterministic non-recursive craftability using global alternative allocation;
-- fail-closed normalization for factual tools that omit evidence;
-- a long recipe-to-inventory craftability replay, while `find_recipes` remains
-  only as a deprecated compatibility projection.
-- immutable shared command/GUI request state with cancellation, retry,
-  multi-session isolation, strict protocol-v5 server context/events, and disconnect
-  cleanup;
-- a default-off Fabric/NeoForge real-client E2E controller plus deterministic
-  loopback model fixture and redacted report contract.
+Connect an OpenAI-compatible Chat Completions or Anthropic Messages provider,
+keep several model profiles, and switch between them from the conversation.
+OpenAllay works in single-player and can also be used on ordinary multiplayer
+servers without requiring the server to install the mod. A server that does
+install OpenAllay may offer a shared model to its players.
 
-A server mod is not required for the main client model mode. Phase 4 is
-feature-complete on the pre-release main line. Durable partitioned history, all-known recipe
-capture, JEI/REI integration, context compaction, semantic rich messages,
-long-history virtualization, model switching, settings, and diagnostics have
-deterministic coverage. The final correction worktree also adds bounded and
-visible model requests, stable streamed Markdown/list layout, normal chat input,
-friendlier Tool activity, and one read-only outer game-state Tool. Fabric and
-NeoForge graphical controllers completed both the native semantic/UI correction
-scenario and the eight-section game-state scenario. The latest clean
-common/Fabric/NeoForge gate, package/SQLite verification, report validation,
-screenshot review, and credential/diff audit all passed; retained evidence is
-under
-[`docs/verification/phase-4-final-corrections/`](docs/verification/phase-4-final-corrections/).
+### Conversations that stay useful
 
-The approved correction contract gives the settings screen six sections:
-General, Models, Tools, Skills, History, and Diagnostics. Ordinary players enter
-an API key in a masked password field; `models.json` schema 2 retains only a
-`credentialRef`, while the secret is held in the dedicated local
-`credentials.sqlite3` store. Environment references remain available for
-externally authored development and headless configuration, not as a field in
-the player UI. Sources are not a top-level domain: every recipe, guide, or
-future source is a strictly typed child of the logical Tool that consumes it.
-Built-in sources can be enabled, disabled, inspected, refreshed where
-meaningful, and restored, but not deleted; registered user-source kinds may
-support full CRUD.
+Keep different topics in separate sessions, return to saved conversations,
+copy useful messages, or export a session for later. Skills give OpenAllay
+extra guidance for particular activities, mods, and kinds of questions, and
+you can view or manage them in-game.
 
-Tools and Skills are separate master-detail pages. Skills follow TomeWisp's
-non-executable Agent Skills subset: packages use uppercase `SKILL.md`, bundled
-packages are read-only, and player edits create local filesystem overrides.
-Skills cannot grant tools, scripts, arbitrary paths, network access, or Agent
-write authority. Recognized pre-release history schemas 1 through 4 are rebuilt
-transactionally into the single current schema; future, corrupt, foreign, or
-otherwise unrecognized databases still fail closed without mutation.
+## What you can do today
 
-The accepted Fabric full-mod profile uses Architectury 21.0.4. Architectury
-Fabric versions through 21.0.2 are incompatible because their screen-input
-delegate breaks TomeWisp text entry; TomeWisp does not add a hard Architectury
-dependency. Earlier redacted reports and artifact provenance remain under
-`docs/verification/`, but they do not prove the correction set or close final
-manual acceptance. Dynamic Ponder generation remains deferred beyond Phase 4.
-The knowledge layer already retains Patchouli multiblock coordinates and
-structure references for a later visual-tutorial workflow.
+- Find recipes and item uses, then check whether your inventory contains the
+  required ingredients.
+- Inspect installed mods, video settings, resource packs, coordinates, and
+  F3-style information.
+- Search supported guide-book content and local notes.
+- Follow multi-step requests through live progress and friendly tool details.
+- Use multiple conversations, saved history, model profiles, copy, and export
+  from the native OpenAllay screen.
+- Use recipe information from the game and compatible viewers, including JEI
+  and REI, while keeping the core recipe experience available without them.
 
-Press the configurable `K` mapping or run bare `/guide` in-world to open the
-non-pausing screen. It streams the current GuideService transcript, displays
-friendly grounded tool/source cards, and preserves the real Agent chronology: assistant
-segments, inline tool calls/results, later continuations, and the final answer.
-Running tool cards update in place. The screen also supports cancel, retry,
-sessions and explicit client/server model selection. Escape closes only the
-screen, not the request. The gear button opens native settings; returning keeps
-the same GuideService conversation and active request state. Enter sends from
-the composer, Shift+Enter inserts a line break, and Ctrl+Enter remains a
-compatibility send shortcut. A fixed status strip reports the active phase,
-elapsed time, most recent progress, retry attempt, and deadline without moving
-the transcript.
+## Quick start
 
-`tomewisp:inspect_game_state` is the single sectioned Tool for directly
-player-observable outer state: runtime overview, installed mods, options, packs,
-shaders, F3-style diagnostics, the player's own UI-visible state, and a closed
-set of read-only world queries. Client capture reports client-visible facts;
-server capture can add only server-authoritative facts and does not invent
-client settings, packs, or shader state. Values unavailable through verified
-public APIs are omitted with explicit partial/unavailable evidence. The Tool
-returns a lightweight complete mod index first and full public metadata only
-for an exact requested mod. Server-authoritative world-query operations are
-permission-checked individually before capture. The Tool
-cannot execute command strings, write settings or world state, scan nearby
-blocks, inspect external containers, use unrestricted reflection, or absorb the
-independent Recipe and Guide domains.
+Download the OpenAllay snapshot for **Fabric** or **NeoForge** from Modrinth.
+The current release targets Minecraft **26.2** and requires Java **25**. Fabric
+players also need the matching Fabric API.
 
-## License
+Place the downloaded JAR in your instance's `mods` folder and start Minecraft.
+Then connect a model:
 
-[MIT](LICENSE)
+1. Enter a world and press **K**, or run `/guide`.
+2. Select the gear button, open **Models**, and add a model profile.
+3. Choose **OpenAI-compatible Chat Completions** or **Anthropic Messages**.
+4. Enter the provider URL, model ID, context window, and API key, then save.
+5. Select the new profile and start asking questions.
+
+On Fabric, Architectury **21.0.2 and earlier** prevents text input on the
+OpenAllay screen. Upgrade to **21.0.4 or newer**, or remove Architectury.
+
+## Try asking
+
+- “Which mods are installed, and what versions are they?”
+- “How do I make apple cider? Do I already have the ingredients?”
+- “What can I craft with this item?”
+- “Why can't I find this recipe?”
+- “Which resource packs are active?”
+- “Show my current coordinates and F3 information.”
+- “Search my installed guide books for magical crops.”
+
+## Using the in-game screen
+
+OpenAllay opens in a non-pausing Minecraft screen. The status bar shows what it
+is doing and how long the current request has been running.
+
+- **Enter** sends a message; **Shift+Enter** adds a new line.
+- **Stop** cancels the current request; **Retry** starts it again.
+- **Escape** closes only the screen. Reopen it to see the continuing answer.
+- Use separate sessions for different topics, or switch to another configured
+  model whenever you like.
+
+## Mod and content support
+
+OpenAllay builds on content already present in your modded instance:
+
+- **JEI** recipes can use JEI's familiar layout inside OpenAllay.
+- **REI** can contribute recipe information to OpenAllay's recipe experience.
+- **Patchouli** guide-book content in active resources can be searched in-game.
+- Recipe-rich mods such as **Farmer's Delight** work with recipe search,
+  ingredient checks, and visual recipe pages.
+
+These integrations are optional. OpenAllay remains usable when one of them is
+not installed or is unavailable for your setup.
+
+## Where OpenAllay is headed
+
+OpenAllay is being developed as an open platform, but the larger platform is a
+roadmap rather than a promise about the current snapshot:
+
+- **OpenAllay Skills** will become easier for players and communities to
+  create, improve, share, and discover.
+- **OpenAllay Extensions** are planned to add community-built tools, knowledge
+  sources, mod integrations, and game-native interface components.
+- **OpenAllay Host** is the planned server experience for shared models and a
+  centrally managed companion service.
+- **OpenAllay Studio** is the future creative toolkit for richer in-game
+  content, dynamic interfaces, and reusable guided experiences.
+
+### Next
+
+- Player memory that you can review, correct, pin, or forget.
+- Better workflows for creating and sharing community Skills.
+- More knowledge sources and integrations for mods, guides, and Minecraft
+  content.
+- The first supported paths for community Extensions.
+
+### Longer term
+
+- Understand maps, nearby environments, structures, blocks, and containers.
+- Turn structures and documentation into step-by-step visual tutorials,
+  including Ponder-style guidance when a compatible integration is available.
+- Help plan production chains across machines, intermediate materials, and
+  large technology trees.
+- Grow OpenAllay Host, Studio, and the wider Extensions ecosystem.
+
+OpenAllay is an independent project and is not affiliated with or endorsed by
+Mojang Studios or Microsoft.
+
+## Contributors and developers
+
+Want to contribute or run the project from source? Start with the
+[development guide](docs/development.md).
+
+OpenAllay is licensed under the [MIT License](LICENSE).

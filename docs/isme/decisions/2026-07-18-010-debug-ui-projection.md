@@ -61,7 +61,7 @@ mode may additionally show the redacted validation diagnostic.
 
 - local display/settings configuration and both loader wiring paths
 - `GuideUiView` normal/debug projections
-- tool/source card presenters and the TomeWisp screen detail renderer
+- tool/source card presenters and the OpenAllay screen detail renderer
 - English and Simplified Chinese translations
 - deterministic privacy, fallback, accessibility, and rendering tests
 

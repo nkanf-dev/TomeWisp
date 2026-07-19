@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 1,
+  "id": "iron-ingot-recipe",
+  "userMessage": "铁锭怎么做？",
+  "requiredContext": ["registries", "recipes"],
+  "steps": [
+    {
+      "type": "tool_call",
+      "tool": "openallay:search_recipes",
+      "arguments": {
+        "outputItem": "minecraft:iron_ingot"
+      },
+      "expect": {
+        "status": "success",
+        "match": "contains",
+        "value": {
+          "query": {
+            "outputItem": "minecraft:iron_ingot"
+          }
+        }
+      }
+    },
+    {
+      "type": "assistant_message",
+      "content": "铁锭的制作方式应以工具返回的当前配方快照及其 authority/completeness 证据为准。"
+    }
+  ]
+}

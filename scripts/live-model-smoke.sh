@@ -5,38 +5,49 @@ mode="${1:-agent}"
 
 case "$mode" in
   agent)
-    : "${TOMEWISP_MODEL_BASE_URL:?Set TOMEWISP_MODEL_BASE_URL, including the API version path}"
-    : "${TOMEWISP_MODEL:?Set TOMEWISP_MODEL}"
-    : "${TOMEWISP_API_KEY:?Set TOMEWISP_API_KEY in the environment; never put it in a repository file}"
-    export TOMEWISP_LIVE_MODEL=true
-    export TOMEWISP_MODEL_PROTOCOL="${TOMEWISP_MODEL_PROTOCOL:-ANTHROPIC_MESSAGES}"
-    test_class=dev.tomewisp.model.live.LiveModelAcceptanceTest
+    : "${OPENALLAY_MODEL_BASE_URL:?Set OPENALLAY_MODEL_BASE_URL, including the API version path}"
+    : "${OPENALLAY_MODEL:?Set OPENALLAY_MODEL}"
+    : "${OPENALLAY_API_KEY:?Set OPENALLAY_API_KEY in the environment; never put it in a repository file}"
+    export OPENALLAY_LIVE_MODEL=true
+    export OPENALLAY_MODEL_PROTOCOL="${OPENALLAY_MODEL_PROTOCOL:-ANTHROPIC_MESSAGES}"
+    test_class=dev.openallay.model.live.LiveModelAcceptanceTest
     ;;
   settings-probe)
-    : "${TOMEWISP_SETTINGS_PROBE_CONFIG:?Set TOMEWISP_SETTINGS_PROBE_CONFIG to an ignored models JSON file}"
-    if [[ ! -f "$TOMEWISP_SETTINGS_PROBE_CONFIG" ]]; then
+    : "${OPENALLAY_SETTINGS_PROBE_CONFIG:?Set OPENALLAY_SETTINGS_PROBE_CONFIG to an ignored models JSON file}"
+    if [[ ! -f "$OPENALLAY_SETTINGS_PROBE_CONFIG" ]]; then
       echo "Settings probe configuration does not exist" >&2
       exit 2
     fi
-    export TOMEWISP_LIVE_SETTINGS_PROBE=true
-    test_class=dev.tomewisp.model.live.LiveModelConnectionProbeAcceptanceTest
+    export OPENALLAY_LIVE_SETTINGS_PROBE=true
+    test_class=dev.openallay.model.live.LiveModelConnectionProbeAcceptanceTest
     ;;
   configured-agent)
-    : "${TOMEWISP_LIVE_CONFIG_PATH:?Set TOMEWISP_LIVE_CONFIG_PATH to an ignored models.json}"
-    : "${TOMEWISP_LIVE_CREDENTIAL_DB:?Set TOMEWISP_LIVE_CREDENTIAL_DB to its ignored credentials.sqlite3}"
-    if [[ ! -f "$TOMEWISP_LIVE_CONFIG_PATH" || ! -f "$TOMEWISP_LIVE_CREDENTIAL_DB" ]]; then
+    : "${OPENALLAY_LIVE_CONFIG_PATH:?Set OPENALLAY_LIVE_CONFIG_PATH to an ignored models.json}"
+    : "${OPENALLAY_LIVE_CREDENTIAL_DB:?Set OPENALLAY_LIVE_CREDENTIAL_DB to its ignored credentials.sqlite3}"
+    if [[ ! -f "$OPENALLAY_LIVE_CONFIG_PATH" || ! -f "$OPENALLAY_LIVE_CREDENTIAL_DB" ]]; then
       echo "Configured Agent profile or credential database does not exist" >&2
       exit 2
     fi
-    export TOMEWISP_LIVE_CONFIGURED_AGENT=true
-    test_class=dev.tomewisp.model.live.LiveConfiguredGameStateAcceptanceTest
+    export OPENALLAY_LIVE_CONFIGURED_AGENT=true
+    test_class=dev.openallay.model.live.LiveConfiguredGameStateAcceptanceTest
+    ;;
+  phase-four)
+    : "${OPENALLAY_LIVE_CONFIG_PATH:?Set OPENALLAY_LIVE_CONFIG_PATH to an ignored models.json}"
+    : "${OPENALLAY_LIVE_CREDENTIAL_DB:?Set OPENALLAY_LIVE_CREDENTIAL_DB to its ignored credentials.sqlite3}"
+    if [[ ! -f "$OPENALLAY_LIVE_CONFIG_PATH" || ! -f "$OPENALLAY_LIVE_CREDENTIAL_DB" ]]; then
+      echo "Configured Agent profile or credential database does not exist" >&2
+      exit 2
+    fi
+    export OPENALLAY_LIVE_PHASE_FOUR=true
+    test_class=dev.openallay.model.live.LiveConfiguredPhaseFourAcceptanceTest
     ;;
   *)
-    echo "Usage: $0 [agent|settings-probe|configured-agent]" >&2
+    echo "Usage: $0 [agent|settings-probe|configured-agent|phase-four]" >&2
     exit 2
     ;;
 esac
 
 exec ./gradlew-curl :common:test \
   --tests "$test_class" \
+  --rerun-tasks \
   --max-workers=1

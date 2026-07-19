@@ -1,6 +1,6 @@
 # Development
 
-TomeWisp's main development line targets Minecraft 26.2 and requires Java 25.
+OpenAllay's main development line targets Minecraft 26.2 and requires Java 25.
 Use the checked-in Gradle wrapper; no system Gradle installation is required.
 
 ## Build and test
@@ -16,8 +16,39 @@ with curl retries into the ignored `.gradle/curl-mirror` directory, and resumes
 the same command. On FLClash, its proxy can be selected explicitly:
 
 ```bash
-TOMEWISP_CURL_PROXY=socks5h://127.0.0.1:7890 ./gradlew-curl build
+OPENALLAY_CURL_PROXY=socks5h://127.0.0.1:7890 ./gradlew-curl build
 ```
+
+## Continuous integration and releases
+
+The `Quality` GitHub Actions workflow runs for pull requests, `main`, `mc/**`,
+and manual dispatches. It validates automation sources, runs the clean common
+test plus both loader build gate, inspects the Phase 4 and SQLite packaging
+contracts, and verifies that the distribution contains exactly one production
+JAR per loader under the OpenAllay identity.
+
+Releases are created only by pushing an annotated strict-SemVer tag. The tag
+must exactly match `version` in `gradle.properties`. A SemVer prerelease suffix,
+including `-SNAPSHOT`, is published as a GitHub prerelease and a Modrinth alpha;
+a version without a suffix is published as a stable release.
+
+```bash
+# Snapshot example; choose the intended version.
+git tag -a v0.1.0-SNAPSHOT -m 'OpenAllay 0.1.0-SNAPSHOT'
+git push origin main v0.1.0-SNAPSHOT
+```
+
+The release workflow rejects lightweight tags, tags whose version differs from
+`gradle.properties`, tags outside `main`, existing releases, failed tests, and
+malformed distributions, and a missing `MODRINTH_TOKEN` Actions secret. A
+successful run publishes the Fabric and NeoForge production JARs to Modrinth,
+publishes the same two JARs plus `SHA256SUMS` to GitHub, attaches build
+provenance, and generates release notes containing changes, the complete commit
+range, and contributors. The Modrinth publisher creates and submits the
+`openallay` project on first release and is idempotent for each loader/version.
+Enable protected `v*` tags, required `Quality` checks, read-only default Actions
+permissions, and immutable releases in repository settings; workflow files
+cannot enforce those repository-level controls themselves.
 
 ## Run environments
 
@@ -35,19 +66,19 @@ development launcher is already headless and must be run without Gradle
 The accepted Fabric 26.2 full-mod development profile uses Architectury Fabric
 21.0.4. Versions through 21.0.2 are declared incompatible when the optional mod
 is present because their screen-input delegate breaks character entry.
-TomeWisp does not require Architectury, and the NeoForge profile is unaffected
+OpenAllay does not require Architectury, and the NeoForge profile is unaffected
 by this Fabric-only compatibility boundary.
 
 ## Client model configuration
 
 The main mode is pure client-side. The current player-managed format is
-`config/tomewisp/models.json` schema 2. It contains no secret: each profile
+`config/openallay/models.json` schema 2. It contains no secret: each profile
 retains only a qualified `credentialRef`. `model.json` remains an import path
 only when the new file is absent.
 
 Ordinary players enter an API key through the native masked password field.
-TomeWisp stores it under an immutable `local:<uuid>` reference in
-`config/tomewisp/credentials.sqlite3`; a saved key is never filled back into
+OpenAllay stores it under an immutable `local:<uuid>` reference in
+`config/openallay/credentials.sqlite3`; a saved key is never filled back into
 the widget or exposed through copy/cut, settings snapshots, diagnostics, logs,
 packets, prompts, or history. On POSIX systems the credential database receives
 owner-only permissions on a best-effort basis. This is local restrictive
@@ -95,7 +126,7 @@ and late bytes cannot mutate the request.
 OpenRouter metadata uses the official `GET /api/v1/models` catalog fields
 `id`, `canonical_slug`, `context_length`, and the optional
 `top_provider.max_completion_tokens`. Startup reads
-`config/tomewisp/model-metadata.json` asynchronously. A cache miss refreshes in
+`config/openallay/model-metadata.json` asynchronously. A cache miss refreshes in
 the background without blocking startup; successful credential-free metadata
 is cached across launches, and a failed refresh leaves explicit configuration
 and prior cache intact. The cache is configuration-layer state, not an Agent
@@ -180,7 +211,7 @@ metadata refresh/listing is a separate configuration operation and never counts
 as a successful inference test. Closing settings cancels only an active probe;
 an already-confirmed atomic save continues to its terminal result.
 
-If neither model file exists, TomeWisp presents one disabled in-memory draft and
+If neither model file exists, OpenAllay presents one disabled in-memory draft and
 does not create a file until the player explicitly saves. Invalid startup files
 remain untouched and produce a redacted settings notice. The screen receives
 only credential presence and transient password-input state; it cannot read or
@@ -188,12 +219,12 @@ render a stored value.
 
 Every knowledge or recipe source belongs to exactly one logical Tool. Strict,
 independently versioned files live at
-`config/tomewisp/tools/<tool-family-id>.json`. The common envelope is:
+`config/openallay/tools/<tool-family-id>.json`. The common envelope is:
 
 ```json
 {
   "schemaVersion": 1,
-  "toolId": "tomewisp:guides",
+  "toolId": "openallay:guides",
   "enabled": true,
   "sources": [
     {
@@ -218,7 +249,7 @@ Built-in/discovered sources can be inspected, enabled/disabled, refreshed where
 meaningful, and restored, but cannot be deleted or have their identity/kind
 edited. Registered user-source kinds may support add, edit, delete, test, and
 refresh. The initial user-creatable Guides kind is `local_markdown`, confined
-below TomeWisp's managed configuration root. It does not grant arbitrary path or
+below OpenAllay's managed configuration root. It does not grant arbitrary path or
 network authority.
 
 Recipes owns recipe search, exact lookup, item usage, all-known/unlocked
@@ -235,16 +266,22 @@ preferred viewer) remain independently strict at
 and neither creates a top-level settings domain.
 
 Player-facing tool details are controlled separately by
-`config/tomewisp/display.json` on both loaders. A missing file uses the safe
+`config/openallay/display.json` on both loaders. A missing file uses the safe
 default below:
 
 ```json
 {
-  "schemaVersion": 2,
+  "schemaVersion": 3,
   "debugMode": false,
-  "animationsEnabled": true
+  "animationsEnabled": true,
+  "assistantName": "OpenAllay"
 }
 ```
+
+`assistantName` is the player-chosen local name shown for the companion in the
+native interface. It is trimmed, must not be blank, and cannot contain control
+characters. Renaming it changes presentation only; it does not rewrite saved
+conversation content, session IDs, evidence, or model/tool configuration.
 
 Normal mode renders scrollable recipe, inventory, usage, and craftability cards
 with native item icons, counts, tooltips, and typed recipe-viewer actions. It
@@ -260,8 +297,8 @@ retains the last valid projection on malformed external edits.
 
 `animationsEnabled` controls only subtle progress presentation. It does not
 change semantic content, action availability, evidence, layout identity, or
-narration. Schema 1 is pre-release development state and is rejected rather
-than migrated. Normal diagnostics say that history is loaded on demand and
+narration. Schemas 1 and 2 are pre-release development state and are rejected
+rather than migrated. Normal diagnostics say that history is loaded on demand and
 show current-page loading/failure in friendly terms. Debug diagnostics add
 only count-based window cursors, loaded/total counts, semantic cache hits and
 misses, fallback counts, and context-token estimates; they never include raw
@@ -290,7 +327,7 @@ Guide service, closes ordered history, cancels any live probe, and closes the
 metadata cache asynchronously on both loaders.
 
 For an optional server-hosted model, use
-`config/tomewisp/server-model.json` on the server. The capability is advertised
+`config/openallay/server-model.json` on the server. The capability is advertised
 only when that configuration is valid. Client packets never contain the key.
 
 ## Player commands
@@ -312,7 +349,7 @@ only when that configuration is valid. Client packets never contain the key.
 ```
 
 The same player may run requests concurrently in different sessions. A second
-request in the same session returns `agent_busy`. TomeWisp applies no fixed
+request in the same session returns `agent_busy`. OpenAllay applies no fixed
 global concurrency or queue-count limit. Provider HTTP 429 closes only the
 matching endpoint gate, honors `Retry-After` when present, and otherwise uses
 cancellable exponential backoff with fair session rotation.
@@ -345,9 +382,9 @@ budget and canonical model identity, and splits the encoded request into indepen
 SHA-256-checked 24 KiB transport chunks so long histories do not depend on one
 Minecraft custom-payload string.
 
-Normal-mode guide history is stored at `config/tomewisp/history.sqlite3` in the
-single current pre-release SQLite schema, currently schema 5. Because TomeWisp
-has not shipped, recognized TomeWisp schemas 1, 2, 3, and 4 are not migrated: on
+Normal-mode guide history is stored at `config/openallay/history.sqlite3` in the
+single current pre-release SQLite schema, currently schema 5. Because OpenAllay
+has not shipped, recognized OpenAllay schemas 1, 2, 3, and 4 are not migrated: on
 startup their application tables are transactionally rebuilt as schema 5.
 Rollback preserves the recognized older database if rebuild fails and reports
 `history_schema_rebuild_failed`. A future schema, corrupt database, missing or
@@ -381,7 +418,7 @@ Safe Markdown, validated Minecraft references, registered controlled
 components, semantic fallback text, variable-height virtualization, stable
 anchors, and presentation-only animation are implemented in common code.
 
-The real-client probe is disabled unless `tomewisp.e2e.enabled=true`. When
+The real-client probe is disabled unless `openallay.e2e.enabled=true`. When
 enabled, it waits for a real client player, submits through the same
 `GuideService`, records status transitions, tool IDs, evidence, timings and
 payload hashes, writes a redacted JSON report, then optionally requests clean
@@ -397,7 +434,7 @@ the selected graphical development client:
 ```
 
 Connect the launched client to a disposable world or test server, or set
-`TOMEWISP_E2E_QUICK_PLAY_WORLD` to an existing disposable single-player world.
+`OPENALLAY_E2E_QUICK_PLAY_WORLD` to an existing disposable single-player world.
 The fixture waits for durable hydration and every enabled installed recipe
 viewer to publish a non-empty current catalog. It streams deliberately split
 Markdown/component tokens through a grounded five-tool chronology: recipe
@@ -410,9 +447,9 @@ The default retained recipe is `minecraft:iron_block`. A compatible mod recipe
 can exercise native viewer embedding without changing the fixture, for example:
 
 ```bash
-TOMEWISP_E2E_RECIPE_OUTPUT=farmersdelight:apple_cider \
-TOMEWISP_E2E_RECIPE_ID=farmersdelight:cooking/apple_cider \
-TOMEWISP_E2E_RECIPE_LABEL=苹果酒 \
+OPENALLAY_E2E_RECIPE_OUTPUT=farmersdelight:apple_cider \
+OPENALLAY_E2E_RECIPE_ID=farmersdelight:cooking/apple_cider \
+OPENALLAY_E2E_RECIPE_LABEL=苹果酒 \
 ./scripts/run-real-client-e2e.sh fabric
 ```
 
@@ -420,9 +457,9 @@ These variables affect only the deterministic loopback scenario. The exact
 reference is still discovered from a real current recipe-provider generation;
 the fixture never fabricates the viewer handle.
 
-Set `TOMEWISP_E2E_HISTORY_SEED_REQUESTS` to create sequential durable seed
-requests before the reported scenario. `TOMEWISP_E2E_MIN_HISTORY_REQUESTS`
-asserts the durable total; `TOMEWISP_E2E_REQUIRE_PAGED_HISTORY=true` additionally
+Set `OPENALLAY_E2E_HISTORY_SEED_REQUESTS` to create sequential durable seed
+requests before the reported scenario. `OPENALLAY_E2E_MIN_HISTORY_REQUESTS`
+asserts the durable total; `OPENALLAY_E2E_REQUIRE_PAGED_HISTORY=true` additionally
 requires a restart to hydrate fewer requests than the durable total and expose
 an earlier-page cursor. The harness temporarily replaces `models.json` with an
 isolated loopback profile and restores the exact prior file on exit.
@@ -441,7 +478,7 @@ probes, runtime artifact provenance, and production hashes are retained under
 
 ## Player GUI
 
-The configurable `key.tomewisp.open_guide` mapping defaults to `K`; bare
+The configurable `key.openallay.open_guide` mapping defaults to `K`; bare
 `/guide` uses the same opener on Fabric and NeoForge. The native full-screen
 Screen does not pause the world. Escape and opening another Screen only detach
 the UI subscription, so active work continues and reopening reconstructs from
@@ -467,7 +504,7 @@ the originally selected session; the second warning states that durable history
 is removed and any active request is stopped. User and assistant rows expose an
 explicit local clipboard action. The Export action captures the complete
 current session in request/timeline order and atomically writes a UTF-8 text
-file below `tomewisp/exports` in the Minecraft game directory. The writer has no
+file below `openallay/exports` in the Minecraft game directory. The writer has no
 path input, rejects symlink escape, and omits normalized Tool payloads,
 checkpoints, model settings, raw diagnostics, and credential-shaped text.
 
@@ -477,15 +514,15 @@ client-thread-only `NativeDomainView` lifecycle and are released when their row
 leaves the viewport or the Screen closes. JEI 26.2 exact references re-resolve
 against the current provider generation and embed its public
 `IRecipeLayoutDrawable` (`drawRecipe`, overlays/tooltips, and `tick`). Oversized,
-stale, missing, or failed layouts fall through to TomeWisp's neutral labelled
+stale, missing, or failed layouts fall through to OpenAllay's neutral labelled
 slot canvas. REI 26.2 currently exposes category widget construction but no
-verified exact durable-reference re-resolution contract used by TomeWisp, so
+verified exact durable-reference re-resolution contract used by OpenAllay, so
 its native provider records `rei_exact_embedding_unsupported` and uses the same
 neutral fallback instead of claiming or approximating a mod-owned screen.
 
 If the selected model is unavailable, the screen still opens and shows the
 configuration/capability state. Client profiles remain at
-`config/tomewisp/models.json`; the Models page accepts a transient masked API
+`config/openallay/models.json`; the Models page accepts a transient masked API
 key but never displays a stored secret. Model-mode changes affect future
 requests only and never trigger silent fallback.
 
@@ -498,7 +535,7 @@ facts are `SERVER_AUTHORITATIVE`. An unloaded knowledge snapshot is `UNKNOWN`,
 not proof that no documents exist. The result normalizer rejects any
 `EvidenceBearing` success whose evidence list is empty.
 
-`tomewisp:resolve_resource` is the unified player-visible game-content catalog,
+`openallay:resolve_resource` is the unified player-visible game-content catalog,
 not only an item-name converter. Its optional kind filter covers `item`,
 `block`, `effect`, `potion`, `entity`, and `attribute`. It searches active-locale
 display text, exact IDs and paths, translation-key aliases, bound public tags,
@@ -527,12 +564,12 @@ not catalog metadata and remain exclusively under `search_knowledge`.
 The Phase 3A recipe workflow is:
 
 ```text
-tomewisp:resolve_resource
-tomewisp:search_recipes
-tomewisp:get_recipe
-tomewisp:find_item_usages
-tomewisp:inspect_inventory
-tomewisp:calculate_craftability
+openallay:resolve_resource
+openallay:search_recipes
+openallay:get_recipe
+openallay:find_item_usages
+openallay:inspect_inventory
+openallay:calculate_craftability
 ```
 
 `calculate_craftability` uses deterministic global capacity allocation, so
@@ -540,7 +577,7 @@ overlapping item/tag alternatives are not assigned greedily. It reports the
 observed allocation, missing requirements, maximum crafts, and whether the
 evidence is conclusive. It does not recursively craft intermediate items.
 Incomplete recipe or inventory evidence may show an observed positive result,
-but `conclusive` remains false. `tomewisp:find_recipes` is retained only as a
+but `conclusive` remains false. `openallay:find_recipes` is retained only as a
 deprecated compatibility projection over the same recipe catalog.
 
 ### Player-observable outer game state
@@ -549,7 +586,7 @@ Outer client/game context is exposed through one Tool ID rather than dozens of
 small Tools:
 
 ```text
-tomewisp:inspect_game_state
+openallay:inspect_game_state
 ```
 
 Its strict `section` enum is `OVERVIEW`, `MODS`, `OPTIONS`, `PACKS`, `SHADERS`,
@@ -631,13 +668,13 @@ skills/<skill-name>/
 
 `SKILL.md` contains YAML frontmatter and Markdown instructions. `name` and
 `description` are required and the directory name matches `name`; optional
-Agent Skills fields and TomeWisp namespaced string metadata remain strictly
+Agent Skills fields and OpenAllay namespaced string metadata remain strictly
 validated. `allowed-tools` expresses a dependency only and never grants a
 permission. Scripts, URL references, root escape, unsafe symlinks, arbitrary
 paths, and unsupported files are rejected.
 
 Bundled packages under the mod resources are read-only and use uppercase
-`SKILL.md`. Local packages live under `config/tomewisp/skills/`; a valid local
+`SKILL.md`. Local packages live under `config/openallay/skills/`; a valid local
 package with the same name overrides its bundled package. Editing a bundled
 Skill first creates an atomic local copy. An invalid override leaves the prior
 valid or bundled Skill active and reports only a source-scoped diagnostic. The
@@ -654,10 +691,10 @@ tool call, tool-result continuation, grounded Chinese output, and secret
 redaction, export credentials only in the shell environment and run:
 
 ```bash
-TOMEWISP_MODEL_BASE_URL=https://provider.example/v1/ \
-TOMEWISP_MODEL=model-id \
-TOMEWISP_API_KEY=... \
-TOMEWISP_MODEL_PROTOCOL=ANTHROPIC_MESSAGES \
+OPENALLAY_MODEL_BASE_URL=https://provider.example/v1/ \
+OPENALLAY_MODEL=model-id \
+OPENALLAY_API_KEY=... \
+OPENALLAY_MODEL_PROTOCOL=ANTHROPIC_MESSAGES \
 ./scripts/live-model-smoke.sh
 ```
 
@@ -665,12 +702,12 @@ Never commit a model JSON containing `apiKey`.
 
 To exercise exactly the native settings connection-probe contract from a
 headless script, place a strict schema-2 `models.json`-format file in an ignored
-path such as `run/tomewisp/settings-probe.json`. The externally authored file
+path such as `run/openallay/settings-probe.json`. The externally authored file
 uses `"credentialRef": "env:PROVIDER_KEY_NAMED_BY_THE_FILE"`; export that
 environment variable in the shell, then run:
 
 ```bash
-export TOMEWISP_SETTINGS_PROBE_CONFIG="$PWD/run/tomewisp/settings-probe.json"
+export OPENALLAY_SETTINGS_PROBE_CONFIG="$PWD/run/openallay/settings-probe.json"
 export PROVIDER_KEY_NAMED_BY_THE_FILE='...'
 ./scripts/live-model-smoke.sh settings-probe
 ```
@@ -688,13 +725,13 @@ raw provider bodies.
 The following commands require game-master permission:
 
 ```text
-/tomewisp dev tools
-/tomewisp dev invoke tomewisp:inspect_game_state {"section":"OVERVIEW","query":"summary"}
-/tomewisp dev replay platform-info
-/tomewisp dev replay iron-ingot-recipe
-/tomewisp dev replay iron-block-craftability
-/tomewisp dev replay find-recipes-compatibility
-/tomewisp dev replay player-context
+/openallay dev tools
+/openallay dev invoke openallay:inspect_game_state {"section":"OVERVIEW","query":"summary"}
+/openallay dev replay platform-info
+/openallay dev replay iron-ingot-recipe
+/openallay dev replay iron-block-craftability
+/openallay dev replay find-recipes-compatibility
+/openallay dev replay player-context
 ```
 
 The initial development tool surface is intentionally read-only. It does not
@@ -726,7 +763,7 @@ The trace declares which context capabilities it needs: `registries`,
 immediately detaches game objects into immutable records before tools run.
 Console replay of a player-required trace returns `player_required`.
 
-TomeWisp currently imposes no project-defined size, item-count, recipe-count,
+OpenAllay currently imposes no project-defined size, item-count, recipe-count,
 inventory-count, string-length, trace-step, or report-length limit. Reports
 preserve complete requested data and only observe registry/recipe/inventory
 counts, estimated serialized bytes, capture time, tool-result bytes, and replay
@@ -750,9 +787,9 @@ dedicated servers only:
 At each server console, run:
 
 ```text
-tomewisp dev replay platform-info
-tomewisp dev replay iron-ingot-recipe
-tomewisp dev replay player-context
+openallay dev replay platform-info
+openallay dev replay iron-ingot-recipe
+openallay dev replay player-context
 stop
 ```
 
@@ -768,8 +805,8 @@ errors, and 1 opt-in live-provider test skipped. Both production artifacts built
 successfully:
 
 ```text
-fabric/build/libs/tomewisp-fabric-26.2-0.1.0-SNAPSHOT.jar
-neoforge/build/libs/tomewisp-neoforge-26.2-0.1.0-SNAPSHOT.jar
+fabric/build/libs/openallay-fabric-26.2-0.1.0-SNAPSHOT.jar
+neoforge/build/libs/openallay-neoforge-26.2-0.1.0-SNAPSHOT.jar
 ```
 
 Both JARs contain the five new grounded workflow tools,

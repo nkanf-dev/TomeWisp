@@ -22,7 +22,7 @@ database also contains partitions for other actors.
 
 Deletion is an explicit asynchronous transaction on the ordered history
 repository. It is rejected while the affected actor has any active request or
-while a prior history write is pending. TomeWisp does not cancel requests to
+while a prior history write is pending. OpenAllay does not cancel requests to
 make deletion succeed and does not allow a late completion/save to recreate
 history that the player just deleted. On success, matching in-memory sessions
 are reset to a clean current connection state before new writes are accepted.

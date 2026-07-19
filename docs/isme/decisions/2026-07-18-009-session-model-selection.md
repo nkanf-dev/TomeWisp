@@ -23,7 +23,7 @@ switching providers that expose the same underlying model.
 
 ## Decision
 
-TomeWisp manages multiple named client model profiles. A profile contains its
+OpenAllay manages multiple named client model profiles. A profile contains its
 protocol, endpoint, model ID, API-key environment-variable name, context/output
 limits, timeouts, and redacted metadata provenance. New sessions start with the
 configured default client profile. Each session remembers its current
@@ -51,7 +51,7 @@ availability.
 
 If a remembered profile is missing, disabled, malformed, or cannot resolve a
 required context window, submission fails explicitly as `model_not_configured`
-or `invalid_model_config`. TomeWisp never silently selects another local
+or `invalid_model_config`. OpenAllay never silently selects another local
 profile or switches to the server model. Removing or reloading a profile does
 not cancel an active request that already captured its runtime.
 

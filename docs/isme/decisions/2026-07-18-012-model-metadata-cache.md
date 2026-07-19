@@ -21,7 +21,7 @@ whether startup may refresh it opportunistically.
 
 ## Decision
 
-TomeWisp stores successful trusted model metadata in a strict, credential-free
+OpenAllay stores successful trusted model metadata in a strict, credential-free
 local cache keyed by metadata source and upstream model ID. Cache records keep
 the provider model ID, provider-published canonical ID when present, context
 window, explicitly published output limit when present, source, and capture

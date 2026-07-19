@@ -52,7 +52,9 @@ public final class ModelMetadataBootstrap {
                 profile -> new OpenRouterMetadataResolver(
                         clock,
                         profile.connectTimeout(),
-                        secret(environment.get(environmentName(profile.credentialRef())))));
+                        OpenRouterMetadataResolver.supports(profile.baseUri())
+                                ? secret(environment.get(environmentName(profile.credentialRef())))
+                                : null));
     }
 
     public ModelMetadataBootstrap(
@@ -73,7 +75,9 @@ public final class ModelMetadataBootstrap {
                 profile -> new OpenRouterMetadataResolver(
                         clock,
                         profile.connectTimeout(),
-                        resolveOptional(credentials, profile.credentialRef())));
+                        OpenRouterMetadataResolver.supports(profile.baseUri())
+                                ? resolveOptional(credentials, profile.credentialRef())
+                                : null));
     }
 
     ModelMetadataBootstrap(
@@ -144,9 +148,6 @@ public final class ModelMetadataBootstrap {
             publish(snapshot.entries(), null);
             List<CompletableFuture<Void>> refreshes = new ArrayList<>();
             for (ModelProfileDefinition profile : loaded.config().profiles()) {
-                if (!OpenRouterMetadataResolver.supports(profile.baseUri())) {
-                    continue;
-                }
                 ModelMetadata.Key key = new ModelMetadata.Key(
                         OpenRouterMetadataResolver.SOURCE, profile.model());
                 if (!force && snapshot.entries().containsKey(key)) {

@@ -6,6 +6,7 @@ import dev.openallay.agent.session.AgentSessionStore;
 import dev.openallay.agent.context.ContextCompactor;
 import dev.openallay.agent.tool.AgentToolExecutor;
 import dev.openallay.agent.tool.AgentToolResult;
+import dev.openallay.agent.tool.result.ProgressiveToolResultExecutor;
 import dev.openallay.agent.trace.LiveAgentTrace;
 import dev.openallay.agent.trace.LiveAgentTraceRecorder;
 import dev.openallay.model.ModelClient;
@@ -51,7 +52,10 @@ public final class GameGuideAgent {
             Gson gson,
             ContextCompactor compactor) {
         this.model = Objects.requireNonNull(model, "model");
-        this.tools = Objects.requireNonNull(tools, "tools");
+        AgentToolExecutor rawTools = Objects.requireNonNull(tools, "tools");
+        this.tools = rawTools instanceof ProgressiveToolResultExecutor
+                ? rawTools
+                : new ProgressiveToolResultExecutor(rawTools);
         this.sessions = Objects.requireNonNull(sessions, "sessions");
         this.gson = Objects.requireNonNull(gson, "gson");
         this.compactor = compactor;
@@ -109,6 +113,8 @@ public final class GameGuideAgent {
                                     lease,
                                     reused.orElseThrow().messages(),
                                     completeMessages,
+                                    protectedFromIndex,
+                                    true,
                                     Map.of(),
                                     trace,
                                     events)
@@ -144,6 +150,8 @@ public final class GameGuideAgent {
                                 lease,
                                 result.projection().messages(),
                                 completeMessages,
+                                protectedFromIndex,
+                                true,
                                 Map.of(),
                                 trace,
                                 events);
@@ -151,7 +159,16 @@ public final class GameGuideAgent {
                     .exceptionally(throwable -> fail(request, lease, trace, events, throwable));
         }
         transition(AgentState.MODEL_WAIT, trace, events);
-        return loop(request, lease, messages, completeMessages, Map.of(), trace, events)
+        return loop(
+                        request,
+                        lease,
+                        messages,
+                        completeMessages,
+                        protectedFromIndex,
+                        true,
+                        Map.of(),
+                        trace,
+                        events)
                 .exceptionally(throwable -> fail(request, lease, trace, events, throwable));
     }
 
@@ -160,10 +177,46 @@ public final class GameGuideAgent {
             AgentSessionStore.Lease lease,
             List<ModelMessage> messages,
             List<ModelMessage> completeMessages,
+            int protectedFromIndex,
+            boolean budgetChecked,
             Map<String, String> previousCallOutcomes,
             LiveAgentTraceRecorder trace,
             Consumer<AgentEvent> events) {
         lease.cancellation().throwIfCancelled();
+        if (!budgetChecked && compactor != null
+                && compactor.requiresCompaction(
+                        request.systemPrompt(), messages, tools.definitions())) {
+            transition(AgentState.COMPACTING, trace, events);
+            return compactor.compact(
+                            request.systemPrompt(),
+                            messages,
+                            protectedFromIndex,
+                            tools.definitions(),
+                            request.stream(),
+                            request.sessionKey().schedulingKey(),
+                            lease.cancellation())
+                    .thenCompose(result -> {
+                        if (result.checkpoint() != null) {
+                            sessions.recordCheckpoint(lease, result.checkpoint());
+                            events.accept(new AgentEvent.ContextCompacted(result.checkpoint()));
+                        }
+                        if (!result.successful()) {
+                            throw new ModelClientException(new dev.openallay.model.ModelFailure(
+                                    result.failureCode(), result.failureMessage(), null));
+                        }
+                        transition(AgentState.MODEL_WAIT, trace, events);
+                        return loop(
+                                request,
+                                lease,
+                                result.projection().messages(),
+                                completeMessages,
+                                protectedFromIndex,
+                                true,
+                                previousCallOutcomes,
+                                trace,
+                                events);
+                    });
+        }
         ModelRequest modelRequest = new ModelRequest(
                 request.systemPrompt(),
                 messages,
@@ -196,6 +249,7 @@ public final class GameGuideAgent {
                         // Runtime memory keeps the successfully projected context. Durable guide
                         // history independently retains the original request/timeline projection.
                         sessions.finish(lease, nextMessages);
+                        releaseToolResults(request);
                         LiveAgentTrace completed = trace.finish(AgentState.COMPLETED, turn.text(), null);
                         events.accept(new AgentEvent.FinalText(turn.text()));
                         return CompletableFuture.completedFuture(new AgentResult(
@@ -218,6 +272,8 @@ public final class GameGuideAgent {
                                         lease,
                                         outcome.messages(),
                                         outcome.completeMessages(),
+                                        protectedFromIndex,
+                                        false,
                                         outcome.callOutcomes(),
                                         trace,
                                         events);
@@ -269,7 +325,10 @@ public final class GameGuideAgent {
                     .execute(call.name(), call.input(), request.context(), lease.cancellation())
                     .handle((rawResult, executionFailure) -> executionFailure == null && rawResult != null
                             ? new AgentToolResult(
-                                    exposedId, rawResult.normalized(), rawResult.failure())
+                                    exposedId,
+                                    rawResult.normalized(),
+                                    rawResult.modelPayload(),
+                                    rawResult.failure())
                             : recoverToolFailure(
                                     exposedId, executionFailure, lease.cancellation()));
             firstCalls.put(callKey, execution);
@@ -294,7 +353,7 @@ public final class GameGuideAgent {
                             result.normalized()));
                 }
                 results.add(new ModelContent.ToolResult(
-                        item.call().id(), result.normalized(), result.failure()));
+                        item.call().id(), result.modelPayload(), result.failure()));
                 updatedCallOutcomes.put(
                         item.callKey(),
                         duplicatedThisTurn.contains(item.callKey())
@@ -336,6 +395,7 @@ public final class GameGuideAgent {
         trace.failure(code, message);
         transition(state, trace, events);
         sessions.finish(lease, lease.history());
+        releaseToolResults(request);
         LiveAgentTrace completed = trace.finish(state, null, code);
         events.accept(new AgentEvent.Failed(code, message));
         return new AgentResult(state, null, code, message, completed);
@@ -350,11 +410,14 @@ public final class GameGuideAgent {
     }
 
     private AgentToolResult noNewInformation(String toolId) {
+        JsonObject normalized = normalizedFailure(
+                "no_new_information",
+                "This exact read-only call already completed against the same request snapshot; stop calling tools and answer from the existing evidence.");
         return new AgentToolResult(
                 toolId,
-                normalizedFailure(
-                        "no_new_information",
-                        "This exact read-only call already completed against the same request snapshot; stop calling tools and answer from the existing evidence."),
+                normalized,
+                modelText("status = failure\ncode = no_new_information\n"
+                        + "message = This exact call already completed; answer from existing evidence.\n"),
                 true);
     }
 
@@ -370,12 +433,24 @@ public final class GameGuideAgent {
                 && "agent_cancelled".equals(exception.failure().code())) {
             throw exception;
         }
-        return new AgentToolResult(
-                toolId,
-                normalizedFailure(
-                        "tool_failure",
-                        "Tool execution failed; use the failure as a limitation and continue"),
-                true);
+        JsonObject normalized = normalizedFailure(
+                "tool_failure",
+                "Tool execution failed; use the failure as a limitation and continue");
+        return new AgentToolResult(toolId, normalized, modelText(
+                "status = failure\ncode = tool_failure\n"
+                        + "message = Tool execution failed; continue with this limitation.\n"), true);
+    }
+
+    private static JsonObject modelText(String content) {
+        JsonObject payload = new JsonObject();
+        payload.addProperty("content", content);
+        return payload;
+    }
+
+    private void releaseToolResults(AgentRequest request) {
+        if (tools instanceof ProgressiveToolResultExecutor progressive) {
+            progressive.release(request.context());
+        }
     }
 
     private static void transition(

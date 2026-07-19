@@ -114,6 +114,9 @@ public final class OpenRouterMetadataResolver implements ModelMetadataResolver {
             } catch (MetadataNotFound missing) {
                 return ModelMetadataResolution.failed(
                         "metadata_not_found", "OpenRouter did not publish the configured model ID");
+            } catch (MetadataAmbiguous ambiguous) {
+                return ModelMetadataResolution.failed(
+                        "metadata_ambiguous", "More than one trusted model matches the configured model ID");
             } catch (RuntimeException malformed) {
                 return ModelMetadataResolution.failed(
                         "metadata_invalid", "OpenRouter returned malformed model metadata");
@@ -130,20 +133,30 @@ public final class OpenRouterMetadataResolver implements ModelMetadataResolver {
         if (data == null || !data.isJsonArray()) {
             throw new IllegalArgumentException("data");
         }
-        JsonObject match = null;
+        java.util.List<JsonObject> models = new java.util.ArrayList<>();
         for (JsonElement element : data.getAsJsonArray()) {
             if (!element.isJsonObject()) {
                 throw new IllegalArgumentException("model");
             }
             JsonObject model = element.getAsJsonObject();
-            String id = requiredString(model, "id");
-            if (!id.equals(requestedModelId)) {
-                continue;
-            }
-            if (match != null) {
-                throw new IllegalArgumentException("duplicate model");
-            }
-            match = model;
+            requiredString(model, "id");
+            requiredString(model, "canonical_slug");
+            models.add(model);
+        }
+        java.util.List<JsonObject> exact = models.stream()
+                .filter(model -> requestedModelId.equals(requiredString(model, "id"))
+                        || requestedModelId.equals(requiredString(model, "canonical_slug")))
+                .toList();
+        if (exact.size() > 1) throw new IllegalArgumentException("duplicate model");
+        JsonObject match = exact.isEmpty() ? null : exact.getFirst();
+        if (match == null) {
+            String requestedLeaf = leaf(requestedModelId);
+            java.util.List<JsonObject> aliases = models.stream()
+                    .filter(model -> requestedLeaf.equals(leaf(requiredString(model, "id")))
+                            || requestedLeaf.equals(leaf(requiredString(model, "canonical_slug"))))
+                    .toList();
+            if (aliases.size() > 1) throw new MetadataAmbiguous();
+            if (aliases.size() == 1) match = aliases.getFirst();
         }
         if (match == null) {
             throw new MetadataNotFound();
@@ -168,6 +181,11 @@ public final class OpenRouterMetadataResolver implements ModelMetadataResolver {
                 contextWindow,
                 maxOutput,
                 clock.instant());
+    }
+
+    private static String leaf(String modelId) {
+        int separator = modelId.lastIndexOf('/');
+        return separator < 0 ? modelId : modelId.substring(separator + 1);
     }
 
     private static String requiredString(JsonObject object, String field) {
@@ -208,6 +226,7 @@ public final class OpenRouterMetadataResolver implements ModelMetadataResolver {
     }
 
     private static final class MetadataNotFound extends RuntimeException {}
+    private static final class MetadataAmbiguous extends RuntimeException {}
 
     private static final class JdkTransport implements Transport {
         private final HttpTransport transport;

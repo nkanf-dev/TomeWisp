@@ -12,12 +12,27 @@ public interface OnlineKnowledgeSource {
     CompletableFuture<List<RawHit>> search(
             String query, int limit, HttpCancellation cancellation);
 
+    default CompletableFuture<RawDocument> fetch(
+            String reference, HttpCancellation cancellation) {
+        return CompletableFuture.failedFuture(new OnlineKnowledgeException(
+                "online_document_unavailable", "This source does not expose article bodies"));
+    }
+
     record RawHit(String title, String excerpt, String reference) {
         public RawHit {
             if (title == null || title.isBlank()
                     || excerpt == null
                     || reference == null || reference.isBlank()) {
                 throw new IllegalArgumentException("invalid raw online knowledge hit");
+            }
+        }
+    }
+
+    record RawDocument(String title, String body, String reference) {
+        public RawDocument {
+            if (title == null || title.isBlank() || body == null || body.isBlank()
+                    || reference == null || reference.isBlank()) {
+                throw new IllegalArgumentException("invalid raw online knowledge document");
             }
         }
     }

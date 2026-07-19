@@ -366,6 +366,8 @@
   "settings.openallay.capability.tool.openallay_list_knowledge_sources.description": "Lists the guide and documentation sources currently available.",
   "settings.openallay.capability.tool.openallay_search_knowledge.title": "Knowledge search",
   "settings.openallay.capability.tool.openallay_search_knowledge.description": "Finds exact IDs, aliases, headings, and relevant text in indexed in-game guides.",
+  "settings.openallay.capability.tool.openallay_read_online_knowledge.title": "Read public knowledge article",
+  "settings.openallay.capability.tool.openallay_read_online_knowledge.description": "Opens the article behind a result returned by a registered public knowledge source.",
   "settings.openallay.capability.tool.openallay_get_knowledge_document.title": "Knowledge documents",
   "settings.openallay.capability.tool.openallay_get_knowledge_document.description": "Loads an exact indexed document with its provenance.",
   "settings.openallay.capability.tool.openallay_get_patchouli_multiblock.title": "Patchouli structures",

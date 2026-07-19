@@ -366,6 +366,8 @@
   "settings.openallay.capability.tool.openallay_list_knowledge_sources.description": "列出当前可用的指南与文档来源。",
   "settings.openallay.capability.tool.openallay_search_knowledge.title": "搜索知识",
   "settings.openallay.capability.tool.openallay_search_knowledge.description": "按准确 ID、别名、章节标题和正文查找已索引的游戏内指南。",
+  "settings.openallay.capability.tool.openallay_read_online_knowledge.title": "读取公共知识文章",
+  "settings.openallay.capability.tool.openallay_read_online_knowledge.description": "打开已注册公共知识来源搜索结果对应的文章正文。",
   "settings.openallay.capability.tool.openallay_get_knowledge_document.title": "知识文档",
   "settings.openallay.capability.tool.openallay_get_knowledge_document.description": "读取一份准确的索引文档及其来源。",
   "settings.openallay.capability.tool.openallay_get_patchouli_multiblock.title": "Patchouli 结构",

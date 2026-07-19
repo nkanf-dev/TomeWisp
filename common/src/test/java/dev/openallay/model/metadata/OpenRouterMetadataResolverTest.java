@@ -74,6 +74,30 @@ final class OpenRouterMetadataResolverTest {
     }
 
     @Test
+    void uniquelyMatchesProviderlessAliasButRejectsAmbiguity() {
+        String unique = """
+                {"data":[{"id":"deepseek/deepseek-v4-flash",
+                  "canonical_slug":"deepseek/deepseek-v4-flash",
+                  "context_length":1000000,"top_provider":null}]}
+                """;
+        ModelMetadataResolution resolved = resolver(response(200, unique), null)
+                .resolve("deepseek-v4-flash", null, null, new CancellationSignal()).join();
+        assertTrue(resolved.successful());
+        assertEquals(1_000_000, resolved.contextWindowTokens());
+        assertEquals("deepseek-v4-flash", resolved.metadata().providerModelId());
+        assertEquals("deepseek/deepseek-v4-flash", resolved.metadata().canonicalModelId());
+
+        String ambiguous = """
+                {"data":[
+                  {"id":"one/shared","canonical_slug":"one/shared","context_length":1},
+                  {"id":"two/shared","canonical_slug":"two/shared","context_length":1}
+                ]}
+                """;
+        assertEquals("metadata_ambiguous", resolver(response(200, ambiguous), null)
+                .resolve("shared", null, null, new CancellationSignal()).join().failure().code());
+    }
+
+    @Test
     void missingDuplicateOverflowAndMalformedPayloadsFailClosed() {
         assertFailure("metadata_not_found", "{\"data\":[]}");
         assertFailure("metadata_invalid", """

@@ -36,7 +36,9 @@ public final class AgentSystemPrompt {
         sections.add(new Section("EXECUTION", """
                 - Follow the loaded Skill's workflow and load only the reference files it says are needed.
                 - Preserve stable source, generation, recipe, document, invocation, and evidence handles exactly. Never construct or repair one.
-                - Prefer one typed batch or aggregate operation over repeated per-row calls. Emit independent calls together in one model turn.
+                - Tool results are compact readable projections of validated internal data. When a result says more=true and gives result_ref, use read_tool_result to describe, search, or read the next small page. Never ask for the entire retained result at once.
+                - A public knowledge search result is only an excerpt. When its opaque reference is relevant, use read_online_knowledge before relying on the article body.
+                - When one turn needs two or more criteria for the same batch-capable Tool, send one call with its queries array. Emit different independent Tools together in one model turn.
                 - Never repeat a successful call with unchanged arguments. After one materially corrected call, stop if the result is still empty, unchanged, partial, stale, or unavailable.
                 - Use deterministic Tool results for counts, allocation, ordering, and craftability; do not redo their arithmetic.
                 """));

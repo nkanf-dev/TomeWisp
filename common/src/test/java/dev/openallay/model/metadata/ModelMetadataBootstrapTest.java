@@ -102,6 +102,41 @@ final class ModelMetadataBootstrapTest {
                 () -> update.entries().clear());
     }
 
+    @Test
+    void customInferenceHostStillRefreshesTrustedCanonicalMetadata() throws Exception {
+        Path profiles = temporary.resolve("custom-models.json");
+        Files.writeString(profiles, """
+                {"schemaVersion":1,"defaultProfileId":"main","profiles":[{
+                  "id":"main","displayName":"Main","enabled":true,
+                  "protocol":"openai_chat","baseUrl":"https://provider.example/v1",
+                  "model":"deepseek-v4-flash","apiKeyEnv":"CUSTOM_KEY",
+                  "maxOutputTokens":4096,"connectTimeoutSeconds":5,
+                  "requestTimeoutSeconds":60
+                }]}
+                """);
+        Path cachePath = temporary.resolve("custom-metadata.json");
+        AtomicInteger calls = new AtomicInteger();
+        ModelMetadataBootstrap bootstrap = new ModelMetadataBootstrap(
+                new ModelMetadataCache(cachePath), profiles, temporary.resolve("legacy.json"),
+                Map.of("CUSTOM_KEY", "secret"), ignored -> {},
+                profile -> (model, explicitContext, explicitOutput, cancellation) -> {
+                    calls.incrementAndGet();
+                    return CompletableFuture.completedFuture(ModelMetadataResolution.resolved(
+                            new ModelMetadata("openrouter", model,
+                                    "deepseek/deepseek-v4-flash", 1_000_000, null, Instant.EPOCH),
+                            explicitContext, explicitOutput));
+                });
+
+        bootstrap.refreshAll().join();
+
+        assertEquals(1, calls.get());
+        assertTrue(Files.exists(cachePath));
+        assertEquals(1_000_000, new ModelMetadataCache(cachePath).load().join().entries()
+                .get(new ModelMetadata.Key("openrouter", "deepseek-v4-flash"))
+                .contextWindowTokens());
+        bootstrap.closeAsync().join();
+    }
+
     private Path profiles() throws Exception {
         Path path = temporary.resolve("models.json");
         Files.writeString(path, """

@@ -34,17 +34,26 @@ final class OnlineKnowledgeSourcesTest {
                         <div class="search-result-list">
                           <div class="result-item"><div class="head"><a target="_blank" href="https://www.mcmod.cn/class/2820.html">[FD] <em>农夫乐事</em></a></div><div class="body">丰富烹饪与食物。</div></div>
                         </div>
+                        """,
+                "www.mcmod.cn", """
+                        <html><head><title>农夫乐事 - MC百科</title><script>bad()</script></head>
+                        <body><article><h1>农夫乐事</h1><p>这是正文内容，包含烹饪锅和食物说明。</p></article></body></html>
                         """));
         CancellationSignal cancellation = new CancellationSignal();
 
         List<OnlineKnowledgeSource.RawHit> wiki = new MinecraftWikiKnowledgeSource(
                 transport, new Gson()).search("poison", 3, cancellation).join();
-        List<OnlineKnowledgeSource.RawHit> mcmod = new McModKnowledgeSource(transport)
+        McModKnowledgeSource mcmodSource = new McModKnowledgeSource(transport);
+        List<OnlineKnowledgeSource.RawHit> mcmod = mcmodSource
                 .search("农夫乐事", 3, cancellation).join();
 
         assertEquals("Poison", wiki.getFirst().title());
         assertEquals("Poison damages over time.", wiki.getFirst().excerpt());
         assertEquals("[FD] 农夫乐事", mcmod.getFirst().title());
+        OnlineKnowledgeSource.RawDocument article = mcmodSource
+                .fetch(mcmod.getFirst().reference(), cancellation).join();
+        assertTrue(article.body().contains("烹饪锅和食物说明"));
+        assertTrue(!article.body().contains("bad()"));
         assertTrue(transport.requests.stream().anyMatch(request ->
                 request.uri().getHost().equals("minecraft.wiki")));
         assertTrue(transport.requests.stream().anyMatch(request ->

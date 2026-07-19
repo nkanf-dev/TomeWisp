@@ -8,14 +8,35 @@ import dev.openallay.net.HttpCancellation;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.LinkedHashMap;
 import java.util.concurrent.CompletableFuture;
 
 /** Concurrent, independently degrading search across fixed public documentation sources. */
 public final class OnlineKnowledgeSearchService {
     private final List<OnlineKnowledgeSource> sources;
+    private final Map<String, OnlineKnowledgeSource> sourcesById;
 
     public OnlineKnowledgeSearchService(List<? extends OnlineKnowledgeSource> sources) {
         this.sources = List.copyOf(sources);
+        LinkedHashMap<String, OnlineKnowledgeSource> byId = new LinkedHashMap<>();
+        this.sources.forEach(source -> byId.put(source.sourceId(), source));
+        this.sourcesById = Map.copyOf(byId);
+    }
+
+    public CompletableFuture<OnlineKnowledgeDocument> fetch(
+            String sourceId,
+            String reference,
+            ToolInvocationContext context,
+            HttpCancellation cancellation) {
+        OnlineKnowledgeSource source = sourcesById.get(sourceId);
+        if (source == null || reference == null || reference.isBlank()) {
+            return CompletableFuture.failedFuture(new OnlineKnowledgeException(
+                    "online_document_unavailable", "The online document reference is unavailable"));
+        }
+        return source.fetch(reference, cancellation).thenApply(document ->
+                new OnlineKnowledgeDocument(
+                        source.sourceId(), document.title(), document.body(),
+                        document.reference(), evidence(context, source)));
     }
 
     public CompletableFuture<OnlineKnowledgeSearch> search(

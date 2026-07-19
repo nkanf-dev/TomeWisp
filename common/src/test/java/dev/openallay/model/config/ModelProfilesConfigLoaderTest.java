@@ -96,7 +96,7 @@ final class ModelProfilesConfigLoaderTest {
     }
 
     @Test
-    void trustedCacheFillsOnlyMissingOpenRouterContext() {
+    void trustedCacheFillsMissingContextAcrossInferenceProviders() {
         String withoutExplicitContext = PROFILES.replace(
                 "\"contextWindowTokens\": 256000,", "");
         ModelMetadata metadata = new ModelMetadata(
@@ -121,11 +121,11 @@ final class ModelProfilesConfigLoaderTest {
 
         String otherProvider = withoutExplicitContext.replace(
                 "https://openrouter.ai/api/v1", "https://provider.example/v1");
-        assertEquals("invalid_model_config", success(loader.load(
+        assertEquals(512_000, success(loader.load(
                 new StringReader(otherProvider),
                 Map.of("OPENROUTER_KEY", "key"),
                 Map.of(metadata.key(), metadata))).value()
-                .profiles().getFirst().failure().code());
+                .profiles().getFirst().runtimeConfig().contextWindowTokens());
     }
 
     @Test

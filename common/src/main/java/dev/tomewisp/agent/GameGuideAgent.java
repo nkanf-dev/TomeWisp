@@ -243,8 +243,9 @@ public final class GameGuideAgent {
         for (ModelContent.ToolUse call : calls) {
             chain = chain.thenCompose(outcome -> {
                 lease.cancellation().throwIfCancelled();
-                String callKey = call.name() + ":" + canonical(call.input());
-                String exposedId = call.name();
+                String exposedId = tools.canonicalToolId(call.name())
+                        .orElse(AgentToolExecutor.UNKNOWN_TOOL_ID);
+                String callKey = exposedId + ":" + canonical(call.input());
                 String previousOutcome = outcome.callOutcomes().get(callKey);
                 if (previousOutcome != null) {
                     if (REPEATED_CALL_SENTINEL.equals(previousOutcome)) {
@@ -274,7 +275,16 @@ public final class GameGuideAgent {
                         GuideToolInvocationPresentation.messages(exposedId, call.input())));
                 trace.toolCall(exposedId, call.input());
                 return tools.execute(call.name(), call.input(), request.context(), lease.cancellation())
-                        .thenApply(result -> {
+                        .handle((rawResult, executionFailure) -> {
+                            AgentToolResult result = executionFailure == null && rawResult != null
+                                    ? new AgentToolResult(
+                                            exposedId,
+                                            rawResult.normalized(),
+                                            rawResult.failure())
+                                    : recoverToolFailure(
+                                            exposedId,
+                                            executionFailure,
+                                            lease.cancellation());
                             trace.toolResult(result);
                             events.accept(new AgentEvent.ToolCompleted(
                                     call.id(),
@@ -351,6 +361,26 @@ public final class GameGuideAgent {
                 normalizedFailure(
                         "no_new_information",
                         "This exact read-only call already completed against the same request snapshot; stop calling tools and answer from the existing evidence."),
+                true);
+    }
+
+    private AgentToolResult recoverToolFailure(
+            String toolId,
+            Throwable throwable,
+            dev.tomewisp.model.CancellationSignal cancellation) {
+        cancellation.throwIfCancelled();
+        Throwable cause = throwable == null
+                ? new IllegalStateException("Tool executor completed without a result")
+                : unwrap(throwable);
+        if (cause instanceof ModelClientException exception
+                && "agent_cancelled".equals(exception.failure().code())) {
+            throw exception;
+        }
+        return new AgentToolResult(
+                toolId,
+                normalizedFailure(
+                        "tool_failure",
+                        "Tool execution failed; use the failure as a limitation and continue"),
                 true);
     }
 

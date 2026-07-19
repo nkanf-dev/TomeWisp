@@ -24,7 +24,6 @@ public record GuideToolMessage(Key key, List<String> arguments) {
         INVOCATION_GAME_ENVIRONMENT("screen.tomewisp.tool.message.invocation.game_environment"),
         INVOCATION_INSPECT_GAME_STATE("screen.tomewisp.tool.message.invocation.inspect_game_state"),
         INVOCATION_INSPECT_GAME_STATE_SECTION("screen.tomewisp.tool.message.invocation.inspect_game_state_section"),
-        INVOCATION_READ_ONLY("screen.tomewisp.tool.message.invocation.read_only"),
 
         RESULT_PENDING("screen.tomewisp.tool.message.result.pending"),
         RESULT_VALUE_UNAVAILABLE("screen.tomewisp.tool.message.result.value_unavailable"),

@@ -17,6 +17,8 @@ import dev.tomewisp.agent.trace.LiveTraceStore;
 import dev.tomewisp.agent.tool.AgentToolExecutor;
 import dev.tomewisp.agent.tool.CompositeAgentToolExecutor;
 import dev.tomewisp.agent.tool.LocalAgentToolExecutor;
+import dev.tomewisp.bridge.client.ClientPlacedToolExecutor;
+import dev.tomewisp.bridge.client.RemoteToolExecutor;
 import dev.tomewisp.capability.CapabilityPolicy;
 import dev.tomewisp.capability.ClientCapabilityResolver;
 import dev.tomewisp.capability.ClientCapabilitySnapshot;
@@ -140,7 +142,9 @@ public final class ClientGuideRuntime implements GuideLocalEndpoint {
         LocalAgentToolExecutor local = new LocalAgentToolExecutor(capabilities.localTools(), gson);
         toolExecutor = extension == null
                 ? local
-                : new CompositeAgentToolExecutor(List.of(local, extension));
+                : extension instanceof RemoteToolExecutor remote
+                        ? new ClientPlacedToolExecutor(local, remote)
+                        : new CompositeAgentToolExecutor(List.of(local, extension));
         agent = new GameGuideAgent(
                 endpoint.scheduler(), toolExecutor, sessions, gson, endpoint.compactor());
     }

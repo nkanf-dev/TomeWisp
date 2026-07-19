@@ -16,6 +16,7 @@ import dev.tomewisp.agent.context.ToolResultContextReducer;
 import dev.tomewisp.agent.context.Utf8ContextTokenEstimator;
 import dev.tomewisp.agent.tool.AgentToolExecutor;
 import dev.tomewisp.agent.tool.AgentToolResult;
+import dev.tomewisp.agent.tool.CompositeAgentToolExecutor;
 import dev.tomewisp.context.ContextCapability;
 import dev.tomewisp.context.ToolInvocationContext;
 import dev.tomewisp.model.CancellationSignal;
@@ -33,6 +34,7 @@ import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Deque;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
@@ -75,6 +77,85 @@ final class GameGuideAgentTest {
                 .orElseThrow();
         assertEquals("call_1", started.invocationId());
         assertEquals("call_1", completed.invocationId());
+    }
+
+    @Test
+    void canonicalProviderAliasProducesCanonicalEventsAndCompletes() {
+        QueueModelClient model = new QueueModelClient();
+        model.enqueue(CompletableFuture.completedFuture(
+                toolTurn("call_alias", "test:fact", 42)));
+        model.enqueue(CompletableFuture.completedFuture(textTurn("Alias recovered.")));
+        List<AgentEvent> events = new ArrayList<>();
+
+        AgentResult result = new GameGuideAgent(
+                        model, new FakeTools(), new AgentSessionStore(), new Gson())
+                .ask(request(UUID.randomUUID()), events::add)
+                .join();
+
+        assertTrue(result.successful());
+        AgentEvent.ToolStarted started = events.stream()
+                .filter(AgentEvent.ToolStarted.class::isInstance)
+                .map(AgentEvent.ToolStarted.class::cast)
+                .findFirst()
+                .orElseThrow();
+        AgentEvent.ToolCompleted completed = events.stream()
+                .filter(AgentEvent.ToolCompleted.class::isInstance)
+                .map(AgentEvent.ToolCompleted.class::cast)
+                .findFirst()
+                .orElseThrow();
+        assertEquals("test:fact", started.toolId());
+        assertEquals("test:fact", completed.toolId());
+    }
+
+    @Test
+    void unknownModelToolBecomesAToolResultAndTheModelCanRecover() {
+        QueueModelClient model = new QueueModelClient();
+        model.enqueue(CompletableFuture.completedFuture(
+                toolTurn("call_unknown", "tomewisp:invented", 42)));
+        model.enqueue(CompletableFuture.completedFuture(
+                textTurn("That capability is unavailable.")));
+        List<AgentEvent> events = new ArrayList<>();
+
+        AgentResult result = new GameGuideAgent(
+                        model,
+                        new CompositeAgentToolExecutor(List.of(new FakeTools())),
+                        new AgentSessionStore(),
+                        new Gson())
+                .ask(request(UUID.randomUUID()), events::add)
+                .join();
+
+        assertTrue(result.successful());
+        assertEquals("That capability is unavailable.", result.text());
+        ModelContent.ToolResult toolResult = (ModelContent.ToolResult) model.requests.get(1)
+                .messages().getLast().content().getFirst();
+        assertTrue(toolResult.error());
+        assertEquals(
+                "tool_unavailable",
+                toolResult.value().getAsJsonObject().get("code").getAsString());
+        assertTrue(events.stream()
+                .filter(AgentEvent.ToolStarted.class::isInstance)
+                .map(AgentEvent.ToolStarted.class::cast)
+                .allMatch(started -> started.toolId().equals(AgentToolExecutor.UNKNOWN_TOOL_ID)));
+    }
+
+    @Test
+    void executorExceptionBecomesAToolResultAndTheModelCanRecover() {
+        QueueModelClient model = new QueueModelClient();
+        model.enqueue(CompletableFuture.completedFuture(toolTurn("call_failure", 42)));
+        model.enqueue(CompletableFuture.completedFuture(textTurn("The lookup failed.")));
+
+        AgentResult result = new GameGuideAgent(
+                        model, new FailingTools(), new AgentSessionStore(), new Gson())
+                .ask(request(UUID.randomUUID()), ignored -> {})
+                .join();
+
+        assertTrue(result.successful());
+        ModelContent.ToolResult toolResult = (ModelContent.ToolResult) model.requests.get(1)
+                .messages().getLast().content().getFirst();
+        assertTrue(toolResult.error());
+        assertEquals(
+                "tool_failure",
+                toolResult.value().getAsJsonObject().get("code").getAsString());
     }
 
     @Test
@@ -310,12 +391,16 @@ final class GameGuideAgentTest {
     }
 
     private static ModelTurn toolTurn(String callId, int value) {
+        return toolTurn(callId, "test__fact", value);
+    }
+
+    private static ModelTurn toolTurn(String callId, String toolName, int value) {
         JsonObject input = new JsonObject();
         input.addProperty("value", value);
         return new ModelTurn(
                 "test",
                 "test-model",
-                List.of(new ModelContent.ToolUse(callId, "test__fact", input)),
+                List.of(new ModelContent.ToolUse(callId, toolName, input)),
                 "tool_use",
                 ModelUsage.empty());
     }
@@ -367,6 +452,14 @@ final class GameGuideAgentTest {
         }
 
         @Override
+        public Optional<String> canonicalToolId(String modelToolName) {
+            return switch (modelToolName) {
+                case "test__fact", "test:fact" -> Optional.of("test:fact");
+                default -> Optional.empty();
+            };
+        }
+
+        @Override
         public CompletableFuture<AgentToolResult> execute(
                 String modelToolName,
                 JsonObject arguments,
@@ -381,6 +474,37 @@ final class GameGuideAgentTest {
             normalized.add("value", value);
             return CompletableFuture.completedFuture(
                     new AgentToolResult("test:fact", normalized, false));
+        }
+    }
+
+    private static final class FailingTools implements AgentToolExecutor {
+        @Override
+        public List<ModelToolDefinition> definitions() {
+            return List.of(new ModelToolDefinition(
+                    "test__fact",
+                    "Return a fact",
+                    JsonParser.parseString("{\"type\":\"object\"}").getAsJsonObject()));
+        }
+
+        @Override
+        public Set<ContextCapability> requiredContext() {
+            return Set.of();
+        }
+
+        @Override
+        public Optional<String> canonicalToolId(String modelToolName) {
+            return "test__fact".equals(modelToolName)
+                    ? Optional.of("test:fact")
+                    : Optional.empty();
+        }
+
+        @Override
+        public CompletableFuture<AgentToolResult> execute(
+                String modelToolName,
+                JsonObject arguments,
+                ToolInvocationContext context,
+                CancellationSignal cancellation) {
+            return CompletableFuture.failedFuture(new IllegalStateException("raw private failure"));
         }
     }
 }

@@ -13,10 +13,12 @@ import dev.tomewisp.bridge.protocol.ServerAgentRequestPayload;
 import dev.tomewisp.bridge.protocol.ServerAgentRequestChunkPayload;
 import dev.tomewisp.bridge.protocol.ServerAgentRequestChunker;
 import dev.tomewisp.bridge.protocol.ServerAgentCancelPayload;
+import dev.tomewisp.bridge.protocol.ServerAgentEventCodec;
 import dev.tomewisp.bridge.server.ExportedToolPolicy;
 import dev.tomewisp.bridge.server.RemoteToolServer;
 import dev.tomewisp.context.minecraft.MinecraftContextCapture;
 import dev.tomewisp.server.ServerGuideRuntime;
+import dev.tomewisp.server.ServerAgentService;
 import dev.tomewisp.tool.ToolAccess;
 import dev.tomewisp.tool.ToolResult;
 import java.util.List;
@@ -35,6 +37,7 @@ public final class NeoForgeServerBridge {
     private final TomeWispRuntime runtime;
     private final BridgeJsonCodec codec = new BridgeJsonCodec();
     private final Gson gson = new Gson();
+    private final ServerAgentEventCodec agentEvents = new ServerAgentEventCodec(gson);
     private final Map<UUID, ServerPlayer> players = new java.util.concurrent.ConcurrentHashMap<>();
     private final ServerAgentRequestChunker.Reassembler requestChunks =
             new ServerAgentRequestChunker.Reassembler();
@@ -62,6 +65,7 @@ public final class NeoForgeServerBridge {
                 if (remoteTools != null) remoteTools.disconnect(actor);
                 if (serverGuide instanceof ToolResult.Success<ServerGuideRuntime> success) {
                     success.value().service().disconnect(actor);
+                    success.value().clientTools().disconnect(actor);
                 }
             }
         });
@@ -82,10 +86,19 @@ public final class NeoForgeServerBridge {
                     if (serverGuide instanceof ToolResult.Success<ServerGuideRuntime> success) {
                         ServerAgentRequestChunkPayload chunk = codec.decode(
                                 packet.json(), ServerAgentRequestChunkPayload.class);
-                        requestChunks.accept(actor, chunk).ifPresent(json ->
-                                success.value().service().ask(
-                                        actor,
-                                        codec.decode(json, ServerAgentRequestPayload.class)));
+                        requestChunks.accept(actor, chunk).ifPresent(json -> {
+                            ServerAgentRequestPayload request =
+                                    codec.decode(json, ServerAgentRequestPayload.class);
+                            ToolResult<ServerAgentService.Accepted> accepted =
+                                    success.value().service().ask(actor, request);
+                            if (accepted instanceof ToolResult.Failure<
+                                    ServerAgentService.Accepted> failure) {
+                                sendAgentEvent(actor, agentEvents.encode(
+                                        request.requestId(),
+                                        new dev.tomewisp.agent.AgentEvent.Failed(
+                                                failure.code(), failure.message())));
+                            }
+                        });
                     }
                 }
                 case "agent_cancel" -> {
@@ -94,6 +107,15 @@ public final class NeoForgeServerBridge {
                                 packet.json(), ServerAgentCancelPayload.class).requestId();
                         requestChunks.cancel(actor, requestId);
                         success.value().service().cancel(actor, requestId);
+                    }
+                }
+                case "client_tool_result" -> {
+                    if (serverGuide instanceof ToolResult.Success<ServerGuideRuntime> success) {
+                        success.value().clientTools().receive(
+                                actor,
+                                codec.decode(
+                                        packet.json(),
+                                        dev.tomewisp.bridge.protocol.ClientToolResultChunkPayload.class));
                     }
                 }
                 default -> throw new IllegalArgumentException("Unknown bridge packet " + packet.kind());
@@ -131,13 +153,28 @@ public final class NeoForgeServerBridge {
         remoteTools = new RemoteToolServer(
                 new ExportedToolPolicy(runtime.tools(), exported), contexts,
                 (actor, chunk) -> send(actor, "tool_result", chunk),
-                new CorrelationRegistry(), gson, 24 * 1024);
+                new CorrelationRegistry(), gson, BridgeProtocol.TRANSPORT_CHUNK_BYTES);
         serverGuide = ServerGuideRuntime.create(
                 runtime,
                 net.neoforged.fml.loading.FMLPaths.CONFIGDIR.get().resolve("tomewisp/server-model.json"),
                 System.getenv(),
                 contexts::capture,
-                (actor, event) -> send(actor, "agent_event", event));
+                this::sendAgentEvent,
+                new dev.tomewisp.bridge.server.PlayerClientToolRouter.Transport() {
+                    @Override
+                    public boolean call(
+                            UUID actor,
+                            dev.tomewisp.bridge.protocol.ClientToolCallPayload payload) {
+                        return send(actor, "client_tool_call", payload);
+                    }
+
+                    @Override
+                    public void cancel(
+                            UUID actor,
+                            dev.tomewisp.bridge.protocol.ClientToolCancelPayload payload) {
+                        send(actor, "client_tool_cancel", payload);
+                    }
+                });
     }
 
     private CapabilityPayload capabilities() {
@@ -159,11 +196,26 @@ public final class NeoForgeServerBridge {
                 BridgeProtocol.VERSION, tools, false, 0, 0, 0, "");
     }
 
-    private void send(UUID actor, String kind, Object payload) {
+    private boolean send(UUID actor, String kind, Object payload) {
         ServerPlayer player = players.get(actor);
         if (player != null) {
             PacketDistributor.sendToPlayer(
                     player, new NeoForgeBridgePayloads.Packet(kind, codec.encode(payload)));
+            return true;
+        }
+        return false;
+    }
+
+    private void sendAgentEvent(
+            UUID actor, dev.tomewisp.bridge.protocol.ServerAgentEventPayload event) {
+        UUID eventId = UUID.randomUUID();
+        for (var chunk : new dev.tomewisp.bridge.protocol.ResultChunker().split(
+                eventId,
+                codec.encode(event),
+                BridgeProtocol.TRANSPORT_CHUNK_BYTES)) {
+            send(actor, "agent_event_chunk",
+                    dev.tomewisp.bridge.protocol.ServerAgentEventChunkPayload.from(
+                            event.requestId(), chunk));
         }
     }
 }

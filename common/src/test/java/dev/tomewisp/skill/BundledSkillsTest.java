@@ -35,5 +35,13 @@ final class BundledSkillsTest {
             assertFalse(repository.metadataPrompt().contains(document.instructions()));
             assertTrue(document.references().isEmpty());
         }
+
+        SkillDocument fallback = repository.find("answer-modded-minecraft-question")
+                .orElseThrow();
+        assertTrue(fallback.instructions().contains("Choose one branch"));
+        assertTrue(fallback.instructions().contains("Do not search recipes or guides"));
+        SkillDocument gameState = repository.find("inspect-game-state").orElseThrow();
+        assertTrue(gameState.instructions().contains("current Tool definitions"));
+        assertFalse(gameState.instructions().contains("`tomewisp:inspect_game_state`"));
     }
 }

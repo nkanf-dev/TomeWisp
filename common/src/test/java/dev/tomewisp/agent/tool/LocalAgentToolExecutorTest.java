@@ -51,6 +51,28 @@ final class LocalAgentToolExecutorTest {
                 .join();
         assertFalse(result.failure());
         assertEquals(42, result.normalized().getAsJsonObject("value").get("fact").getAsInt());
+
+        AgentToolResult canonicalAlias = executor.execute(
+                        "test:fact",
+                        JsonParser.parseString("{\"value\":43}").getAsJsonObject(),
+                        ToolInvocationContext.developmentConsole("test"),
+                        new CancellationSignal())
+                .join();
+        assertFalse(canonicalAlias.failure());
+        assertEquals("test:fact", canonicalAlias.toolId());
+        assertEquals(43, canonicalAlias.normalized()
+                .getAsJsonObject("value").get("fact").getAsInt());
+
+        AgentToolResult caseFoldedAlias = executor.execute(
+                        "test__FACT",
+                        JsonParser.parseString("{\"value\":44}").getAsJsonObject(),
+                        ToolInvocationContext.developmentConsole("test"),
+                        new CancellationSignal())
+                .join();
+        assertFalse(caseFoldedAlias.failure());
+        assertEquals("test:fact", caseFoldedAlias.toolId());
+        assertEquals(44, caseFoldedAlias.normalized()
+                .getAsJsonObject("value").get("fact").getAsInt());
     }
 
     @Test
@@ -108,5 +130,14 @@ final class LocalAgentToolExecutorTest {
         assertEquals("tool_unavailable", result.normalized().get("code").getAsString());
         assertEquals("test:fact", result.toolId());
         assertEquals(1, registry.descriptors().size());
+
+        AgentToolResult canonicalAlias = executor.execute(
+                        "test:fact",
+                        JsonParser.parseString("{\"value\":42}").getAsJsonObject(),
+                        ToolInvocationContext.developmentConsole("test"),
+                        new CancellationSignal())
+                .join();
+        assertTrue(canonicalAlias.failure());
+        assertEquals("tool_unavailable", canonicalAlias.normalized().get("code").getAsString());
     }
 }

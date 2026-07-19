@@ -2,7 +2,7 @@ package dev.tomewisp.settings;
 
 import java.util.Objects;
 
-/** One foreground settings action; only connection probes are cancellable. */
+/** One foreground settings action; provider reads are explicitly cancellable. */
 public record SettingsOperation(Kind kind, String targetId, boolean cancellable) {
     public enum Kind {
         IDLE,
@@ -23,6 +23,7 @@ public record SettingsOperation(Kind kind, String targetId, boolean cancellable)
         DELETING_ACTOR_HISTORY,
         RESETTING_HISTORY_DATABASE,
         REFRESHING_METADATA,
+        FETCHING_MODEL_CATALOG,
         TESTING_CONNECTION
     }
 
@@ -31,8 +32,9 @@ public record SettingsOperation(Kind kind, String targetId, boolean cancellable)
         if (kind == Kind.IDLE && (targetId != null || cancellable)) {
             throw new IllegalArgumentException("idle settings operation has no target or cancellation");
         }
-        if (cancellable != (kind == Kind.TESTING_CONNECTION)) {
-            throw new IllegalArgumentException("only connection tests are cancellable");
+        if (cancellable != (kind == Kind.TESTING_CONNECTION
+                || kind == Kind.FETCHING_MODEL_CATALOG)) {
+            throw new IllegalArgumentException("only provider reads are cancellable");
         }
         if (targetId != null && targetId.isBlank()) {
             throw new IllegalArgumentException("targetId must be null or nonblank");
@@ -51,8 +53,13 @@ public record SettingsOperation(Kind kind, String targetId, boolean cancellable)
         return new SettingsOperation(Kind.TESTING_CONNECTION, profileId, true);
     }
 
+    public static SettingsOperation catalog(String profileId) {
+        return new SettingsOperation(Kind.FETCHING_MODEL_CATALOG, profileId, true);
+    }
+
     public static SettingsOperation domain(Kind kind) {
-        if (kind == Kind.IDLE || kind == Kind.TESTING_CONNECTION) {
+        if (kind == Kind.IDLE || kind == Kind.TESTING_CONNECTION
+                || kind == Kind.FETCHING_MODEL_CATALOG) {
             throw new IllegalArgumentException("domain operation must be a non-cancellable mutation");
         }
         return new SettingsOperation(kind, null, false);

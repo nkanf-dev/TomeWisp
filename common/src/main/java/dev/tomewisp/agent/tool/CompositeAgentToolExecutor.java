@@ -7,6 +7,7 @@ import dev.tomewisp.model.CancellationSignal;
 import dev.tomewisp.model.ModelToolDefinition;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 
@@ -39,17 +40,38 @@ public final class CompositeAgentToolExecutor implements AgentToolExecutor {
     }
 
     @Override
+    public Optional<String> canonicalToolId(String modelToolName) {
+        String resolved = null;
+        for (AgentToolExecutor delegate : delegates) {
+            Optional<String> candidate = delegate.canonicalToolId(modelToolName);
+            if (candidate.isEmpty()) {
+                continue;
+            }
+            if (resolved != null && !resolved.equals(candidate.orElseThrow())) {
+                throw new IllegalStateException(
+                        "Ambiguous model Tool alias " + modelToolName);
+            }
+            resolved = candidate.orElseThrow();
+        }
+        return Optional.ofNullable(resolved);
+    }
+
+    @Override
     public CompletableFuture<AgentToolResult> execute(
             String modelToolName,
             JsonObject arguments,
             ToolInvocationContext context,
             CancellationSignal cancellation) {
         for (AgentToolExecutor delegate : delegates) {
-            if (delegate.definitions().stream().anyMatch(value -> value.name().equals(modelToolName))) {
+            if (delegate.canonicalToolId(modelToolName).isPresent()) {
                 return delegate.execute(modelToolName, arguments, context, cancellation);
             }
         }
-        return CompletableFuture.failedFuture(
-                new IllegalArgumentException("Unknown model tool " + modelToolName));
+        JsonObject normalized = new JsonObject();
+        normalized.addProperty("status", "failure");
+        normalized.addProperty("code", "tool_unavailable");
+        normalized.addProperty("message", "Tool is unavailable in this request");
+        return CompletableFuture.completedFuture(
+                new AgentToolResult(UNKNOWN_TOOL_ID, normalized, true));
     }
 }

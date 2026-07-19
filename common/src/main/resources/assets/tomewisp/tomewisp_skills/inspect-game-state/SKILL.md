@@ -7,7 +7,9 @@ Use this Skill for the outer game/client layer: information already visible in
 Minecraft menus, the player's own UI, HUD/F3, installed-content screens, or a
 closed non-mutating query.
 
-Call exactly one `tomewisp:inspect_game_state` section at a time:
+Use the exact function name from the current Tool definitions, and call exactly
+one game-state section at a time. The `allowed-tools` value above is a logical
+capability identifier, not a provider function name.
 
 - `OVERVIEW` with `summary` for version, loader, topology, and runtime identity.
 - `MODS` with `list`, then an exact returned mod ID for complete public metadata.

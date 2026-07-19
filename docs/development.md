@@ -129,6 +129,35 @@ future requests. Active requests retain the runtime they captured at
 submission. Replacing a key never overwrites the credential used by an active
 profile; unreachable rows are collected only after successful publication.
 
+The Models page configures client-owned profiles only. A connected server model
+is shown in the Guide model selector as a synchronized, read-only choice and is
+configured exclusively by the server's `server-model.json`. The model ID field
+remains editable and can fetch an authenticated `/models` catalog using the
+currently typed password first or the already-saved credential otherwise. A
+saved credential is represented by an explicit saved-key hint; its value is
+never filled back into the field. Anthropic profiles send their native API-key
+and version headers plus Bearer compatibility for gateways whose catalog route
+is OpenAI-style; every header remains confined to the validated provider
+origin.
+
+When a player explicitly selects the server model, the request advertises only
+that player's currently enabled registered read-only client Tools. The server
+intersects the IDs with its trusted registry and may call those Tools back on
+the requesting client, including client options, installed mods, packs,
+shaders, F3-style diagnostics, and player-visible state. Results return in
+bounded chunks and remain correlated to the actor, request, and invocation.
+Tool failures are returned to the model as structured results so it can explain
+or recover; explicit cancellation, disconnect, and shutdown remain terminal.
+The same rule applies to client-hosted models using server Tools: bridge
+unavailability, malformed results, and the five-minute remote Tool deadline are
+complete Tool failures, not Agent termination. Incomplete request, result, and
+event chunk assemblies are sparse, accepted only for active requests, and
+expire after the same deadline (or immediately at request termination).
+Only the live Minecraft snapshot capture runs on the client thread. Tool
+execution and potentially large normalization/chunk encoding run on a virtual
+worker, and packet sends are marshalled back to the client thread. Invalid
+settings fail closed to an empty advertised client Tool set.
+
 The top-level settings sections are General, Models, Tools, Skills, History,
 and Diagnostics. Tools and Skills are separate master-detail pages. Selecting a
 Tool in the left pane shows its description, explicit enable control, settings,

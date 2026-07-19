@@ -18,6 +18,8 @@ import dev.tomewisp.capability.CapabilityPolicy;
 import dev.tomewisp.recipe.config.RecipeClientConfig;
 import dev.tomewisp.recipe.RecipeVisibilityPolicy;
 import dev.tomewisp.model.CancellationSignal;
+import dev.tomewisp.model.catalog.ModelCatalog;
+import dev.tomewisp.model.catalog.ModelCatalogRequest;
 import dev.tomewisp.model.config.ModelConfig;
 import dev.tomewisp.model.config.ModelProfileDefinition;
 import dev.tomewisp.model.config.ModelProfilesConfig;
@@ -104,6 +106,32 @@ final class ClientSettingsServiceTest {
                 ModelConnectionResult.Failure.class, pending.join()).code());
         assertTrue(models.probeCancelled.get());
         assertEquals(SettingsOperation.Kind.IDLE, service.snapshot().operation().kind());
+    }
+
+    @Test
+    void modelCatalogSharesForegroundSlotAndExplicitCancellationSuppressesLateResult() {
+        FakeModels models = new FakeModels(state(config("alpha")));
+        models.catalog = new CompletableFuture<>();
+        ClientSettingsService service = service(models, Set.of("ALPHA_KEY"));
+        ModelCatalogRequest request = catalogRequest();
+
+        CompletableFuture<ToolResult<ModelCatalog>> pending =
+                service.fetchModelCatalog(request, SecretValue.of("typed-secret"));
+
+        assertEquals(SettingsOperation.Kind.FETCHING_MODEL_CATALOG,
+                service.snapshot().operation().kind());
+        assertTrue(service.snapshot().operation().cancellable());
+        assertFailure(service.saveModels(config("beta")).join(), "settings_busy");
+        assertTrue(service.cancelModelCatalog());
+        assertEquals("model_catalog_cancelled",
+                assertInstanceOf(ToolResult.Failure.class, pending.join()).code());
+        assertTrue(models.catalogCancelled.get());
+        assertEquals(SettingsOperation.Kind.IDLE, service.snapshot().operation().kind());
+
+        models.catalog.complete(new ToolResult.Success<>(
+                new ModelCatalog(List.of("late/model"))));
+        assertEquals("model_catalog_cancelled", service.snapshot().notice().code());
+        assertFalse(service.snapshot().toString().contains("typed-secret"));
     }
 
     @Test
@@ -530,6 +558,17 @@ final class ClientSettingsServiceTest {
                 null);
     }
 
+    private static ModelCatalogRequest catalogRequest() {
+        ModelProfileDefinition profile = profile("alpha");
+        return new ModelCatalogRequest(
+                profile.id(),
+                profile.protocol(),
+                profile.baseUri(),
+                profile.credentialRef(),
+                profile.connectTimeout(),
+                profile.requestTimeout());
+    }
+
     private static ModelMetadataUpdate metadata(int contextWindow) {
         ModelMetadata value = new ModelMetadata(
                 "openrouter",
@@ -589,6 +628,10 @@ final class ClientSettingsServiceTest {
                         "alpha", ModelProtocol.OPENAI_CHAT, "https://provider.example",
                         Instant.EPOCH, 1));
         private final AtomicBoolean probeCancelled = new AtomicBoolean();
+        private CompletableFuture<ToolResult<ModelCatalog>> catalog =
+                CompletableFuture.completedFuture(new ToolResult.Success<>(
+                        new ModelCatalog(List.of("vendor/model"))));
+        private final AtomicBoolean catalogCancelled = new AtomicBoolean();
         private final AtomicBoolean closed = new AtomicBoolean();
         private String publishedDefault;
         private int saveCalls;
@@ -655,6 +698,15 @@ final class ClientSettingsServiceTest {
                 ResolvedModelProfile profile, CancellationSignal cancellation) {
             cancellation.onCancel(() -> probeCancelled.set(true));
             return probe;
+        }
+
+        @Override
+        public CompletableFuture<ToolResult<ModelCatalog>> fetchCatalog(
+                ModelCatalogRequest request,
+                SecretValue replacement,
+                CancellationSignal cancellation) {
+            cancellation.onCancel(() -> catalogCancelled.set(true));
+            return catalog;
         }
 
         @Override

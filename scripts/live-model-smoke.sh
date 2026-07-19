@@ -21,8 +21,18 @@ case "$mode" in
     export TOMEWISP_LIVE_SETTINGS_PROBE=true
     test_class=dev.tomewisp.model.live.LiveModelConnectionProbeAcceptanceTest
     ;;
+  configured-agent)
+    : "${TOMEWISP_LIVE_CONFIG_PATH:?Set TOMEWISP_LIVE_CONFIG_PATH to an ignored models.json}"
+    : "${TOMEWISP_LIVE_CREDENTIAL_DB:?Set TOMEWISP_LIVE_CREDENTIAL_DB to its ignored credentials.sqlite3}"
+    if [[ ! -f "$TOMEWISP_LIVE_CONFIG_PATH" || ! -f "$TOMEWISP_LIVE_CREDENTIAL_DB" ]]; then
+      echo "Configured Agent profile or credential database does not exist" >&2
+      exit 2
+    fi
+    export TOMEWISP_LIVE_CONFIGURED_AGENT=true
+    test_class=dev.tomewisp.model.live.LiveConfiguredGameStateAcceptanceTest
+    ;;
   *)
-    echo "Usage: $0 [agent|settings-probe]" >&2
+    echo "Usage: $0 [agent|settings-probe|configured-agent]" >&2
     exit 2
     ;;
 esac

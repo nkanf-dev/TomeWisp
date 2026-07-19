@@ -268,7 +268,7 @@ def game_state_assistant_content(completed):
 """.strip()
 
 
-def validated_game_state_results(turn_messages):
+def validated_game_state_results(turn_messages, allow_world_query_permission_failure=False):
     expected = [arguments["section"] for _, arguments in GAME_STATE_STEPS]
     observed = []
     for message in turn_messages:
@@ -277,6 +277,11 @@ def validated_game_state_results(turn_messages):
         try:
             result = json.loads(message.get("content", ""))
             if result.get("status") != "success":
+                if (allow_world_query_permission_failure
+                        and len(observed) == len(expected) - 1
+                        and result.get("code") == "permission_denied"):
+                    observed.append(expected[-1])
+                    continue
                 raise ValueError("game-state tool returned failure")
             section = result["value"]["section"]
         except (KeyError, TypeError, json.JSONDecodeError) as failure:
@@ -317,16 +322,22 @@ class Handler(BaseHTTPRequestHandler):
         completed = sum(1 for message in turn_messages
                         if message.get("role") == "tool")
         history_seed = user_text.startswith("TomeWisp E2E 历史分页种子 ")
-        game_state = user_text.startswith("TomeWisp E2E 游戏外层状态验收")
+        server_client_tools = user_text.startswith(
+            "TomeWisp E2E 服务端模型反向工具验收")
+        game_state = (user_text.startswith("TomeWisp E2E 游戏外层状态验收")
+                      or server_client_tools)
         if game_state:
             try:
-                completed = len(validated_game_state_results(turn_messages))
+                completed = len(validated_game_state_results(
+                    turn_messages, server_client_tools))
             except ValueError as failure:
                 self.send_error(422, str(failure))
                 return
         try:
             content = (
                 "历史分页种子已记录。" if history_seed
+                else "服务端模型已完成客户端状态读取；无权限的只读世界查询作为工具失败返回后，Agent 仍正常完成。"
+                if server_client_tools and completed == len(GAME_STATE_STEPS)
                 else game_state_assistant_content(completed) if game_state
                 else assistant_content(request, completed))
         except ValueError as failure:

@@ -143,7 +143,7 @@ public final class MinecraftContextCapture {
                 "minecraft:server_client_state", "minecraft:server_topology_boundary");
         List<SectionDiagnostic> clientOnly = List.of(new SectionDiagnostic(
                 "client_state_not_visible_to_server",
-                "The server-hosted model cannot observe client-owned menus or configuration without a client adapter"));
+                "This request has no available player-client observation for client-owned menus or configuration"));
         // Loader metadata on a server is not the player's client-visible mod list. Do not expose
         // server-only contacts, dependencies, licences, or private implementation metadata to an
         // ordinary player merely because their model happens to be server hosted.

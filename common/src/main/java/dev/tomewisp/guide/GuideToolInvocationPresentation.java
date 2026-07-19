@@ -44,7 +44,7 @@ public final class GuideToolInvocationPresentation {
                     GuideToolMessage.Key.INVOCATION_INSPECT_GAME_STATE,
                     GuideToolMessage.Key.INVOCATION_INSPECT_GAME_STATE_SECTION,
                     safeName(input, "section"));
-            default -> one(GuideToolMessage.Key.INVOCATION_READ_ONLY);
+            default -> List.of();
         };
     }
 

@@ -14,6 +14,8 @@ import dev.tomewisp.model.config.ModelProfileDefinition;
 import dev.tomewisp.model.config.ModelProfilesConfig;
 import dev.tomewisp.model.config.ModelProtocol;
 import dev.tomewisp.model.config.SecretValue;
+import dev.tomewisp.model.catalog.ModelCatalog;
+import dev.tomewisp.model.catalog.ModelCatalogRequest;
 import dev.tomewisp.platform.PlatformService;
 import dev.tomewisp.skill.SkillParser;
 import dev.tomewisp.skill.SkillRepository;
@@ -22,12 +24,15 @@ import dev.tomewisp.tool.ToolResult;
 import dev.tomewisp.tool.config.ToolFamilyConfig;
 import dev.tomewisp.tool.config.ToolFamilyId;
 import dev.tomewisp.tool.config.ToolSourceDefinition;
+import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Clock;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
+import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -172,6 +177,109 @@ final class ClientSettingsRuntimeTest {
     }
 
     @Test
+    void catalogUsesTypedKeyBeforeSavedCredentialAndReportsActualStoredPresence(
+            @TempDir Path directory) throws Exception {
+        AtomicReference<String> authorization = new AtomicReference<>();
+        com.sun.net.httpserver.HttpServer server = com.sun.net.httpserver.HttpServer.create(
+                new java.net.InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/v1/models", exchange -> {
+            authorization.set(exchange.getRequestHeaders().getFirst("Authorization"));
+            byte[] body = "{\"data\":[{\"id\":\"mimo-v2.5-pro\"}]}"
+                    .getBytes(java.nio.charset.StandardCharsets.UTF_8);
+            exchange.getResponseHeaders().add("Content-Type", "application/json");
+            exchange.sendResponseHeaders(200, body.length);
+            exchange.getResponseBody().write(body);
+            exchange.close();
+        });
+        server.start();
+        ClientSettingsRuntime settings = success(ClientSettingsRuntime.create(
+                runtime(),
+                directory.resolve("models.json"),
+                directory.resolve("model.json"),
+                directory.resolve("model-metadata.json"),
+                Map.of(),
+                Runnable::run,
+                null,
+                Clock.systemUTC(),
+                GuideDisplayConfig.defaults()));
+        try {
+            URI baseUri = URI.create(
+                    "http://127.0.0.1:" + server.getAddress().getPort() + "/v1");
+            ModelProfileDefinition profile = new ModelProfileDefinition(
+                    "main",
+                    "Main",
+                    true,
+                    ModelProtocol.OPENAI_CHAT,
+                    baseUri,
+                    "typed-model",
+                    "env:UNSET_PLACEHOLDER",
+                    256_000,
+                    4_096,
+                    Duration.ofSeconds(5),
+                    Duration.ofSeconds(5),
+                    null);
+            ModelProfilesConfig config = new ModelProfilesConfig(
+                    ModelProfilesConfig.SCHEMA_VERSION, "main", List.of(profile));
+            assertInstanceOf(ToolResult.Success.class, settings.settings()
+                    .saveModels(config, "main", SecretValue.of("saved-catalog-key")).join());
+            ModelProfileDefinition saved = settings.settings().snapshot()
+                    .models().config().profiles().getFirst();
+            assertTrue(settings.settings().snapshot().models().profiles().getFirst()
+                    .credentialPresent());
+            ModelCatalogRequest request = new ModelCatalogRequest(
+                    saved.id(),
+                    saved.protocol(),
+                    saved.baseUri(),
+                    saved.credentialRef(),
+                    saved.connectTimeout(),
+                    saved.requestTimeout());
+
+            ToolResult<ModelCatalog> stored = settings.settings()
+                    .fetchModelCatalog(request, null).join();
+            assertEquals(List.of("mimo-v2.5-pro"), successValue(stored).modelIds());
+            assertEquals("Bearer saved-catalog-key", authorization.get());
+
+            ToolResult<ModelCatalog> typed = settings.settings()
+                    .fetchModelCatalog(request, SecretValue.of("typed-catalog-key")).join();
+            assertEquals(List.of("mimo-v2.5-pro"), successValue(typed).modelIds());
+            assertEquals("Bearer typed-catalog-key", authorization.get());
+            assertFalse(typed.toString().contains("typed-catalog-key"));
+
+            ModelProfileDefinition missing = new ModelProfileDefinition(
+                    saved.id(),
+                    saved.displayName(),
+                    saved.enabled(),
+                    saved.protocol(),
+                    saved.baseUri(),
+                    saved.model(),
+                    dev.tomewisp.model.config.CredentialReference.local(UUID.randomUUID()).encoded(),
+                    saved.contextWindowTokens(),
+                    saved.maxOutputTokens(),
+                    saved.connectTimeout(),
+                    saved.requestTimeout(),
+                    saved.metadata());
+            assertInstanceOf(ToolResult.Success.class, settings.settings()
+                    .saveModels(new ModelProfilesConfig(
+                            ModelProfilesConfig.SCHEMA_VERSION, "main", List.of(missing)))
+                    .join());
+            assertFalse(settings.settings().snapshot().models().profiles().getFirst()
+                    .credentialPresent());
+            authorization.set(null);
+            ToolResult<ModelCatalog> absent = settings.settings().fetchModelCatalog(
+                    new ModelCatalogRequest(
+                            missing.id(), missing.protocol(), missing.baseUri(),
+                            missing.credentialRef(), missing.connectTimeout(), missing.requestTimeout()),
+                    null).join();
+            assertEquals("model_catalog_credential_missing",
+                    assertInstanceOf(ToolResult.Failure.class, absent).code());
+            assertEquals(null, authorization.get());
+        } finally {
+            settings.closeAsync().join();
+            server.stop(0);
+        }
+    }
+
+    @Test
     void toolOwnedLocalDocumentsPersistAndReloadIntoKnowledge(@TempDir Path directory)
             throws Exception {
         TomeWispRuntime product = runtime();
@@ -232,6 +340,11 @@ final class ClientSettingsRuntimeTest {
     private static ClientSettingsRuntime success(ToolResult<ClientSettingsRuntime> result) {
         return ((ToolResult.Success<ClientSettingsRuntime>)
                 assertInstanceOf(ToolResult.Success.class, result)).value();
+    }
+
+    @SuppressWarnings("unchecked")
+    private static <T> T successValue(ToolResult<T> result) {
+        return ((ToolResult.Success<T>) assertInstanceOf(ToolResult.Success.class, result)).value();
     }
 
     private static TomeWispRuntime runtime() {

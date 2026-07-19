@@ -48,7 +48,9 @@ final class ToolSchemaGeneratorTest {
         ToolNameCodec names = new ToolNameCodec(List.of("tomewisp:find_recipes"));
         assertEquals("tomewisp__find_recipes", names.encode("tomewisp:find_recipes"));
         assertEquals("tomewisp:find_recipes", names.decode("tomewisp__find_recipes"));
+        assertEquals("tomewisp:find_recipes", names.decode("tomewisp:find_recipes"));
         assertThrows(IllegalArgumentException.class, () -> names.decode("unknown"));
+        assertThrows(IllegalArgumentException.class, () -> names.decode("other:find_recipes"));
     }
 
     @Test

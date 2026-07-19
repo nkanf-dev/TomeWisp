@@ -13,6 +13,8 @@ import dev.tomewisp.model.config.ModelProfileDefinition;
 import dev.tomewisp.model.config.ModelProfilesConfig;
 import dev.tomewisp.model.config.ModelProtocol;
 import dev.tomewisp.model.config.SecretValue;
+import dev.tomewisp.model.catalog.ModelCatalog;
+import dev.tomewisp.model.catalog.ModelCatalogRequest;
 import dev.tomewisp.recipe.RecipeVisibilityPolicy;
 import dev.tomewisp.recipe.config.RecipeClientConfig;
 import dev.tomewisp.settings.ClientSettingsService;
@@ -88,6 +90,10 @@ public final class TomeWispSettingsScreen extends Screen {
     private EditBox maxOutput;
     private EditBox connectTimeout;
     private EditBox requestTimeout;
+    private List<String> catalogModelIds = List.of();
+    private boolean modelCatalogOpen;
+    private int modelCatalogPage;
+    private long modelCatalogGeneration;
 
     public TomeWispSettingsScreen(
             ClientSettingsService service,
@@ -170,6 +176,7 @@ public final class TomeWispSettingsScreen extends Screen {
     @Override
     public void removed() {
         service.cancelConnectionTest();
+        service.cancelModelCatalog();
         historyConfirmation = null;
         narrowToolDetail = false;
         narrowSkillDetail = false;
@@ -213,6 +220,14 @@ public final class TomeWispSettingsScreen extends Screen {
             double scrollX,
             double scrollY) {
         if (section == SettingsSection.MODELS && layout.editor().contains(mouseX, mouseY)) {
+            if (modelCatalogOpen) {
+                int pageSize = modelCatalogPageSize();
+                int pages = Math.max(1, (catalogModelIds.size() + pageSize - 1) / pageSize);
+                modelCatalogPage = net.minecraft.util.Mth.clamp(
+                        modelCatalogPage - (int) Math.signum(scrollY), 0, pages - 1);
+                rebuildWidgets();
+                return true;
+            }
             captureDraft();
             int viewport = Math.max(1, layout.editor().height() - 38);
             int maximum = Math.max(0, 206 - viewport);
@@ -302,7 +317,11 @@ public final class TomeWispSettingsScreen extends Screen {
         if (layout.wide()) {
             addProfileList();
         }
-        addEditor();
+        if (modelCatalogOpen) {
+            addModelCatalogPicker();
+        } else {
+            addEditor();
+        }
     }
 
     private void addGeneralPage() {
@@ -643,9 +662,35 @@ public final class TomeWispSettingsScreen extends Screen {
         y += 22;
         baseUrl = field(
                 inputX, y, inputWidth, "screen.tomewisp.settings.models.base_url", draft.baseUrl());
+        baseUrl.setResponder(value -> {
+            confirmation = Confirmation.NONE;
+            invalidateModelCatalog();
+        });
         y += 22;
+        int fetchWidth = inputWidth >= 130 ? 46 : 30;
+        int chooseWidth = inputWidth >= 130 ? 32 : 20;
+        int modelWidth = Math.max(20, inputWidth - fetchWidth - chooseWidth - 6);
         model = field(
-                inputX, y, inputWidth, "screen.tomewisp.settings.models.model_id", draft.model());
+                inputX, y, modelWidth, "screen.tomewisp.settings.models.model_id", draft.model());
+        Button fetch = addRenderableWidget(Button.builder(
+                        Component.translatable("screen.tomewisp.settings.models.fetch"),
+                        ignored -> fetchModelCatalog())
+                .bounds(inputX + modelWidth + 3, y, fetchWidth, 18)
+                .build());
+        fetch.active = snapshot.operation().kind() == SettingsOperation.Kind.IDLE;
+        fetch.visible = model.visible;
+        Button choose = addRenderableWidget(Button.builder(
+                        Component.translatable("screen.tomewisp.settings.models.choose"),
+                        ignored -> {
+                            captureDraft();
+                            modelCatalogOpen = true;
+                            modelCatalogPage = 0;
+                            rebuildWidgets();
+                        })
+                .bounds(inputX + modelWidth + fetchWidth + 6, y, chooseWidth, 18)
+                .build());
+        choose.active = !catalogModelIds.isEmpty();
+        choose.visible = model.visible;
         y += 22;
         apiKey = passwordField(inputX, y, inputWidth);
         y += 22;
@@ -694,10 +739,22 @@ public final class TomeWispSettingsScreen extends Screen {
                 18,
                 Component.translatable("screen.tomewisp.settings.models.api_key"));
         field.setValue(pendingApiKey);
+        boolean saved = selectedView().map(
+                        ModelProfileSettingsView.Profile::credentialStoredLocally)
+                .orElse(false);
+        boolean environment = selectedView().map(
+                        ModelProfileSettingsView.Profile::credentialFromEnvironment)
+                .orElse(false);
+        field.setHint(Component.translatable(saved
+                ? "screen.tomewisp.settings.models.api_key_saved_hint"
+                : environment
+                        ? "screen.tomewisp.settings.models.api_key_environment_hint"
+                        : "screen.tomewisp.settings.models.api_key_enter_hint"));
         field.setMaxLength(4096);
         field.setResponder(value -> {
             pendingApiKey = value;
             confirmation = Confirmation.NONE;
+            invalidateModelCatalog();
         });
         field.setVisible(y >= layout.editor().y() + 30
                 && y + 18 <= layout.editor().bottom());
@@ -727,7 +784,12 @@ public final class TomeWispSettingsScreen extends Screen {
 
     private List<Action> footerActions() {
         return switch (section) {
-            case MODELS -> List.of(
+            case MODELS -> modelCatalogOpen ? List.of(
+                    new Action("screen.tomewisp.settings.models.catalog_close", () -> {
+                        modelCatalogOpen = false;
+                        rebuildWidgets();
+                    }),
+                    new Action("screen.tomewisp.settings.done", this::onClose)) : List.of(
                     new Action("screen.tomewisp.settings.save", this::saveCurrent),
                     new Action(reloadKey(), this::reloadCurrent),
                     new Action(deleteKey(), this::delete),
@@ -755,7 +817,9 @@ public final class TomeWispSettingsScreen extends Screen {
     private boolean actionEnabled(String key) {
         boolean busy = snapshot.operation().kind() != SettingsOperation.Kind.IDLE;
         if (key.equals("screen.tomewisp.settings.cancel")) {
-            return snapshot.operation().kind() == SettingsOperation.Kind.TESTING_CONNECTION;
+            return snapshot.operation().kind() == SettingsOperation.Kind.TESTING_CONNECTION
+                    || snapshot.operation().kind()
+                            == SettingsOperation.Kind.FETCHING_MODEL_CATALOG;
         }
         if (key.equals("screen.tomewisp.settings.done")) {
             return true;
@@ -774,6 +838,23 @@ public final class TomeWispSettingsScreen extends Screen {
                     false);
         }
         SettingsLayout.Rect area = layout.editor();
+        if (modelCatalogOpen) {
+            graphics.text(
+                    font,
+                    Component.translatable(
+                            "screen.tomewisp.settings.models.catalog_title",
+                            catalogModelIds.size()),
+                    area.x() + 8,
+                    area.y() + 10,
+                    ACCENT,
+                    false);
+            if (catalogModelIds.isEmpty()) {
+                graphics.text(font,
+                        Component.translatable("screen.tomewisp.settings.models.catalog_empty"),
+                        area.x() + 8, area.y() + 34, MUTED, false);
+            }
+            return;
+        }
         int x = area.x() + 8;
         int y = area.y() + 43 - editorScroll;
         String[] labels = {
@@ -802,9 +883,11 @@ public final class TomeWispSettingsScreen extends Screen {
                                     : "screen.tomewisp.settings.models.unavailable")
                     .copy().append(" · ")
                     .append(Component.translatable(pendingApiKey.isBlank()
-                            ? (profile.credentialPresent()
+                            ? (profile.credentialStoredLocally()
                                     ? "screen.tomewisp.settings.models.api_key_saved"
-                                    : "screen.tomewisp.settings.models.api_key_not_set")
+                                    : profile.credentialFromEnvironment()
+                                            ? "screen.tomewisp.settings.models.api_key_environment"
+                                            : "screen.tomewisp.settings.models.api_key_not_set")
                             : "screen.tomewisp.settings.models.api_key_replace"));
             graphics.text(font, status, x, statusY, color, false);
         });
@@ -1561,11 +1644,115 @@ public final class TomeWispSettingsScreen extends Screen {
     }
 
     private void cancel() {
-        service.cancelConnectionTest();
+        if (snapshot.operation().kind() == SettingsOperation.Kind.FETCHING_MODEL_CATALOG) {
+            service.cancelModelCatalog();
+        } else {
+            service.cancelConnectionTest();
+        }
     }
 
     private void refreshMetadata() {
         accept(service.refreshMetadata());
+    }
+
+    private void fetchModelCatalog() {
+        captureDraft();
+        ToolResult<ModelCatalogRequest> validated = draft.catalogRequest();
+        if (validated instanceof ToolResult.Failure<ModelCatalogRequest> failure) {
+            localNotice = Component.translatable(
+                    "screen.tomewisp.settings.models.catalog_invalid").getString();
+            return;
+        }
+        ModelCatalogRequest request =
+                ((ToolResult.Success<ModelCatalogRequest>) validated).value();
+        SecretValue replacement = pendingApiKey.isBlank()
+                ? null
+                : SecretValue.of(pendingApiKey);
+        long generation = ++modelCatalogGeneration;
+        service.fetchModelCatalog(request, replacement).thenAccept(result -> {
+            if (generation != modelCatalogGeneration) {
+                return;
+            }
+            if (result instanceof ToolResult.Success<ModelCatalog> success) {
+                catalogModelIds = success.value().modelIds();
+                modelCatalogPage = 0;
+                modelCatalogOpen = true;
+                localNotice = catalogModelIds.isEmpty()
+                        ? Component.translatable(
+                                "screen.tomewisp.settings.models.catalog_empty").getString()
+                        : "";
+                rebuildWidgets();
+            } else {
+                ToolResult.Failure<ModelCatalog> failure =
+                        (ToolResult.Failure<ModelCatalog>) result;
+                localNotice = Component.translatable(
+                        "screen.tomewisp.settings.models.catalog_failed",
+                        failure.message()).getString();
+            }
+        });
+    }
+
+    private void addModelCatalogPicker() {
+        SettingsLayout.Rect area = layout.editor();
+        int x = area.x() + 8;
+        int y = area.y() + 30;
+        int width = Math.max(80, area.width() - 16);
+        int pageSize = modelCatalogPageSize();
+        int start = Math.min(catalogModelIds.size(), modelCatalogPage * pageSize);
+        int end = Math.min(catalogModelIds.size(), start + pageSize);
+        for (int index = start; index < end; index++) {
+            String modelId = catalogModelIds.get(index);
+            addRenderableWidget(Button.builder(Component.literal(modelId), ignored -> {
+                        draft = draft.withModel(modelId);
+                        modelCatalogOpen = false;
+                        localNotice = "";
+                        rebuildWidgets();
+                    })
+                    .bounds(x, y, width, 20)
+                    .build());
+            y += 23;
+        }
+        int pages = Math.max(1, (catalogModelIds.size() + pageSize - 1) / pageSize);
+        int navY = area.bottom() - 24;
+        int navWidth = Math.max(30, (width - 8) / 3);
+        Button previous = addRenderableWidget(Button.builder(
+                        Component.translatable("screen.tomewisp.settings.models.catalog_previous"),
+                        ignored -> {
+                            modelCatalogPage--;
+                            rebuildWidgets();
+                        })
+                .bounds(x, navY, navWidth, 20)
+                .build());
+        previous.active = modelCatalogPage > 0;
+        Button next = addRenderableWidget(Button.builder(
+                        Component.translatable("screen.tomewisp.settings.models.catalog_next"),
+                        ignored -> {
+                            modelCatalogPage++;
+                            rebuildWidgets();
+                        })
+                .bounds(x + navWidth + 4, navY, navWidth, 20)
+                .build());
+        next.active = modelCatalogPage + 1 < pages;
+        addRenderableWidget(Button.builder(
+                        Component.translatable("screen.tomewisp.settings.models.catalog_close"),
+                        ignored -> {
+                            modelCatalogOpen = false;
+                            rebuildWidgets();
+                        })
+                .bounds(x + (navWidth + 4) * 2, navY,
+                        Math.max(30, width - (navWidth + 4) * 2), 20)
+                .build());
+    }
+
+    private int modelCatalogPageSize() {
+        return Math.max(1, (layout.editor().height() - 64) / 23);
+    }
+
+    private void invalidateModelCatalog() {
+        modelCatalogGeneration++;
+        catalogModelIds = List.of();
+        modelCatalogOpen = false;
+        modelCatalogPage = 0;
     }
 
     private void accept(java.util.concurrent.CompletableFuture<ToolResult<Boolean>> future) {
@@ -1619,6 +1806,9 @@ public final class TomeWispSettingsScreen extends Screen {
         skillDraftMarkdown = "";
         confirmation = Confirmation.NONE;
         localNotice = "";
+        if (replacement != SettingsSection.MODELS) {
+            modelCatalogOpen = false;
+        }
         rebuildWidgets();
     }
 
@@ -1641,6 +1831,7 @@ public final class TomeWispSettingsScreen extends Screen {
         draftEnabled = definition.enabled();
         draftProtocol = definition.protocol();
         pendingApiKey = "";
+        invalidateModelCatalog();
     }
 
     private void createProfile() {
@@ -1654,6 +1845,7 @@ public final class TomeWispSettingsScreen extends Screen {
         draftEnabled = true;
         draftProtocol = ModelProtocol.OPENAI_CHAT;
         pendingApiKey = "";
+        invalidateModelCatalog();
         confirmation = Confirmation.NONE;
         localNotice = "";
         rebuildWidgets();
@@ -1688,6 +1880,7 @@ public final class TomeWispSettingsScreen extends Screen {
         draftProtocol = draftProtocol == ModelProtocol.OPENAI_CHAT
                 ? ModelProtocol.ANTHROPIC_MESSAGES
                 : ModelProtocol.OPENAI_CHAT;
+        invalidateModelCatalog();
         confirmation = Confirmation.NONE;
         rebuildWidgets();
     }

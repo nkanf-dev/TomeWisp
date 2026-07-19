@@ -22,7 +22,6 @@ import dev.tomewisp.model.metadata.ModelMetadataBootstrap;
 import dev.tomewisp.model.metadata.ModelMetadataCache;
 import dev.tomewisp.model.metadata.ModelMetadataUpdate;
 import dev.tomewisp.settings.model.ModelConnectionProbe;
-import dev.tomewisp.settings.model.ModelProfileSettingsView;
 import dev.tomewisp.settings.model.ModelSettingsBackend;
 import dev.tomewisp.recipe.config.RecipeClientRuntime;
 import dev.tomewisp.recipe.config.RecipeClientConfig;
@@ -396,11 +395,7 @@ public record ClientSettingsRuntime(
                                     (ignored, failure) -> backend.closeCredentials());
                         }
                     };
-            ClientSettingsService.ModelState initialState = new ClientSettingsService.ModelState(
-                    initial.config(),
-                    initial.profiles().stream()
-                            .map(ModelProfileSettingsView.Resolution::from)
-                            .toList());
+            ClientSettingsService.ModelState initialState = backend.state(initial);
             ClientSettingsService service = new ClientSettingsService(
                     display,
                     displayActions,

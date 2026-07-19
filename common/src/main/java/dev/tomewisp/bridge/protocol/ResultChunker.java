@@ -6,11 +6,13 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
 import java.util.Base64;
-import java.util.BitSet;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.time.Duration;
+import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.TimeUnit;
 
 public final class ResultChunker {
     public List<RemoteToolResultChunkPayload> split(
@@ -46,34 +48,60 @@ public final class ResultChunker {
     }
 
     public static final class Reassembler {
+        private static final java.util.concurrent.ScheduledExecutorService TIMEOUTS =
+                java.util.concurrent.Executors.newSingleThreadScheduledExecutor(runnable -> {
+                    Thread thread = new Thread(runnable, "tomewisp-result-chunk-timeouts");
+                    thread.setDaemon(true);
+                    return thread;
+                });
         private final Map<UUID, Assembly> assemblies = new HashMap<>();
+        private final Duration timeout;
+
+        public Reassembler() {
+            this(BridgeProtocol.PARTIAL_ASSEMBLY_TIMEOUT);
+        }
+
+        public Reassembler(Duration timeout) {
+            this.timeout = java.util.Objects.requireNonNull(timeout, "timeout");
+            if (timeout.isZero() || timeout.isNegative()) {
+                throw new IllegalArgumentException("timeout must be positive");
+            }
+        }
 
         public synchronized java.util.Optional<String> accept(RemoteToolResultChunkPayload chunk) {
-            Assembly assembly = assemblies.computeIfAbsent(chunk.correlationId(), ignored ->
-                    new Assembly(chunk.total(), chunk.contentHash()));
+            Assembly assembly = assemblies.get(chunk.correlationId());
+            if (assembly == null) {
+                assembly = new Assembly(chunk.total(), chunk.contentHash());
+                Assembly scheduled = assembly;
+                assembly.deadline = TIMEOUTS.schedule(
+                        () -> expire(chunk.correlationId(), scheduled),
+                        timeout.toMillis(),
+                        TimeUnit.MILLISECONDS);
+                assemblies.put(chunk.correlationId(), assembly);
+            }
             if (assembly.total != chunk.total() || !assembly.hash.equals(chunk.contentHash())) {
-                assemblies.remove(chunk.correlationId());
+                remove(chunk.correlationId());
                 throw new IllegalArgumentException("Chunk metadata changed during result assembly");
             }
             byte[] value = Base64.getDecoder().decode(chunk.base64Data());
-            if (assembly.received.get(chunk.index())) {
-                if (!java.util.Arrays.equals(assembly.parts[chunk.index()], value)) {
-                    assemblies.remove(chunk.correlationId());
+            byte[] existing = assembly.parts.get(chunk.index());
+            if (existing != null) {
+                if (!java.util.Arrays.equals(existing, value)) {
+                    remove(chunk.correlationId());
                     throw new IllegalArgumentException("Duplicate chunk has different content");
                 }
                 return java.util.Optional.empty();
             }
-            assembly.parts[chunk.index()] = value;
-            assembly.received.set(chunk.index());
-            if (assembly.received.cardinality() != assembly.total) {
+            assembly.parts.put(chunk.index(), value);
+            if (assembly.parts.size() != assembly.total) {
                 return java.util.Optional.empty();
             }
             ByteArrayOutputStream output = new ByteArrayOutputStream();
-            for (byte[] part : assembly.parts) {
-                output.writeBytes(part);
+            for (int index = 0; index < assembly.total; index++) {
+                output.writeBytes(assembly.parts.get(index));
             }
             byte[] complete = output.toByteArray();
-            assemblies.remove(chunk.correlationId());
+            remove(chunk.correlationId());
             if (!sha256(complete).equals(assembly.hash)) {
                 throw new IllegalArgumentException("Reassembled result hash does not match");
             }
@@ -81,20 +109,46 @@ public final class ResultChunker {
         }
 
         public synchronized void cancel(UUID correlationId) {
-            assemblies.remove(correlationId);
+            remove(correlationId);
+        }
+
+        public synchronized void clear() {
+            assemblies.values().forEach(Assembly::cancelDeadline);
+            assemblies.clear();
+        }
+
+        public synchronized int activeAssemblies() {
+            return assemblies.size();
+        }
+
+        private synchronized void expire(UUID correlationId, Assembly expected) {
+            assemblies.remove(correlationId, expected);
+        }
+
+        private void remove(UUID correlationId) {
+            Assembly removed = assemblies.remove(correlationId);
+            if (removed != null) {
+                removed.cancelDeadline();
+            }
         }
 
         private static final class Assembly {
             private final int total;
             private final String hash;
-            private final byte[][] parts;
-            private final BitSet received;
+            private final Map<Integer, byte[]> parts;
+            private volatile ScheduledFuture<?> deadline;
 
             private Assembly(int total, String hash) {
                 this.total = total;
                 this.hash = hash;
-                parts = new byte[total][];
-                received = new BitSet(total);
+                // Network metadata must never drive a proportional allocation before the
+                // corresponding packets have actually arrived.
+                parts = new HashMap<>();
+            }
+
+            private void cancelDeadline() {
+                ScheduledFuture<?> current = deadline;
+                if (current != null) current.cancel(false);
             }
         }
     }

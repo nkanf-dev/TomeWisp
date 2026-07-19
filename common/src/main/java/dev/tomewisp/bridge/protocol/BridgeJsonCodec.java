@@ -8,23 +8,39 @@ import java.util.Map;
 import java.util.Set;
 
 public final class BridgeJsonCodec {
-    private static final Map<Class<?>, Set<String>> FIELDS = Map.of(
-            CapabilityPayload.class, Set.of(
+    private static final Map<Class<?>, Set<String>> FIELDS = Map.ofEntries(
+            Map.entry(CapabilityPayload.class, Set.of(
                     "version", "remoteTools", "serverModel",
                     "serverContextWindowTokens", "serverMaxOutputTokens",
-                    "serverPromptAndToolTokens", "serverCanonicalModelId"),
-            RemoteToolCallPayload.class,
-                    Set.of("version", "correlationId", "sessionId", "toolId", "argumentsJson"),
-            RemoteToolResultChunkPayload.class,
-                    Set.of("version", "correlationId", "index", "total", "contentHash", "base64Data"),
-            RemoteCancelPayload.class, Set.of("version", "correlationId"),
-            ServerAgentRequestPayload.class,
-                    Set.of("version", "requestId", "sessionId", "question", "stream", "history"),
-            ServerAgentRequestChunkPayload.class,
-                    Set.of("version", "requestId", "index", "total", "contentHash", "base64Data"),
-            ServerAgentCancelPayload.class, Set.of("version", "requestId"),
-            ServerAgentEventPayload.class,
-                    Set.of("version", "requestId", "eventType", "eventJson", "terminal"));
+                    "serverPromptAndToolTokens", "serverCanonicalModelId")),
+            Map.entry(RemoteToolCallPayload.class,
+                    Set.of("version", "correlationId", "sessionId", "toolId", "argumentsJson")),
+            Map.entry(RemoteToolResultChunkPayload.class,
+                    Set.of("version", "correlationId", "index", "total", "contentHash", "base64Data")),
+            Map.entry(RemoteCancelPayload.class, Set.of("version", "correlationId")),
+            Map.entry(ServerAgentRequestPayload.class,
+                    Set.of(
+                            "version", "requestId", "sessionId", "question", "stream",
+                            "history", "clientToolIds")),
+            Map.entry(ClientToolCallPayload.class,
+                    Set.of(
+                            "version", "requestId", "invocationId", "sessionId", "toolId",
+                            "argumentsJson")),
+            Map.entry(ClientToolResultChunkPayload.class,
+                    Set.of(
+                            "version", "requestId", "invocationId", "index", "total",
+                            "contentHash", "base64Data")),
+            Map.entry(ClientToolCancelPayload.class,
+                    Set.of("version", "requestId", "invocationId")),
+            Map.entry(ServerAgentRequestChunkPayload.class,
+                    Set.of("version", "requestId", "index", "total", "contentHash", "base64Data")),
+            Map.entry(ServerAgentCancelPayload.class, Set.of("version", "requestId")),
+            Map.entry(ServerAgentEventPayload.class,
+                    Set.of("version", "requestId", "eventType", "eventJson", "terminal")),
+            Map.entry(ServerAgentEventChunkPayload.class,
+                    Set.of(
+                            "version", "requestId", "eventId", "index", "total",
+                            "contentHash", "base64Data")));
 
     private final Gson gson;
 
@@ -94,6 +110,16 @@ public final class BridgeJsonCodec {
                         throw new IllegalArgumentException(
                                 "Server Agent history content schema mismatch");
                     }
+                }
+            }
+            JsonElement clientToolIds = object.get("clientToolIds");
+            if (clientToolIds == null || !clientToolIds.isJsonArray()) {
+                throw new IllegalArgumentException("Server Agent client Tool IDs must be an array");
+            }
+            for (JsonElement toolId : clientToolIds.getAsJsonArray()) {
+                if (!toolId.isJsonPrimitive() || !toolId.getAsJsonPrimitive().isString()) {
+                    throw new IllegalArgumentException(
+                            "Server Agent client Tool IDs must contain strings");
                 }
             }
         }

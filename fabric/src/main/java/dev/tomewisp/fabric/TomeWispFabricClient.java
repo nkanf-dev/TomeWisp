@@ -77,6 +77,37 @@ public final class TomeWispFabricClient implements ClientModInitializer {
                 gson,
                 TomeWispFabricClient.class.getClassLoader(),
                 recipeClient);
+        dev.tomewisp.agent.tool.ToolRuntimeCatalog fallbackClientTools =
+                dev.tomewisp.agent.tool.ToolRuntimeCatalog.from(
+                        runtime.tools().registrations(),
+                        runtime.tools().descriptors().stream()
+                                .map(dev.tomewisp.tool.ToolDescriptor::id)
+                                .collect(java.util.stream.Collectors.toUnmodifiableSet()));
+        bridge.configureClientTools(
+                () -> modelRegistry == null
+                        ? fallbackClientTools
+                        : modelRegistry.capabilities().localTools(),
+                (required, correlation) -> {
+                    java.util.concurrent.CompletableFuture<
+                            dev.tomewisp.context.ToolInvocationContext> captured =
+                            new java.util.concurrent.CompletableFuture<>();
+                    Minecraft.getInstance().execute(() -> {
+                        ToolResult<dev.tomewisp.context.ToolInvocationContext> result =
+                                contexts.capture(required, correlation);
+                        if (result instanceof ToolResult.Success<
+                                dev.tomewisp.context.ToolInvocationContext> success) {
+                            captured.complete(success.value());
+                        } else {
+                            ToolResult.Failure<dev.tomewisp.context.ToolInvocationContext> failure =
+                                    (ToolResult.Failure<
+                                            dev.tomewisp.context.ToolInvocationContext>) result;
+                            captured.completeExceptionally(new IllegalStateException(
+                                    failure.code() + ": " + failure.message()));
+                        }
+                    });
+                    return captured;
+                },
+                gson);
         PayloadGuideRemoteEndpoint remote = new PayloadGuideRemoteEndpoint(
                 new PayloadGuideRemoteEndpoint.Port() {
                     @Override public dev.tomewisp.bridge.protocol.CapabilityPayload capabilities() {

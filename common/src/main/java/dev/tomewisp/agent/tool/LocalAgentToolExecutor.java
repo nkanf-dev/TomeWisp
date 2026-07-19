@@ -14,6 +14,7 @@ import dev.tomewisp.trace.replay.ToolArgumentCodec;
 import dev.tomewisp.trace.replay.ToolResultNormalizer;
 import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.stream.Collectors;
@@ -58,6 +59,11 @@ public final class LocalAgentToolExecutor implements AgentToolExecutor {
     }
 
     @Override
+    public Optional<String> canonicalToolId(String modelToolName) {
+        return tools.knownToolId(modelToolName);
+    }
+
+    @Override
     public CompletableFuture<AgentToolResult> execute(
             String modelToolName,
             JsonObject rawArguments,
@@ -65,7 +71,7 @@ public final class LocalAgentToolExecutor implements AgentToolExecutor {
             CancellationSignal cancellation) {
         try {
             cancellation.throwIfCancelled();
-            String toolId = tools.knownToolId(modelToolName).orElse(modelToolName);
+            String toolId = canonicalToolId(modelToolName).orElse(UNKNOWN_TOOL_ID);
             Tool<?, ?> tool = tools.find(toolId).orElse(null);
             if (tool == null) {
                 ToolResult.Failure<Object> unavailable = new ToolResult.Failure<>(
@@ -73,7 +79,6 @@ public final class LocalAgentToolExecutor implements AgentToolExecutor {
                 return CompletableFuture.completedFuture(new AgentToolResult(
                         toolId, normalizer.normalize(unavailable, Object.class), true));
             }
-            names.decode(modelToolName);
             ToolResult<?> decoded = arguments.decode(rawArguments, tool.descriptor().inputType());
             ToolResult<?> result;
             if (decoded instanceof ToolResult.Success<?> success) {

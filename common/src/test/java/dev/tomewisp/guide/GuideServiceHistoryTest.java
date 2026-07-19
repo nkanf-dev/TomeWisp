@@ -88,6 +88,23 @@ final class GuideServiceHistoryTest {
     }
 
     @Test
+    void recoveredServerSelectionReturnsToTheLocalDefaultForTheNewConnection() {
+        FakeHistory history = new FakeHistory();
+        GuideService service = service(new FakeLocal(), history, new FakeRemote(true));
+        GuideRequestSnapshot interrupted = interruptedRequest();
+        history.load.complete(new GuideHistoryLoad(
+                java.util.Optional.of(partition(
+                        interrupted, GuideModelSelection.server())),
+                List.of()));
+
+        GuideSessionSnapshot restored = service.snapshot().sessions().getFirst();
+
+        assertEquals(GuideModelSelection.client("default"), restored.modelSelection());
+        assertEquals(GuideModelSelection.client("default"),
+                restored.requests().getFirst().modelSelection());
+    }
+
+    @Test
     void persistsSanitizedEventProjectionsAndIgnoresStaleCompletions() {
         FakeHistory history = new FakeHistory();
         FakeLocal local = new FakeLocal();

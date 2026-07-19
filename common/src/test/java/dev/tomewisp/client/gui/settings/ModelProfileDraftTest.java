@@ -2,6 +2,7 @@ package dev.tomewisp.client.gui.settings;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import dev.tomewisp.model.config.ModelProfileDefinition;
@@ -46,6 +47,22 @@ final class ModelProfileDraftTest {
         }
         assertEquals("invalid_model_profile", failure.code());
         assertFalse(failure.message().contains("http://remote.example/v1"));
+    }
+
+    @Test
+    void catalogValidationDoesNotRequireAModelId() {
+        ModelProfileDraft draft = ModelProfileDraft.create("new-profile");
+        draft = new ModelProfileDraft(
+                draft.id(), draft.displayName(), draft.enabled(), draft.protocol(),
+                "https://provider.example/v1/", "", draft.credentialRef(),
+                draft.contextWindowTokens(), draft.maxOutputTokens(),
+                draft.connectTimeoutSeconds(), draft.requestTimeoutSeconds(), draft.metadata());
+
+        var request = (ToolResult.Success<dev.tomewisp.model.catalog.ModelCatalogRequest>)
+                assertInstanceOf(ToolResult.Success.class, draft.catalogRequest());
+
+        assertEquals("https://provider.example/v1/", request.value().baseUri().toString());
+        assertEquals("new-profile", request.value().profileId());
     }
 
     private static ModelProfileDefinition definition() {

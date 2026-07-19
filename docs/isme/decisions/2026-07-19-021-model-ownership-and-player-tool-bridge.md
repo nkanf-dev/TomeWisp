@@ -38,7 +38,10 @@ restored against a different server capability.
 
 The Models page performs a configuration-layer, cancellable `GET` against the
 profile base URL's `models` resource. OpenAI-compatible profiles use Bearer
-authentication and Anthropic profiles use the provider's API-key headers. The
+authentication. Anthropic profiles use the provider's API-key/version headers
+and also send the same credential as Bearer authentication because mainstream
+Anthropic-compatible gateways often expose an OpenAI-style `/models` route.
+Both forms remain scoped to the same validated provider origin. The
 unsaved password-field value is used only for that request when present;
 otherwise the saved `credentialRef` is resolved. The response contributes only
 validated model IDs to an ephemeral searchable picker. The model field remains
@@ -53,8 +56,8 @@ with its own trusted common Tool registry and derives descriptions and schemas
 locally. It freezes the resulting player-scoped capability set for the
 request. A selected client Tool invocation is correlated by authenticated
 actor, request ID, and invocation ID, sent to that same client, checked again
-against the frozen client capability snapshot, captured and executed on the
-client's owning thread, normalized, chunked, and returned to the same server
+against the frozen client capability snapshot, captured on the client's owning
+thread, executed and encoded on a worker, and returned to the same server
 request. No capability is globalized or reusable by another player.
 
 One logical Tool ID is exposed once. Placement policy is code-owned. The
@@ -62,7 +65,9 @@ player-observable `inspect_game_state` Tool is client-first for client options,
 mods, packs, shaders, HUD/F3, and player-visible state, while explicitly
 server-authoritative query sections remain server-owned when available.
 Placement is selected before execution and does not silently change authority
-after a failure.
+after a failure. This applies in both directions: a client-hosted model sees one
+merged definition, and code routes `WORLD_QUERY` to the server while retaining
+the other game-state sections locally.
 
 Tool dispatch accepts both the schema-safe model name and the canonical ID only
 when either maps to a Tool registered in the frozen request catalog. Events,
@@ -72,6 +77,22 @@ failure, or lost result is normalized into a complete error Tool result and
 returned to the model so it can recover or explain the limitation. Explicit
 request cancellation, disconnect, and shutdown cancel outstanding client Tool
 calls and suppress late results.
+
+A remote Tool result uses the selected model profile's existing five-minute
+bridge/request timeout as its deadline in either direction. Expiry sends a
+best-effort correlated cancel and returns `client_tool_timeout` or
+`server_tool_timeout` as a Tool result; it does not leave the Agent in an
+unbounded Tool wait or terminate the enclosing request.
+Reverse Tool results and server Agent events are transported as bounded chunks
+below Minecraft's encoded String limit and reassembled before strict decoding;
+the bridge never truncates evidence or normalized Tool output to fit a packet.
+Chunk metadata is stored sparsely so an untrusted advertised chunk count cannot
+cause proportional server allocation. Every incomplete request, result, or
+event assembly expires after the same five-minute bridge deadline and is also
+cleared immediately when its enclosing request terminates. The client thread
+captures live state only; Tool execution, normalization, JSON encoding, and
+Base64 chunking run on a worker. The loader-owned response sink then marshals
+the actual packet send back to the client thread.
 
 The generic player-facing phrase “using a read-only Tool” is removed. Known
 Tools show their concrete localized action; unknown Tools retain their normal
@@ -111,6 +132,13 @@ card title/status without an invented generic action sentence.
    evidence that inference works.
 8. A raw credential is never persisted outside the dedicated credential store
    or represented in UI/service/protocol/trace state.
+9. If client settings/capability initialization fails, the reverse bridge
+   advertises no client Tools; it never fails open to the full registry.
+10. A cancellation that wins before dispatch sends neither a Tool call nor a
+    meaningless cancel; after dispatch, call and cancel preserve transport
+    order and late results remain suppressed.
+11. Incomplete bridge assemblies are sparse, deadline-bounded, and scoped to an
+    active request; inactive or terminated requests cannot accumulate chunks.
 
 ## Failure Semantics
 
@@ -123,6 +151,11 @@ card title/status without an invented generic action sentence.
 - Client Tool bridge rejects, times out, disconnects, or returns malformed
   chunks: a redacted `client_tool_*` Tool result, unless the whole request was
   explicitly cancelled.
+- Server Tool bridge rejects, times out, or returns malformed chunks:
+  `server_tool_bridge_unavailable`, `server_tool_timeout`, or
+  `server_tool_result_invalid` Tool result; continue the Agent.
+- Incomplete request/result/event chunks: expire after the five-minute bridge
+  deadline and release their assembly without publishing a partial value.
 - Unknown model Tool name: `tool_unavailable` Tool result; never throw an
   executor exception that terminates the request.
 

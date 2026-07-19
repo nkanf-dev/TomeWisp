@@ -189,6 +189,7 @@ graphical evidence review all passed. Phase 4 is closed.
 | T59 | server model_wait | trusted placement selects an enabled player-client Tool | client_tool_wait | Bind actor/request/invocation and send one strict reverse Tool call to that same client | SKMB-2026-07-19-021 |
 | T60 | client_tool_wait | normalized success or Tool failure returns | server model_wait | Append the complete Tool result and continue; do not terminate the Agent for ordinary Tool failure | SKMB-2026-07-19-021 |
 | T61 | client_tool_wait | request cancel, disconnect, or shutdown | cancelled | Cancel the correlation and suppress late client result chunks | SKMB-2026-07-19-021 |
+| T62 | remote Tool/chunk wait | normalized result, ordinary bridge failure, deadline, or enclosing request terminal | model_wait, released, or cancelled | Continue with a structured Tool failure for ordinary failure/deadline; release incomplete assemblies and suppress every late chunk on terminal state | SKMB-2026-07-19-021 |
 
 ## Invariants
 
@@ -261,6 +262,7 @@ graphical evidence review all passed. Phase 4 is closed.
 | I65 | `inspect_game_state` is one strict sectioned read-only Tool for directly player-observable UI/HUD/F3/player-owned/query state; it cannot execute command strings, reflect arbitrary fields, scan spatial world content, inspect external containers, or write | SKMB-2026-07-19-020 |
 | I66 | Recipes and Guides remain independent narrow high-volume deep-content Tool families, while future map/block/container interaction requires a separate decision and authority boundary | SKMB-2026-07-19-020 |
 | I67 | Player-observable state is captured on the owning Minecraft thread into immutable evidence-bearing records; missing sections degrade independently and never become fabricated empty facts | SKMB-2026-07-19-020 |
+| I68 | Remote Tool failures in either direction are complete model-visible Tool results unless the enclosing request is cancelled/disconnected; partial bridge assemblies are sparse, active-request scoped, and bounded by the five-minute bridge deadline | SKMB-2026-07-19-021 |
 
 ## Fail Semantics
 
@@ -309,6 +311,7 @@ graphical evidence review all passed. Phase 4 is closed.
 | F41 | A dispatched model response does not complete within its configured total deadline | Close the body, fail `model_timeout`, retain completed chronology, suppress late deltas, and require explicit retry | SKMB-2026-07-19-020 |
 | F42 | A player-observable section/query is unknown, malformed, unsupported, partial, or not authoritative in the current topology | Return strict invalid/unavailable/partial evidence for that section and keep every unrelated section usable; never guess or broaden access | SKMB-2026-07-19-020 |
 | F43 | Resource resolution is ambiguous or a corrected Tool search remains unchanged and empty/partial | Return every deterministic exact match for disambiguation, or stop after one corrected call and explain the missing evidence; never loop or choose arbitrarily | SKMB-2026-07-19-020 |
+| F44 | A remote Tool bridge is unavailable, times out, returns malformed data, or leaves an incomplete chunk assembly | Return the matching structured Tool failure and continue the Agent; expire/release partial state and never publish truncated data | SKMB-2026-07-19-021 |
 
 ## Reviewed Statistical Defaults
 

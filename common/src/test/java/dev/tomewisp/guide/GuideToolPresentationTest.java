@@ -59,6 +59,22 @@ final class GuideToolPresentationTest {
     }
 
     @Test
+    void unknownInvocationHasNoInventedReadOnlyActionSentence() {
+        assertTrue(GuideToolInvocationPresentation
+                .messages("tomewisp:unknown", new JsonObject())
+                .isEmpty());
+
+        JsonObject input = new JsonObject();
+        input.addProperty("section", "MODS");
+        assertEquals(
+                List.of(GuideToolMessage.of(
+                        GuideToolMessage.Key.INVOCATION_INSPECT_GAME_STATE_SECTION,
+                        "MODS")),
+                GuideToolInvocationPresentation.messages(
+                        "tomewisp:inspect_game_state", input));
+    }
+
+    @Test
     void collapsedRecipeSummaryUsesPlayerFacingOutputName() {
         JsonObject normalized = JsonParser.parseString("""
                 {"status":"success","value":{"recipes":[{

@@ -29,10 +29,13 @@ final class LocalCredentialStoreTest {
         CredentialReference second = success(store.insert(SecretValue.of("secret-two")));
 
         assertEquals(CredentialReference.Kind.LOCAL, first.kind());
+        assertTrue(success(store.contains(first)));
+        assertTrue(success(store.contains(second)));
         assertEquals("secret-one", success(store.resolve(first)).reveal());
         assertFalse(first.toString().contains("secret-one"));
         assertEquals(1, success(store.collectUnreferenced(Set.of(first))));
         assertEquals("credential_not_found", failure(store.resolve(second)).code());
+        assertFalse(success(store.contains(second)));
         assertEquals("secret-one", success(store.resolve(first)).reveal());
         assertTrue(Files.exists(path));
         if (Files.getFileStore(path).supportsFileAttributeView("posix")) {

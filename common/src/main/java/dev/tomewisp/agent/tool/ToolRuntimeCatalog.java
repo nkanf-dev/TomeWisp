@@ -10,6 +10,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
+import java.util.Locale;
 
 /** Immutable filtered Tool catalog captured by one Agent runtime. */
 public final class ToolRuntimeCatalog {
@@ -41,7 +42,8 @@ public final class ToolRuntimeCatalog {
         java.util.ArrayList<RegisteredTool> filtered = new java.util.ArrayList<>();
         for (RegisteredTool registration : ordered) {
             String toolId = registration.tool().descriptor().id();
-            if (knownNames.put(allNames.encode(toolId), toolId) != null
+            if (putAlias(knownNames, allNames.encode(toolId), toolId) != null
+                    || putAlias(knownNames, toolId, toolId) != null
                     || active.containsKey(toolId)) {
                 throw new IllegalArgumentException("Duplicate Tool identity: " + toolId);
             }
@@ -68,6 +70,15 @@ public final class ToolRuntimeCatalog {
     }
 
     Optional<String> knownToolId(String modelToolName) {
-        return Optional.ofNullable(knownIdByModelName.get(modelToolName));
+        if (modelToolName == null) {
+            return Optional.empty();
+        }
+        return Optional.ofNullable(knownIdByModelName.get(
+                modelToolName.toLowerCase(Locale.ROOT)));
+    }
+
+    private static String putAlias(
+            Map<String, String> aliases, String alias, String toolId) {
+        return aliases.putIfAbsent(alias.toLowerCase(Locale.ROOT), toolId);
     }
 }

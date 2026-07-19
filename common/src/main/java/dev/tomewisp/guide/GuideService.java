@@ -1217,11 +1217,11 @@ public final class GuideService implements GuideHistoryAdministration {
         sessions.clear();
         requestSessions.clear();
         for (GuideSessionSnapshot snapshot : partition.sessions()) {
-            GuideModelSelection restored = snapshot.modelSelection();
+            GuideModelSelection restored = snapshot.modelSelection().kind()
+                            == GuideModelSelection.Kind.SERVER
+                    ? defaultClientSelection()
+                    : snapshot.modelSelection();
             SessionState session = new SessionState(snapshot.sessionId(), restored);
-            if (restored.kind() == GuideModelSelection.Kind.SERVER) {
-                session.lastClientProfileId = defaultClientSelection().profileId();
-            }
             session.messages.addAll(snapshot.messages());
             session.requests.addAll(snapshot.requests());
             session.totalRequests = snapshot.requests().size();

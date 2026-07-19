@@ -2,6 +2,9 @@ package dev.tomewisp.settings.model;
 
 import dev.tomewisp.client.ClientModelRuntimeRegistry;
 import dev.tomewisp.model.CancellationSignal;
+import dev.tomewisp.model.catalog.ModelCatalog;
+import dev.tomewisp.model.catalog.ModelCatalogRequest;
+import dev.tomewisp.model.catalog.ProviderModelCatalogClient;
 import dev.tomewisp.model.config.ModelProfileDefinition;
 import dev.tomewisp.model.config.ModelProfileSettingsStore;
 import dev.tomewisp.model.config.ModelProfilesConfig;
@@ -23,6 +26,7 @@ import java.util.Set;
 import java.util.TreeSet;
 import java.util.concurrent.CompletableFuture;
 import java.util.function.Supplier;
+import java.util.function.Function;
 
 /** Secure model-domain adapter used by the common settings coordinator. */
 public final class ModelSettingsBackend implements ClientSettingsService.ModelActions {
@@ -33,6 +37,7 @@ public final class ModelSettingsBackend implements ClientSettingsService.ModelAc
     private final LocalCredentialStore credentialStore;
     private final CredentialResolver credentials;
     private final ModelConnectionProbe probe;
+    private final Function<java.time.Duration, ProviderModelCatalogClient> catalogClients;
     private final ModelProfileSettingsStore store;
     private final ModelProfilesConfigLoader loader = new ModelProfilesConfigLoader();
     private final ModelProfilesConfigWriter writer = new ModelProfilesConfigWriter();
@@ -52,7 +57,8 @@ public final class ModelSettingsBackend implements ClientSettingsService.ModelAc
                 new LocalCredentialStore(
                         profilesPath.toAbsolutePath().normalize().resolveSibling(
                                 "credentials.sqlite3"),
-                        java.time.Clock.systemUTC()));
+                        java.time.Clock.systemUTC()),
+                ProviderModelCatalogClient::new);
     }
 
     public ModelSettingsBackend(
@@ -62,6 +68,24 @@ public final class ModelSettingsBackend implements ClientSettingsService.ModelAc
             ClientModelRuntimeRegistry registry,
             ModelConnectionProbe probe,
             LocalCredentialStore credentialStore) {
+        this(
+                profilesPath,
+                legacyPath,
+                environment,
+                registry,
+                probe,
+                credentialStore,
+                ProviderModelCatalogClient::new);
+    }
+
+    public ModelSettingsBackend(
+            Path profilesPath,
+            Path legacyPath,
+            Supplier<Map<String, String>> environment,
+            ClientModelRuntimeRegistry registry,
+            ModelConnectionProbe probe,
+            LocalCredentialStore credentialStore,
+            Function<java.time.Duration, ProviderModelCatalogClient> catalogClients) {
         this.profilesPath = Objects.requireNonNull(profilesPath, "profilesPath")
                 .toAbsolutePath().normalize();
         this.legacyPath = Objects.requireNonNull(legacyPath, "legacyPath")
@@ -69,6 +93,7 @@ public final class ModelSettingsBackend implements ClientSettingsService.ModelAc
         this.environment = Objects.requireNonNull(environment, "environment");
         this.registry = Objects.requireNonNull(registry, "registry");
         this.probe = Objects.requireNonNull(probe, "probe");
+        this.catalogClients = Objects.requireNonNull(catalogClients, "catalogClients");
         this.credentialStore = Objects.requireNonNull(credentialStore, "credentialStore");
         this.credentials = CredentialResolver.composite(
                 credentialStore, environmentSnapshot());
@@ -142,7 +167,8 @@ public final class ModelSettingsBackend implements ClientSettingsService.ModelAc
         return new ToolResult.Success<>(new ClientSettingsService.ModelState(
                 value.config(),
                 value.profiles().stream()
-                        .map(ModelProfileSettingsView.Resolution::from)
+                        .map(profile -> ModelProfileSettingsView.Resolution.from(
+                                profile, credentialPresent(profile.definition())))
                         .toList()));
     }
 
@@ -218,6 +244,44 @@ public final class ModelSettingsBackend implements ClientSettingsService.ModelAc
             ResolvedModelProfile profile,
             CancellationSignal cancellation) {
         return probe.test(profile, cancellation);
+    }
+
+    @Override
+    public CompletableFuture<ToolResult<ModelCatalog>> fetchCatalog(
+            ModelCatalogRequest request,
+            SecretValue replacement,
+            CancellationSignal cancellation) {
+        Objects.requireNonNull(request, "request");
+        Objects.requireNonNull(cancellation, "cancellation");
+        if (cancellation.isCancelled()) {
+            return CompletableFuture.completedFuture(new ToolResult.Failure<>(
+                    "model_catalog_cancelled", "The model catalog request was cancelled"));
+        }
+        SecretValue credential = replacement;
+        if (credential == null) {
+            ToolResult<SecretValue> resolved;
+            try {
+                resolved = credentials.resolve(CredentialReference.parse(request.credentialRef()));
+            } catch (RuntimeException failure) {
+                resolved = null;
+            }
+            if (!(resolved instanceof ToolResult.Success<SecretValue> success)) {
+                return CompletableFuture.completedFuture(new ToolResult.Failure<>(
+                        "model_catalog_credential_missing",
+                        "A model provider credential is required to fetch models"));
+            }
+            credential = success.value();
+        }
+        try {
+            return Objects.requireNonNull(
+                    catalogClients.apply(request.connectTimeout()),
+                    "model catalog client")
+                    .fetch(request, credential, cancellation);
+        } catch (RuntimeException failure) {
+            return CompletableFuture.completedFuture(new ToolResult.Failure<>(
+                    "model_catalog_transport_failed",
+                    "The model provider catalog could not be reached"));
+        }
     }
 
     private ToolResult<ModelProfilesConfigLoader.Load> decode(
@@ -302,7 +366,7 @@ public final class ModelSettingsBackend implements ClientSettingsService.ModelAc
         credentialStore.collectUnreferenced(retained);
     }
 
-    private static ToolResult<ClientSettingsService.ModelState> mapLoad(
+    private ToolResult<ClientSettingsService.ModelState> mapLoad(
             ToolResult<ModelProfilesConfigLoader.Load> loaded) {
         if (loaded instanceof ToolResult.Failure<ModelProfilesConfigLoader.Load> failure) {
             return new ToolResult.Failure<>(failure.code(), failure.message());
@@ -311,12 +375,28 @@ public final class ModelSettingsBackend implements ClientSettingsService.ModelAc
                 ((ToolResult.Success<ModelProfilesConfigLoader.Load>) loaded).value()));
     }
 
-    private static ClientSettingsService.ModelState state(
+    public ClientSettingsService.ModelState state(
             ModelProfilesConfigLoader.Load load) {
         return new ClientSettingsService.ModelState(
                 load.config(),
                 load.profiles().stream()
-                        .map(ModelProfileSettingsView.Resolution::from)
+                        .map(profile -> ModelProfileSettingsView.Resolution.from(
+                                profile, credentialPresent(profile.definition())))
                         .toList());
+    }
+
+    private boolean credentialPresent(ModelProfileDefinition definition) {
+        CredentialReference reference;
+        try {
+            reference = CredentialReference.parse(definition.credentialRef());
+        } catch (RuntimeException failure) {
+            return false;
+        }
+        if (reference.kind() == CredentialReference.Kind.ENVIRONMENT) {
+            String value = environmentSnapshot().get(reference.value());
+            return value != null && !value.isBlank();
+        }
+        ToolResult<Boolean> present = credentialStore.contains(reference);
+        return present instanceof ToolResult.Success<Boolean> success && success.value();
     }
 }

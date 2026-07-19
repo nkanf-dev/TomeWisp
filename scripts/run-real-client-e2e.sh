@@ -8,16 +8,32 @@ if [[ "$loader" != "fabric" && "$loader" != "neoforge" ]]; then
 fi
 
 fixture_port="${TOMEWISP_E2E_FIXTURE_PORT:-18765}"
+model_mode="${TOMEWISP_E2E_MODEL_MODE:-client}"
+if [[ "$model_mode" != "client" && "$model_mode" != "server" ]]; then
+  echo "TOMEWISP_E2E_MODEL_MODE must be client or server" >&2
+  exit 2
+fi
 run_dir="$loader/runs/client"
 report="${TOMEWISP_E2E_REPORT:-$PWD/build/e2e/$loader-real-client.json}"
 mkdir -p "$run_dir/config/tomewisp" "$(dirname "$report")"
 model_config="$run_dir/config/tomewisp/models.json"
+server_model_config="$run_dir/config/tomewisp/server-model.json"
 config_backup_dir="$(mktemp -d)"
 had_model_config=false
+had_server_model_config=false
 if [[ -f "$model_config" ]]; then
   cp "$model_config" "$config_backup_dir/models.json"
   had_model_config=true
 fi
+if [[ -f "$server_model_config" ]]; then
+  cp "$server_model_config" "$config_backup_dir/server-model.json"
+  had_server_model_config=true
+fi
+for credential_file in credentials.sqlite3 credentials.sqlite3-wal credentials.sqlite3-shm; do
+  if [[ -f "$run_dir/config/tomewisp/$credential_file" ]]; then
+    cp "$run_dir/config/tomewisp/$credential_file" "$config_backup_dir/$credential_file"
+  fi
+done
 fixture_pid=""
 cleanup() {
   if [[ -n "$fixture_pid" ]]; then
@@ -28,6 +44,20 @@ cleanup() {
   else
     rm -f "$model_config"
   fi
+  if [[ "$had_server_model_config" == true ]]; then
+    cp "$config_backup_dir/server-model.json" "$server_model_config"
+  else
+    rm -f "$server_model_config"
+  fi
+  # The temporary E2E profile intentionally references no local secrets. Startup cleanup may
+  # therefore collect the ordinary development profile's rows, so restore the whole SQLite
+  # database triplet after the graphical client has closed.
+  for credential_file in credentials.sqlite3 credentials.sqlite3-wal credentials.sqlite3-shm; do
+    rm -f "$run_dir/config/tomewisp/$credential_file"
+    if [[ -f "$config_backup_dir/$credential_file" ]]; then
+      cp "$config_backup_dir/$credential_file" "$run_dir/config/tomewisp/$credential_file"
+    fi
+  done
   rm -rf "$config_backup_dir"
 }
 trap cleanup EXIT INT TERM
@@ -53,6 +83,23 @@ path.write_text(json.dumps({
     }],
 }), encoding="utf-8")
 PY
+if [[ "$model_mode" == "server" ]]; then
+  python3 - "$server_model_config" "$fixture_port" <<'PY'
+import json, pathlib, sys
+path = pathlib.Path(sys.argv[1])
+path.write_text(json.dumps({
+    "enabled": True,
+    "protocol": "openai_chat",
+    "baseUrl": f"http://127.0.0.1:{sys.argv[2]}/v1/",
+    "model": "tomewisp-e2e-server-fixture",
+    "apiKeyEnv": "TOMEWISP_E2E_FIXTURE_KEY",
+    "contextWindowTokens": 256000,
+    "maxOutputTokens": 8192,
+    "connectTimeoutSeconds": 10,
+    "requestTimeoutSeconds": 120,
+}), encoding="utf-8")
+PY
+fi
 export TOMEWISP_E2E_FIXTURE_KEY="$(python3 -c 'import secrets; print(secrets.token_hex(16))')"
 
 python3 scripts/e2e-model-fixture.py --port "$fixture_port" &
@@ -74,7 +121,7 @@ fi
   -Dtomewisp.e2e.question="${TOMEWISP_E2E_QUESTION:-请查询铁块的配方，精确读取后检查库存并计算是否可制作，最后列出当前知识来源。}" \
   -Dtomewisp.e2e.report="$report" \
   -Dtomewisp.e2e.scenario="${TOMEWISP_E2E_SCENARIO:-phase-4-semantic-history}" \
-  -Dtomewisp.e2e.modelMode=client \
+  -Dtomewisp.e2e.modelMode="$model_mode" \
   -Dtomewisp.e2e.historySeedRequests="${TOMEWISP_E2E_HISTORY_SEED_REQUESTS:-0}" \
   -Dtomewisp.e2e.screenshotRoot="${TOMEWISP_E2E_SCREENSHOT_ROOT:-}" \
   -Dtomewisp.e2e.shutdownAfterScreenshots="${TOMEWISP_E2E_SHUTDOWN_AFTER_SCREENSHOTS:-false}" \
@@ -112,6 +159,27 @@ if scenario == "phase-4-game-state":
                              + repr({"expected": expected, "probe": probe}))
     if metrics.get("assistantSegments", 0) < 9:
         raise SystemExit("E2E did not preserve game-state tool chronology")
+    raise SystemExit(0)
+if scenario == "phase-4-server-client-tools":
+    if report.get("topology") != "SERVER":
+        raise SystemExit("E2E did not use the server-hosted model topology")
+    probes = report.get("toolProbes", [])
+    expected_sections = [
+        "OVERVIEW", "MODS", "OPTIONS", "PACKS", "SHADERS",
+        "DIAGNOSTICS", "PLAYER", "WORLD_QUERY",
+    ]
+    if report.get("toolIds", []) != ["tomewisp:inspect_game_state"] * 8:
+        raise SystemExit("E2E did not route the complete game-state Tool sequence")
+    for expected, probe in zip(expected_sections[:7], probes[:7]):
+        if (probe.get("section") != expected or probe.get("status") != "SUCCEEDED"):
+            raise SystemExit("E2E client Tool section failed: " + repr(probe))
+    if len(probes) != 8 or not (
+            probes[-1].get("status") == "SUCCEEDED"
+            or (probes[-1].get("status") == "FAILED"
+                and probes[-1].get("failureCode") == "permission_denied")):
+        raise SystemExit("E2E server-owned world query did not preserve authority")
+    if metrics.get("assistantSegments", 0) < 9:
+        raise SystemExit("E2E did not continue after the complete Tool chronology")
     raise SystemExit(0)
 if metrics.get("assistantSegments", 0) < 6:
     raise SystemExit("E2E did not preserve assistant/tool chronology")

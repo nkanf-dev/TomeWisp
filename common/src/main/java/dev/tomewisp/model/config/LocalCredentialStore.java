@@ -89,6 +89,24 @@ public final class LocalCredentialStore implements CredentialResolver, AutoClose
         }
     }
 
+    /** Checks a local reference without materializing its secret value. */
+    public synchronized ToolResult<Boolean> contains(CredentialReference reference) {
+        Objects.requireNonNull(reference, "reference");
+        if (closed || reference.kind() != CredentialReference.Kind.LOCAL) {
+            return unavailable();
+        }
+        try (Connection connection = open();
+                var statement = connection.prepareStatement(
+                        "select 1 from credentials where credential_id = ?")) {
+            statement.setString(1, reference.value());
+            try (ResultSet result = statement.executeQuery()) {
+                return new ToolResult.Success<>(result.next());
+            }
+        } catch (SQLException | RuntimeException failure) {
+            return unavailable();
+        }
+    }
+
     public synchronized ToolResult<Boolean> deleteIfUnreferenced(
             CredentialReference reference,
             Set<CredentialReference> retained) {

@@ -2,6 +2,7 @@ package dev.tomewisp.client.gui.settings;
 
 import dev.tomewisp.model.config.ModelProfileDefinition;
 import dev.tomewisp.model.config.ModelProtocol;
+import dev.tomewisp.model.catalog.ModelCatalogRequest;
 import dev.tomewisp.tool.ToolResult;
 import java.net.URI;
 import java.time.Duration;
@@ -133,6 +134,25 @@ public record ModelProfileDraft(
         } catch (RuntimeException failure) {
             return new ToolResult.Failure<>(
                     "invalid_model_profile", "Review the model profile fields");
+        }
+    }
+
+    /** Validates only the fields needed for an authenticated non-inference model listing. */
+    public ToolResult<ModelCatalogRequest> catalogRequest() {
+        try {
+            return new ToolResult.Success<>(new ModelCatalogRequest(
+                    id == null ? null : id.trim(),
+                    protocol,
+                    URI.create(baseUrl == null ? "" : baseUrl.trim()),
+                    credentialRef == null ? null : credentialRef.trim(),
+                    Duration.ofSeconds(Long.parseLong(
+                            connectTimeoutSeconds == null ? "" : connectTimeoutSeconds.trim())),
+                    Duration.ofSeconds(Long.parseLong(
+                            requestTimeoutSeconds == null ? "" : requestTimeoutSeconds.trim()))));
+        } catch (RuntimeException failure) {
+            return new ToolResult.Failure<>(
+                    "invalid_model_catalog_request",
+                    "Review the profile ID, base URL, and timeout fields");
         }
     }
 }

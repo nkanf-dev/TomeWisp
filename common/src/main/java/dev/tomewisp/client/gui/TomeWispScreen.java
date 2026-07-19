@@ -1397,7 +1397,8 @@ public final class TomeWispScreen extends Screen {
     private static Component choiceLabel(GuideUiModelChoice choice) {
         return choice.selection().kind() == GuideModelSelection.Kind.SERVER
                 ? Component.translatable("screen.tomewisp.model.server")
-                : Component.literal(choice.displayName());
+                : Component.translatable(
+                        "screen.tomewisp.model.client", choice.displayName());
     }
 
     static String sourceLabel(GuideSource source, boolean debugMode) {

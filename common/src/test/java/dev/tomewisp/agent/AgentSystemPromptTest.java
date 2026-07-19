@@ -13,8 +13,11 @@ final class AgentSystemPromptTest {
         assertTrue(prompt.contains("Do not call tools for greetings"));
         assertTrue(prompt.contains("Resolve a natural/localized name first"));
         assertTrue(prompt.contains("at most one materially corrected call"));
+        assertTrue(prompt.contains("Never repeat a successful call"));
         assertTrue(prompt.contains("stop calling tools"));
-        assertTrue(prompt.contains("inspect_game_state"));
+        assertTrue(prompt.contains("current request's Tool definitions"));
+        assertTrue(prompt.contains("load exactly one most-specific matching Skill"));
+        assertFalse(prompt.contains("use inspect_game_state"));
         assertTrue(prompt.contains("- inspect-game-state: Inspect settings"));
         assertFalse(prompt.contains("server-hosted"));
     }

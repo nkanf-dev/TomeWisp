@@ -111,7 +111,7 @@ final class ClientArchitectureTest {
 
         String protocol = Files.readString(root.resolve(
                 "common/src/main/java/dev/tomewisp/bridge/protocol/BridgeProtocol.java"));
-        assertTrue(protocol.contains("VERSION = 5"));
+        assertTrue(protocol.contains("VERSION = 6"));
         for (Path bridge : List.of(
                 root.resolve("fabric/src/main/java/dev/tomewisp/fabric/network/FabricServerBridge.java"),
                 root.resolve("neoforge/src/main/java/dev/tomewisp/neoforge/network/NeoForgeServerBridge.java"))) {

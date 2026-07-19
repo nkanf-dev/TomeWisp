@@ -9,6 +9,8 @@ import dev.tomewisp.guide.history.GuideHistoryActivity;
 import dev.tomewisp.guide.history.GuideHistoryPartition;
 import dev.tomewisp.guide.ui.GuideDisplayConfig;
 import dev.tomewisp.model.CancellationSignal;
+import dev.tomewisp.model.catalog.ModelCatalog;
+import dev.tomewisp.model.catalog.ModelCatalogRequest;
 import dev.tomewisp.model.config.ModelProfileDefinition;
 import dev.tomewisp.model.config.ModelProfilesConfig;
 import dev.tomewisp.model.config.ResolvedModelProfile;
@@ -87,6 +89,14 @@ public final class ClientSettingsService implements AutoCloseable {
 
         CompletableFuture<ModelConnectionResult> probe(
                 ResolvedModelProfile profile, CancellationSignal cancellation);
+
+        default CompletableFuture<ToolResult<ModelCatalog>> fetchCatalog(
+                ModelCatalogRequest request,
+                SecretValue replacement,
+                CancellationSignal cancellation) {
+            return CompletableFuture.completedFuture(new ToolResult.Failure<>(
+                    "model_catalog_unavailable", "Model catalog discovery is unavailable"));
+        }
     }
 
     public interface MetadataActions {
@@ -279,6 +289,7 @@ public final class ClientSettingsService implements AutoCloseable {
     private SettingsNotice notice;
     private ClientSettingsSnapshot snapshot;
     private ActiveProbe activeProbe;
+    private ActiveCatalog activeCatalog;
     private boolean closed;
 
     public ClientSettingsService(
@@ -843,6 +854,47 @@ public final class ClientSettingsService implements AutoCloseable {
         return result;
     }
 
+    public CompletableFuture<ToolResult<ModelCatalog>> fetchModelCatalog(
+            ModelCatalogRequest request,
+            SecretValue replacement) {
+        Objects.requireNonNull(request, "request");
+        Reservation reservation = reserve(SettingsOperation.catalog(request.profileId()));
+        if (!reservation.accepted()) {
+            return CompletableFuture.completedFuture(new ToolResult.Failure<>(
+                    reservation.failureCode(),
+                    reservation.failureCode().equals("settings_closed")
+                            ? "Settings are closed"
+                            : "Another settings operation is already running"));
+        }
+        CancellationSignal cancellation = new CancellationSignal();
+        CompletableFuture<ToolResult<ModelCatalog>> outward = new CompletableFuture<>();
+        synchronized (lock) {
+            activeCatalog = new ActiveCatalog(reservation.id(), cancellation, outward);
+        }
+        worker.execute(() -> startCatalog(
+                reservation.id(), request, replacement, cancellation, outward));
+        return outward;
+    }
+
+    public boolean cancelModelCatalog() {
+        ActiveCatalog catalog;
+        ToolResult.Failure<ModelCatalog> cancelled = new ToolResult.Failure<>(
+                "model_catalog_cancelled", "The model catalog request was cancelled");
+        synchronized (lock) {
+            catalog = activeCatalog;
+            if (catalog == null || !isCurrentLocked(catalog.id())) {
+                return false;
+            }
+            activeCatalog = null;
+            operation = SettingsOperation.idle();
+            notice = SettingsNotice.failure(cancelled.code(), cancelled.message());
+            publishLocked();
+        }
+        catalog.cancellation().cancel();
+        catalog.result().complete(cancelled);
+        return true;
+    }
+
     public CompletableFuture<ModelConnectionResult> testConnection(
             ModelProfileDefinition candidate) {
         return testConnection(candidate, null);
@@ -922,6 +974,7 @@ public final class ClientSettingsService implements AutoCloseable {
             closed = true;
         }
         cancelConnectionTest();
+        cancelModelCatalog();
         try {
             return metadataActions.closeAsync().exceptionally(ignored -> null);
         } catch (RuntimeException failure) {
@@ -975,6 +1028,65 @@ public final class ClientSettingsService implements AutoCloseable {
                                         ? "The connection test was cancelled"
                                         : "The model provider could not be reached"),
                 outward)));
+    }
+
+    private void startCatalog(
+            long operationId,
+            ModelCatalogRequest request,
+            SecretValue replacement,
+            CancellationSignal cancellation,
+            CompletableFuture<ToolResult<ModelCatalog>> outward) {
+        if (!isCurrent(operationId)) {
+            return;
+        }
+        CompletableFuture<ToolResult<ModelCatalog>> pending;
+        try {
+            pending = Objects.requireNonNull(
+                    models.fetchCatalog(request, replacement, cancellation),
+                    "model catalog future");
+        } catch (RuntimeException failure) {
+            pending = CompletableFuture.completedFuture(new ToolResult.Failure<>(
+                    "model_catalog_transport_failed",
+                    "The model provider catalog could not be reached"));
+        }
+        pending.whenComplete((result, thrown) -> dispatcher.execute(() -> finishCatalog(
+                operationId, result, thrown, cancellation, outward)));
+    }
+
+    private void finishCatalog(
+            long operationId,
+            ToolResult<ModelCatalog> completed,
+            Throwable thrown,
+            CancellationSignal cancellation,
+            CompletableFuture<ToolResult<ModelCatalog>> outward) {
+        ToolResult<ModelCatalog> result;
+        synchronized (lock) {
+            if (!isCurrentLocked(operationId)) {
+                return;
+            }
+            activeCatalog = null;
+            operation = SettingsOperation.idle();
+            if (thrown == null && completed instanceof ToolResult.Success<ModelCatalog> success) {
+                result = new ToolResult.Success<>(success.value());
+                notice = SettingsNotice.success(
+                        "model_catalog_loaded", "Model catalog loaded");
+            } else {
+                ToolResult.Failure<ModelCatalog> failure =
+                        thrown == null && completed instanceof ToolResult.Failure<ModelCatalog> value
+                                ? value
+                                : new ToolResult.Failure<>(
+                                        cancellation.isCancelled()
+                                                ? "model_catalog_cancelled"
+                                                : "model_catalog_transport_failed",
+                                        cancellation.isCancelled()
+                                                ? "The model catalog request was cancelled"
+                                                : "The model provider catalog could not be reached");
+                result = new ToolResult.Failure<>(failure.code(), failure.message());
+                notice = SettingsNotice.failure(failure.code(), failure.message());
+            }
+            publishLocked();
+        }
+        outward.complete(result);
     }
 
     private void finishProbe(
@@ -1694,4 +1806,9 @@ public final class ClientSettingsService implements AutoCloseable {
             long id,
             CancellationSignal cancellation,
             CompletableFuture<ModelConnectionResult> result) {}
+
+    private record ActiveCatalog(
+            long id,
+            CancellationSignal cancellation,
+            CompletableFuture<ToolResult<ModelCatalog>> result) {}
 }

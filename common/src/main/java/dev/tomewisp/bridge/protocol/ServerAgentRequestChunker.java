@@ -8,6 +8,9 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.time.Duration;
+import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.TimeUnit;
 
 public final class ServerAgentRequestChunker {
     public List<ServerAgentRequestChunkPayload> split(
@@ -35,15 +38,39 @@ public final class ServerAgentRequestChunker {
     }
 
     public static final class Reassembler {
+        private static final java.util.concurrent.ScheduledExecutorService TIMEOUTS =
+                java.util.concurrent.Executors.newSingleThreadScheduledExecutor(runnable -> {
+                    Thread thread = new Thread(runnable, "tomewisp-request-chunk-timeouts");
+                    thread.setDaemon(true);
+                    return thread;
+                });
         private final Map<Key, Assembly> assemblies = new HashMap<>();
+        private final Duration timeout;
+
+        public Reassembler() {
+            this(BridgeProtocol.PARTIAL_ASSEMBLY_TIMEOUT);
+        }
+
+        public Reassembler(Duration timeout) {
+            this.timeout = java.util.Objects.requireNonNull(timeout, "timeout");
+            if (timeout.isZero() || timeout.isNegative()) {
+                throw new IllegalArgumentException("timeout must be positive");
+            }
+        }
 
         public synchronized java.util.Optional<String> accept(
                 UUID actorId, ServerAgentRequestChunkPayload chunk) {
             Key key = new Key(actorId, chunk.requestId());
-            Assembly assembly = assemblies.computeIfAbsent(
-                    key, ignored -> new Assembly(chunk.total(), chunk.contentHash()));
+            Assembly assembly = assemblies.get(key);
+            if (assembly == null) {
+                assembly = new Assembly(chunk.total(), chunk.contentHash());
+                Assembly scheduled = assembly;
+                assembly.deadline = TIMEOUTS.schedule(
+                        () -> expire(key, scheduled), timeout.toMillis(), TimeUnit.MILLISECONDS);
+                assemblies.put(key, assembly);
+            }
             if (assembly.total != chunk.total() || !assembly.hash.equals(chunk.contentHash())) {
-                assemblies.remove(key);
+                remove(key);
                 throw new IllegalArgumentException(
                         "Chunk metadata changed during server Agent request assembly");
             }
@@ -51,7 +78,7 @@ public final class ServerAgentRequestChunker {
             byte[] existing = assembly.parts.get(chunk.index());
             if (existing != null) {
                 if (!java.util.Arrays.equals(existing, value)) {
-                    assemblies.remove(key);
+                    remove(key);
                     throw new IllegalArgumentException("Duplicate chunk has different content");
                 }
                 return java.util.Optional.empty();
@@ -65,7 +92,7 @@ public final class ServerAgentRequestChunker {
                 output.writeBytes(assembly.parts.get(index));
             }
             byte[] complete = output.toByteArray();
-            assemblies.remove(key);
+            remove(key);
             if (!ResultChunker.sha256(complete).equals(assembly.hash)) {
                 throw new IllegalArgumentException(
                         "Reassembled server Agent request hash does not match");
@@ -74,11 +101,27 @@ public final class ServerAgentRequestChunker {
         }
 
         public synchronized void cancel(UUID actorId, UUID requestId) {
-            assemblies.remove(new Key(actorId, requestId));
+            remove(new Key(actorId, requestId));
         }
 
         public synchronized void clearActor(UUID actorId) {
-            assemblies.keySet().removeIf(key -> key.actorId().equals(actorId));
+            List<Key> owned = assemblies.keySet().stream()
+                    .filter(key -> key.actorId().equals(actorId))
+                    .toList();
+            owned.forEach(this::remove);
+        }
+
+        synchronized int activeAssemblies() {
+            return assemblies.size();
+        }
+
+        private synchronized void expire(Key key, Assembly expected) {
+            assemblies.remove(key, expected);
+        }
+
+        private void remove(Key key) {
+            Assembly removed = assemblies.remove(key);
+            if (removed != null) removed.cancelDeadline();
         }
 
         private record Key(UUID actorId, UUID requestId) {
@@ -92,11 +135,17 @@ public final class ServerAgentRequestChunker {
             private final int total;
             private final String hash;
             private final Map<Integer, byte[]> parts;
+            private volatile ScheduledFuture<?> deadline;
 
             private Assembly(int total, String hash) {
                 this.total = total;
                 this.hash = hash;
                 parts = new HashMap<>();
+            }
+
+            private void cancelDeadline() {
+                ScheduledFuture<?> current = deadline;
+                if (current != null) current.cancel(false);
             }
         }
     }

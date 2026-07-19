@@ -32,8 +32,12 @@ public final class ServerAgentService {
                 UUID actorId, Set<ContextCapability> capabilities, String correlationId);
     }
 
-    private final GameGuideAgent agent;
-    private final AgentToolExecutor tools;
+    @FunctionalInterface
+    public interface RequestRuntimeFactory {
+        ToolResult<RequestRuntime> create(UUID actorId, ServerAgentRequestPayload payload);
+    }
+
+    private final RequestRuntimeFactory runtimes;
     private final AgentSessionStore sessions;
     private final ContextProvider contexts;
     private final ServerGuideEvents events;
@@ -63,8 +67,26 @@ public final class ServerAgentService {
             Gson gson,
             String systemPrompt,
             Function<dev.tomewisp.model.CancellationSignal, CompletableFuture<Void>> dispatchReady) {
-        this.agent = agent;
-        this.tools = tools;
+        this(
+                (actor, payload) -> new ToolResult.Success<>(
+                        new RequestRuntime(agent, tools, () -> {})),
+                sessions,
+                contexts,
+                events,
+                gson,
+                systemPrompt,
+                dispatchReady);
+    }
+
+    public ServerAgentService(
+            RequestRuntimeFactory runtimes,
+            AgentSessionStore sessions,
+            ContextProvider contexts,
+            ServerGuideEvents events,
+            Gson gson,
+            String systemPrompt,
+            Function<dev.tomewisp.model.CancellationSignal, CompletableFuture<Void>> dispatchReady) {
+        this.runtimes = java.util.Objects.requireNonNull(runtimes, "runtimes");
         this.sessions = sessions;
         this.contexts = contexts;
         this.events = events;
@@ -74,9 +96,18 @@ public final class ServerAgentService {
     }
 
     public ToolResult<Accepted> ask(UUID sender, ServerAgentRequestPayload payload) {
+        ToolResult<RequestRuntime> prepared = runtimes.create(sender, payload);
+        if (prepared instanceof ToolResult.Failure<RequestRuntime> failure) {
+            return new ToolResult.Failure<>(failure.code(), failure.message());
+        }
+        RequestRuntime runtime = ((ToolResult.Success<RequestRuntime>) prepared).value();
         Owner owner = new Owner(
-                sender, payload.sessionId(), new dev.tomewisp.model.CancellationSignal());
+                sender,
+                payload.sessionId(),
+                new dev.tomewisp.model.CancellationSignal(),
+                runtime);
         if (active.putIfAbsent(payload.requestId(), owner) != null) {
+            runtime.close().run();
             return new ToolResult.Failure<>("duplicate_request", "Request ID is already active");
         }
         dispatchReady.apply(owner.cancellation())
@@ -85,7 +116,9 @@ public final class ServerAgentService {
                         return CompletableFuture.completedFuture(null);
                     }
                     return contexts.capture(
-                            sender, tools.requiredContext(), payload.requestId().toString());
+                            sender,
+                            runtime.tools().requiredContext(),
+                            payload.requestId().toString());
                 })
                 .thenCompose(context -> {
                     if (context == null
@@ -104,7 +137,7 @@ public final class ServerAgentService {
                     List<ModelMessage> restored = payload.history().stream()
                             .map(ServerAgentHistoryMessage::toModelMessage)
                             .toList();
-                    return agent.askWithHistory(
+                    return runtime.agent().askWithHistory(
                             request,
                             restored,
                             event -> publish(payload.requestId(), owner, event));
@@ -136,6 +169,7 @@ public final class ServerAgentService {
         active.entrySet().removeIf(entry -> {
             if (entry.getValue().actorId().equals(sender)) {
                 entry.getValue().cancellation().cancel();
+                entry.getValue().runtime().close().run();
                 return true;
             }
             return false;
@@ -155,7 +189,9 @@ public final class ServerAgentService {
         boolean terminal = event instanceof AgentEvent.FinalText || event instanceof AgentEvent.Failed;
         events.send(owner.actorId(), eventCodec.encode(requestId, event));
         if (terminal) {
-            active.remove(requestId, owner);
+            if (active.remove(requestId, owner)) {
+                owner.runtime().close().run();
+            }
         }
     }
 
@@ -163,6 +199,7 @@ public final class ServerAgentService {
         if (!active.remove(requestId, owner)) {
             return;
         }
+        owner.runtime().close().run();
         Throwable cause = throwable;
         while (cause instanceof java.util.concurrent.CompletionException && cause.getCause() != null) {
             cause = cause.getCause();
@@ -177,6 +214,19 @@ public final class ServerAgentService {
     }
 
     public record Accepted(UUID requestId, String sessionId) {}
+
+    public record RequestRuntime(
+            GameGuideAgent agent, AgentToolExecutor tools, Runnable close) {
+        public RequestRuntime {
+            java.util.Objects.requireNonNull(agent, "agent");
+            java.util.Objects.requireNonNull(tools, "tools");
+            java.util.Objects.requireNonNull(close, "close");
+        }
+    }
+
     private record Owner(
-            UUID actorId, String sessionId, dev.tomewisp.model.CancellationSignal cancellation) {}
+            UUID actorId,
+            String sessionId,
+            dev.tomewisp.model.CancellationSignal cancellation,
+            RequestRuntime runtime) {}
 }

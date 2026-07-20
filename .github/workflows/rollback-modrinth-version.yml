@@ -1,0 +1,51 @@
+name: Roll back one Modrinth version
+
+on:
+  workflow_dispatch:
+    inputs:
+      version_number:
+        description: Exact Modrinth version number to delete
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  delete-version:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Delete only the requested OpenAllay versions
+        env:
+          MODRINTH_TOKEN: ${{ secrets.MODRINTH_TOKEN }}
+          VERSION_NUMBER: ${{ inputs.version_number }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${MODRINTH_TOKEN}"
+          test "${VERSION_NUMBER}" = "0.1.1-SNAPSHOT"
+          api="https://api.modrinth.com/v2"
+          user_agent="OpenAllay-release-rollback/0.1 (github.com/nkanf-dev/OpenAllay)"
+          versions=$(curl -fsS \
+            -H "User-Agent: ${user_agent}" \
+            -H "Authorization: ${MODRINTH_TOKEN}" \
+            "${api}/project/vuB8HitN/version?include_changelog=false")
+          mapfile -t ids < <(jq -r \
+            --arg version "${VERSION_NUMBER}" \
+            '.[] | select(.version_number == $version) | .id' <<<"${versions}")
+          test "${#ids[@]}" -gt 0
+          for id in "${ids[@]}"; do
+            curl -fsS -X DELETE \
+              -H "User-Agent: ${user_agent}" \
+              -H "Authorization: ${MODRINTH_TOKEN}" \
+              "${api}/version/${id}"
+            echo "Deleted Modrinth version ${id}"
+          done
+          remaining=$(curl -fsS \
+            -H "User-Agent: ${user_agent}" \
+            -H "Authorization: ${MODRINTH_TOKEN}" \
+            "${api}/project/vuB8HitN/version?include_changelog=false" \
+            | jq -r --arg version "${VERSION_NUMBER}" \
+              '[.[] | select(.version_number == $version)] | length')
+          test "${remaining}" = "0"

@@ -4,6 +4,7 @@ import com.google.gson.JsonObject;
 import dev.openallay.agent.tool.AgentToolExecutor;
 import dev.openallay.agent.tool.AgentToolResult;
 import dev.openallay.agent.tool.LocalAgentToolExecutor;
+import dev.openallay.bridge.ResourceToolPlacement;
 import dev.openallay.context.ContextCapability;
 import dev.openallay.context.ToolInvocationContext;
 import dev.openallay.model.CancellationSignal;
@@ -76,7 +77,24 @@ public final class ClientPlacedToolExecutor implements AgentToolExecutor {
                 ? Optional.empty()
                 : remote.canonicalToolId(REMOTE_PREFIX + modelToolName);
         if (localId.isPresent()) {
-            if (remoteId.equals(localId) && useRemote(localId.orElseThrow(), arguments)) {
+            String toolId = localId.orElseThrow();
+            ResourceToolPlacement.Decision placement = ResourceToolPlacement.decide(
+                    toolId, arguments, ResourceToolPlacement.Side.CLIENT);
+            if (placement == ResourceToolPlacement.Decision.CONFLICT) {
+                return completedFailure(
+                        toolId,
+                        "resource_placement_conflict",
+                        "One resource operation cannot mix client-only and server-only roots");
+            }
+            if (placement == ResourceToolPlacement.Decision.REMOTE && remoteId.isEmpty()) {
+                return completedFailure(
+                        toolId,
+                        "server_resource_unavailable",
+                        "The requested server resource is unavailable");
+            }
+            if (remoteId.equals(localId)
+                    && (placement == ResourceToolPlacement.Decision.REMOTE
+                            || useRemote(toolId, arguments))) {
                 return remote.execute(
                         REMOTE_PREFIX + modelToolName, arguments, context, cancellation);
             }
@@ -92,6 +110,15 @@ public final class ClientPlacedToolExecutor implements AgentToolExecutor {
         normalized.addProperty("message", "Tool is unavailable in this request");
         return CompletableFuture.completedFuture(
                 new AgentToolResult(UNKNOWN_TOOL_ID, normalized, true));
+    }
+
+    private static CompletableFuture<AgentToolResult> completedFailure(
+            String toolId, String code, String message) {
+        JsonObject normalized = new JsonObject();
+        normalized.addProperty("status", "failure");
+        normalized.addProperty("code", code);
+        normalized.addProperty("message", message);
+        return CompletableFuture.completedFuture(new AgentToolResult(toolId, normalized, true));
     }
 
     private static boolean useRemote(String toolId, JsonObject arguments) {

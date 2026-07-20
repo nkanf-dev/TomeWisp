@@ -1,6 +1,8 @@
 package dev.openallay.guide.ui;
 
 import com.google.gson.JsonObject;
+import dev.openallay.agent.tool.ToolResultDiagnostics;
+import dev.openallay.agent.tool.ToolUiReference;
 import dev.openallay.guide.GuideSource;
 import dev.openallay.guide.GuideToolMessage;
 import dev.openallay.guide.GuideToolStatus;
@@ -29,6 +31,8 @@ public record GuideToolDetailView(
             String invocationId,
             String toolId,
             List<GuideSource> sources,
+            ToolUiReference uiReference,
+            ToolResultDiagnostics diagnostics,
             JsonObject normalized,
             String validationDiagnostic) {
         public Debug {
@@ -37,6 +41,8 @@ public record GuideToolDetailView(
                 throw new IllegalArgumentException("debug identity must not be blank");
             }
             sources = List.copyOf(sources);
+            java.util.Objects.requireNonNull(uiReference, "uiReference");
+            java.util.Objects.requireNonNull(diagnostics, "diagnostics");
             normalized = normalized == null ? null : normalized.deepCopy();
             validationDiagnostic = validationDiagnostic == null ? "" : validationDiagnostic;
         }
@@ -44,6 +50,22 @@ public record GuideToolDetailView(
         @Override
         public JsonObject normalized() {
             return normalized == null ? null : normalized.deepCopy();
+        }
+
+        public Debug(
+                String invocationId,
+                String toolId,
+                List<GuideSource> sources,
+                JsonObject normalized,
+                String validationDiagnostic) {
+            this(
+                    invocationId,
+                    toolId,
+                    sources,
+                    ToolUiReference.none(),
+                    ToolResultDiagnostics.none(),
+                    normalized,
+                    validationDiagnostic);
         }
     }
 }

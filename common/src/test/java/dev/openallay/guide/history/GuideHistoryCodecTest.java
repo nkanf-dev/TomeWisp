@@ -9,6 +9,9 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
+import dev.openallay.agent.tool.ToolResultDiagnostics;
+import dev.openallay.agent.tool.ToolUiReference;
+import dev.openallay.agent.tool.ToolUiSummary;
 import dev.openallay.guide.GuideModelSelection;
 import dev.openallay.guide.GuideSource;
 import dev.openallay.guide.GuideTimelineEntry;
@@ -16,6 +19,9 @@ import dev.openallay.guide.GuideToolActivity;
 import dev.openallay.guide.GuideToolMessage;
 import dev.openallay.guide.GuideToolStatus;
 import dev.openallay.testing.GroundedTestFixtures;
+import dev.openallay.resource.vfs.ResourcePath;
+import dev.openallay.resource.vfs.ResourcePresentation;
+import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
@@ -79,6 +85,14 @@ final class GuideHistoryCodecTest {
                         "openallay:get_recipe",
                         GuideToolStatus.SUCCEEDED,
                         normalized,
+                        new ToolUiReference(
+                                ResourcePath.parse("/result/r7"),
+                                List.of(ResourcePath.parse("/recipe/minecraft/iron_block")),
+                                ResourcePresentation.Kind.RECIPE,
+                                true,
+                                new ToolUiSummary("resource_read", 1, 0, List.of("record"))),
+                        new ToolResultDiagnostics(
+                                2048, 256, "b".repeat(64), Instant.parse("2026-07-20T00:00:00Z")),
                         List.of(
                                 GuideToolMessage.of(
                                         GuideToolMessage.Key.RECIPE_DETAIL,
@@ -108,8 +122,29 @@ final class GuideHistoryCodecTest {
                                 "1")),
                 tool.presentationMessages());
         assertEquals(List.of(source), tool.sources());
+        assertEquals(ResourcePath.parse("/result/r7"), tool.uiReference().resultPath());
+        assertEquals(ResourcePresentation.Kind.RECIPE, tool.uiReference().presentationKind());
+        assertEquals("resource_read", tool.uiReference().summary().operation());
+        assertEquals(2048, tool.diagnostics().normalizedBytes());
         assertFalse(encoded.contains("secretRawField"));
         assertFalse(encoded.contains("must-not-persist"));
+    }
+
+    @Test
+    void decodesLegacyDisplayOnlyToolRowsWithoutInventingLiveResources() {
+        GuideHistoryCodec codec = new GuideHistoryCodec();
+        GuideTimelineEntry.Tool restored = (GuideTimelineEntry.Tool) codec.decodeTimeline("""
+                [{"type":"tool","ordinal":0,"invocationId":"legacy-call","index":0,
+                "toolId":"openallay:get_recipe","status":"SUCCEEDED",
+                "presentationMessages":[{"key":"RESULT_COMPLETED","arguments":[]}],
+                "sources":[]}]
+                """).getFirst();
+
+        assertNull(restored.activity().normalized());
+        assertNull(restored.activity().uiReference().resultPath());
+        assertEquals(ResourcePresentation.Kind.NONE,
+                restored.activity().uiReference().presentationKind());
+        assertEquals("unavailable", restored.activity().diagnostics().generationId());
     }
 
     @Test

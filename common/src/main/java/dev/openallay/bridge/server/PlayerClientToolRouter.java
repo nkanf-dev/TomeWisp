@@ -7,6 +7,7 @@ import dev.openallay.agent.tool.AgentToolExecutor;
 import dev.openallay.agent.tool.AgentToolResult;
 import dev.openallay.agent.tool.LocalAgentToolExecutor;
 import dev.openallay.agent.tool.ToolRuntimeCatalog;
+import dev.openallay.bridge.ResourceToolPlacement;
 import dev.openallay.bridge.protocol.BridgeProtocol;
 import dev.openallay.bridge.protocol.ClientToolCallPayload;
 import dev.openallay.bridge.protocol.ClientToolCancelPayload;
@@ -22,6 +23,7 @@ import dev.openallay.tool.ToolAccess;
 import dev.openallay.tool.ToolRegistry;
 import dev.openallay.tool.ToolResult;
 import dev.openallay.trace.replay.ToolResultNormalizer;
+import dev.openallay.resource.runtime.ResourceRequestRegistry;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -56,14 +58,24 @@ public final class PlayerClientToolRouter {
     private final Transport transport;
     private final ToolResultNormalizer normalizer;
     private final Duration resultTimeout;
+    private final ResourceRequestRegistry resources;
     private final Map<RequestKey, RequestExecutor> active = new ConcurrentHashMap<>();
 
     public PlayerClientToolRouter(ToolRegistry tools, Gson gson, Transport transport) {
-        this(tools, gson, transport, Duration.ofMinutes(5));
+        this(tools, gson, transport, Duration.ofMinutes(5), null);
     }
 
     public PlayerClientToolRouter(
             ToolRegistry tools, Gson gson, Transport transport, Duration resultTimeout) {
+        this(tools, gson, transport, resultTimeout, null);
+    }
+
+    public PlayerClientToolRouter(
+            ToolRegistry tools,
+            Gson gson,
+            Transport transport,
+            Duration resultTimeout,
+            ResourceRequestRegistry resources) {
         java.util.Objects.requireNonNull(tools, "tools");
         Set<String> nonReadOnly = tools.descriptors().stream()
                 .filter(descriptor -> descriptor.access() != ToolAccess.READ_ONLY)
@@ -73,6 +85,7 @@ public final class PlayerClientToolRouter {
         this.gson = java.util.Objects.requireNonNull(gson, "gson");
         this.transport = java.util.Objects.requireNonNull(transport, "transport");
         this.resultTimeout = java.util.Objects.requireNonNull(resultTimeout, "resultTimeout");
+        this.resources = resources;
         if (resultTimeout.isZero() || resultTimeout.isNegative()) {
             throw new IllegalArgumentException("resultTimeout must be positive");
         }
@@ -180,6 +193,21 @@ public final class PlayerClientToolRouter {
                 return completedFailure(
                         toolId, "tool_unavailable", "Tool is unavailable in this request");
             }
+            ResourceToolPlacement.Decision placement = ResourceToolPlacement.decide(
+                    toolId, arguments, ResourceToolPlacement.Side.SERVER);
+            if (placement == ResourceToolPlacement.Decision.CONFLICT) {
+                return completedFailure(
+                        toolId,
+                        "resource_placement_conflict",
+                        "One resource operation cannot mix client-only and server-only roots");
+            }
+            if (placement == ResourceToolPlacement.Decision.REMOTE
+                    && !clientTools.contains(toolId)) {
+                return completedFailure(
+                        toolId,
+                        "client_resource_unavailable",
+                        "The requested player-client resource is unavailable");
+            }
             if (!useClient(toolId, arguments)) {
                 return local.execute(modelToolName, arguments, context, cancellation);
             }
@@ -195,6 +223,7 @@ public final class PlayerClientToolRouter {
                     sessionId,
                     toolId,
                     arguments.toString());
+            value.viewId = payload.viewId();
             synchronized (value) {
                 if (pending.get(invocationId) != value || cancellation.isCancelled()) {
                     return result;
@@ -226,6 +255,11 @@ public final class PlayerClientToolRouter {
             if (!clientTools.contains(toolId)) {
                 return false;
             }
+            if (ResourceToolPlacement.isResourceTool(toolId)) {
+                return ResourceToolPlacement.decide(
+                                toolId, arguments, ResourceToolPlacement.Side.SERVER)
+                        == ResourceToolPlacement.Decision.REMOTE;
+            }
             if (!toolId.equals("openallay:inspect_game_state")) {
                 return true;
             }
@@ -247,6 +281,9 @@ public final class PlayerClientToolRouter {
                     return false;
                 }
                 try {
+                    if (!java.util.Objects.equals(value.viewId, chunk.viewId())) {
+                        throw new IllegalArgumentException("Client resource view identity changed");
+                    }
                     Optional<String> complete = reassembler.accept(chunk.asRemoteChunk());
                     if (complete.isEmpty()) {
                         return true;
@@ -268,7 +305,17 @@ public final class PlayerClientToolRouter {
                         return false;
                     }
                     boolean failed = validated.get("status").getAsString().equals("failure");
-                    value.result.complete(new AgentToolResult(value.toolId, validated, failed));
+                    AgentToolResult completed = !failed
+                                    && resources != null
+                                    && ResourceToolPlacement.isResourceTool(value.toolId)
+                            ? resources.importRemoteResult(
+                                    key.requestId.toString(),
+                                    value.toolId,
+                                    chunk.invocationId().toString(),
+                                    validated,
+                                    "client")
+                            : new AgentToolResult(value.toolId, validated, failed);
+                    value.result.complete(completed);
                     return true;
                 } catch (RuntimeException failure) {
                     pending.remove(chunk.invocationId(), value);
@@ -390,6 +437,22 @@ public final class PlayerClientToolRouter {
                         .equals(tool.descriptor().outputType().getName())) {
             return null;
         }
+        if (ResourceToolPlacement.isResourceTool(toolId)) {
+            JsonObject value = normalized.get("value").isJsonObject()
+                    ? normalized.getAsJsonObject("value") : null;
+            if (value == null
+                    || !value.keySet().equals(Set.of("operation", "resultPath", "items", "evidence"))
+                    || !value.get("operation").isJsonPrimitive()
+                    || !value.get("resultPath").isJsonPrimitive()
+                    || !value.get("items").isJsonArray()
+                    || !value.get("evidence").isJsonArray()
+                    || value.getAsJsonArray("evidence").isEmpty()) {
+                return null;
+            }
+            // Resource outputs are exact canonical JSON. Re-deserializing would discard their
+            // transient model/UI projections and then normalize a different object.
+            return normalized.deepCopy();
+        }
         try {
             Object value = gson.fromJson(normalized.get("value"), tool.descriptor().outputType());
             return normalizer.normalize(
@@ -405,6 +468,7 @@ public final class PlayerClientToolRouter {
         private final String toolId;
         private final CompletableFuture<AgentToolResult> result;
         private volatile ScheduledFuture<?> deadline;
+        private volatile String viewId;
         private boolean dispatched;
 
         private Pending(String toolId, CompletableFuture<AgentToolResult> result) {

@@ -14,9 +14,9 @@ public final class BridgeJsonCodec {
                     "serverContextWindowTokens", "serverMaxOutputTokens",
                     "serverPromptAndToolTokens", "serverCanonicalModelId")),
             Map.entry(RemoteToolCallPayload.class,
-                    Set.of("version", "correlationId", "sessionId", "toolId", "argumentsJson")),
+                    Set.of("version", "correlationId", "sessionId", "toolId", "viewId", "argumentsJson")),
             Map.entry(RemoteToolResultChunkPayload.class,
-                    Set.of("version", "correlationId", "index", "total", "contentHash", "base64Data")),
+                    Set.of("version", "correlationId", "index", "total", "viewId", "contentHash", "base64Data")),
             Map.entry(RemoteCancelPayload.class, Set.of("version", "correlationId")),
             Map.entry(ServerAgentRequestPayload.class,
                     Set.of(
@@ -25,11 +25,11 @@ public final class BridgeJsonCodec {
             Map.entry(ClientToolCallPayload.class,
                     Set.of(
                             "version", "requestId", "invocationId", "sessionId", "toolId",
-                            "argumentsJson")),
+                            "viewId", "argumentsJson")),
             Map.entry(ClientToolResultChunkPayload.class,
                     Set.of(
                             "version", "requestId", "invocationId", "index", "total",
-                            "contentHash", "base64Data")),
+                            "viewId", "contentHash", "base64Data")),
             Map.entry(ClientToolCancelPayload.class,
                     Set.of("version", "requestId", "invocationId")),
             Map.entry(ServerAgentRequestChunkPayload.class,

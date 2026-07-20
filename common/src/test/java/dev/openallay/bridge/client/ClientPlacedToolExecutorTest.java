@@ -25,12 +25,12 @@ final class ClientPlacedToolExecutorTest {
     @Test
     void exposesOneLogicalDefinitionAndRoutesWorldQueryToTheServer() {
         ToolRegistry registry = new ToolRegistry();
-        registry.register("test", List.of(new InspectTool()));
+        registry.register("test", List.of(new ResourceReadTool()));
         RemoteCapabilityStore capabilities = new RemoteCapabilityStore();
         capabilities.replace(new CapabilityPayload(
                 BridgeProtocol.VERSION,
                 List.of(
-                        capability("openallay:inspect_game_state"),
+                        capability("openallay:resource_read"),
                         capability("unique:fact")),
                 false, 0, 0, 0, ""));
         AtomicReference<RemoteToolCallPayload> sent = new AtomicReference<>();
@@ -47,32 +47,38 @@ final class ClientPlacedToolExecutorTest {
         assertEquals(2, tools.definitions().size());
         assertEquals(1, tools.definitions().stream()
                 .filter(definition -> tools.canonicalToolId(definition.name()).orElseThrow()
-                        .equals("openallay:inspect_game_state"))
+                        .equals("openallay:resource_read"))
                 .count());
         assertTrue(tools.definitions().stream().noneMatch(
                 definition -> definition.name().startsWith("server__")));
 
-        JsonObject options = new JsonObject();
-        options.addProperty("section", "OPTIONS");
+        JsonObject options = paths("/game/options");
         var local = tools.execute(
-                        "openallay__inspect_game_state",
+                        "resource_read",
                         options,
                         ToolInvocationContext.developmentConsole("local"),
                         new CancellationSignal())
                 .join();
-        assertFalse(local.failure());
+        assertFalse(local.failure(), local.normalized().toString());
         assertEquals("client", local.normalized()
                 .getAsJsonObject("value").get("placement").getAsString());
         assertEquals(null, sent.get());
 
-        JsonObject query = new JsonObject();
-        query.addProperty("section", "WORLD_QUERY");
+        JsonObject query = paths("/world/dimension");
         tools.execute(
-                "openallay__inspect_game_state",
+                "resource_read",
                 query,
                 ToolInvocationContext.developmentConsole("remote"),
                 new CancellationSignal());
-        assertEquals("openallay:inspect_game_state", sent.get().toolId());
+        assertEquals("openallay:resource_read", sent.get().toolId());
+    }
+
+    private static JsonObject paths(String... values) {
+        JsonObject result = new JsonObject();
+        com.google.gson.JsonArray paths = new com.google.gson.JsonArray();
+        for (String value : values) paths.add(value);
+        result.add("paths", paths);
+        return result;
     }
 
     private static CapabilityPayload.RemoteToolCapability capability(String id) {
@@ -80,14 +86,14 @@ final class ClientPlacedToolExecutorTest {
                 id, "Read " + id, "{\"type\":\"object\"}");
     }
 
-    private static final class InspectTool
-            implements Tool<InspectTool.Input, InspectTool.Output> {
-        record Input(String section) {}
+    private static final class ResourceReadTool
+            implements Tool<ResourceReadTool.Input, ResourceReadTool.Output> {
+        record Input(List<String> paths) {}
         record Output(String placement) {}
 
         private static final ToolDescriptor<Input, Output> DESCRIPTOR = new ToolDescriptor<>(
-                "openallay:inspect_game_state",
-                "Inspect game state",
+                "openallay:resource_read",
+                "Read resource paths",
                 Input.class,
                 Output.class,
                 ToolAccess.READ_ONLY);

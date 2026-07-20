@@ -9,6 +9,10 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import dev.openallay.context.ContextCapability;
 import dev.openallay.context.ToolInvocationContext;
+import dev.openallay.knowledge.KnowledgeRegistry;
+import dev.openallay.platform.PlatformService;
+import dev.openallay.resource.runtime.ResourceRequestRegistry;
+import dev.openallay.testing.GroundedTestFixtures;
 import dev.openallay.tool.Tool;
 import dev.openallay.tool.ToolAccess;
 import dev.openallay.tool.ToolDescriptor;
@@ -102,6 +106,42 @@ final class AgentTraceReplayerTest {
         assertFalse(missingContext.passed());
         assertEquals("missing_context: player", missingContext.error());
         assertTrue(missingContext.steps().isEmpty());
+    }
+
+    @Test
+    void bindsAndReleasesRequestVfsForDeterministicResourceTraces() {
+        ToolRegistry tools = new ToolRegistry();
+        ResourceRequestRegistry resources = new ResourceRequestRegistry(
+                new PlatformService() {
+                    @Override public String platformName() { return "test"; }
+                    @Override public String gameVersion() { return "26.2"; }
+                    @Override public boolean isModLoaded(String id) { return false; }
+                    @Override public boolean isDevelopmentEnvironment() { return true; }
+                },
+                new KnowledgeRegistry());
+        tools.registerResourceTools("test:vfs", resources);
+        AgentTrace trace = new AgentTrace(
+                1,
+                "resource-read",
+                "read platform",
+                Set.of(ContextCapability.OBSERVABLE_GAME_STATE),
+                List.of(new ToolCallStep(
+                        "openallay:resource_read",
+                        object("{\"paths\":[\"/game/runtime\"]}"),
+                        new TraceExpectation(
+                                "success",
+                                ExpectationMatch.CONTAINS,
+                                JsonParser.parseString("{\"operation\":\"resource_read\"}"),
+                                null))));
+        AgentTraceReplayer replayer = new AgentTraceReplayer(tools, new Gson(), resources);
+
+        ReplayReport first = replayer.replay(trace, GroundedTestFixtures.fullContext());
+        ReplayReport second = replayer.replay(trace, GroundedTestFixtures.fullContext());
+
+        assertTrue(first.passed(), first.error());
+        assertTrue(second.passed(), second.error());
+        assertTrue(first.steps().getFirst().actual().toString().contains("/game/runtime"));
+        resources.close();
     }
 
     private static AgentTraceReplayer replayer(AtomicInteger invocations) {

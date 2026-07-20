@@ -6,9 +6,15 @@ import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.google.gson.JsonParser;
+import dev.openallay.agent.tool.ToolResultDiagnostics;
+import dev.openallay.agent.tool.ToolUiReference;
+import dev.openallay.agent.tool.ToolUiSummary;
 import dev.openallay.guide.GuideToolActivity;
 import dev.openallay.guide.GuideToolMessage;
 import dev.openallay.guide.GuideToolStatus;
+import dev.openallay.resource.vfs.ResourcePath;
+import dev.openallay.resource.vfs.ResourcePresentation;
+import java.time.Instant;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 
@@ -66,9 +72,51 @@ final class GuideToolDetailPresenterTest {
 
         GuideToolDetailView debug = GuideToolDetailPresenter.project(activity, true);
         assertEquals("openallay:search_recipes", debug.debug().orElseThrow().toolId());
-        assertEquals("PARTIAL", debug.debug().orElseThrow().normalized()
-                .getAsJsonObject("value").getAsJsonObject("catalog")
-                .get("completeness").getAsString());
+        assertEquals("SUCCEEDED", debug.debug().orElseThrow().normalized()
+                .get("status").getAsString());
+        assertFalse(debug.debug().orElseThrow().normalized().toString().contains("catalog"));
+        assertFalse(debug.debug().orElseThrow().normalized().toString().contains("mod_not_loaded"));
+    }
+
+    @Test
+    void selectsRecipePresentationFromVfsPathAndExactTruthInsteadOfLegacyToolId() {
+        String generation = "a".repeat(64);
+        GuideToolActivity activity = new GuideToolActivity(
+                "call-vfs",
+                0,
+                "openallay:resource_read",
+                GuideToolStatus.SUCCEEDED,
+                JsonParser.parseString("""
+                        {"status":"success","value":{"operation":"resource_read",
+                        "resultPath":"/result/r1","items":[{"inputIndex":0,
+                        "input":"/recipe/minecraft/apple","status":"success","value":{
+                        "path":"/recipe/minecraft/apple","kind":"record","generation":"view-1",
+                        "presentation":"recipe","presentationReferences":{"recipeId":"minecraft:apple"},
+                        "links":[],"value":{"id":"minecraft:apple","type":"minecraft:crafting",
+                        "source":"minecraft:recipe_manager","source_generation":"%s",
+                        "workstation":"minecraft:crafting_table","ingredients":[],"catalysts":[],
+                        "outputs":[{"item":"minecraft:apple","name":"Apple","count":1,"probability":1}],
+                        "byproducts":[],"processing":{}}}}]}}
+                        """.formatted(generation)).getAsJsonObject(),
+                new ToolUiReference(
+                        ResourcePath.parse("/result/r1"),
+                        List.of(ResourcePath.parse("/recipe/minecraft/apple")),
+                        ResourcePresentation.Kind.RECIPE,
+                        true,
+                        new ToolUiSummary("resource_read", 1, 0, List.of("record"))),
+                new ToolResultDiagnostics(900, 240, generation, Instant.EPOCH),
+                List.of(),
+                List.of());
+
+        GuideToolDetailView detail = GuideToolDetailPresenter.project(activity, true);
+        GuideDetailCard.Recipe recipe = assertInstanceOf(
+                GuideDetailCard.Recipe.class, detail.cards().getFirst());
+        assertEquals("minecraft:apple", recipe.recipe().id());
+        assertEquals("minecraft:apple", recipe.recipe().outputs().getFirst().itemId());
+        assertTrue(detail.narration().stream().anyMatch(message ->
+                message.key() == GuideToolMessage.Key.RESOURCE_RESULT_CONTINUATION));
+        assertEquals(900, detail.debug().orElseThrow().diagnostics().normalizedBytes());
+        assertFalse(detail.debug().orElseThrow().normalized().toString().contains("outputs"));
     }
 
     @Test

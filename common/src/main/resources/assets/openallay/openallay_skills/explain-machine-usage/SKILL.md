@@ -1,8 +1,20 @@
 ---
 name: explain-machine-usage
-description: Explain how to obtain, place, configure, power, and automate a modded machine.
-allowed-tools: "openallay:resolve_resource openallay:search_recipes openallay:get_recipe openallay:search_knowledge openallay:get_knowledge_document openallay:get_patchouli_multiblock"
+description: Use when explaining how to obtain, place, configure, power, or automate a modded machine or multiblock.
+allowed-tools: "openallay:resource_list openallay:resource_read openallay:resource_glob openallay:resource_grep openallay:resource_query"
 ---
-Use this Skill when the player asks how a machine or multiblock works.
-
-Resolve the exact block or controller, then search guide documents for setup, inputs, outputs, energy, orientation, and multiblock requirements. Search live recipes and fetch exact acquisition details. When a document contains a structure reference, load its coordinates and preserve their evidence; do not call a partial source complete. Separate verified requirements from optional optimizations. Mention that a later visual structure workflow may use those coordinates; do not claim that a Ponder scene has already been generated. If machine documentation is unavailable, say so rather than applying mechanics from a similarly named mod.
+1. Discover the exact block/controller under `/block` and relevant recipes under
+   `/recipe`; preserve canonical paths unchanged.
+2. Search `/guide` and `/knowledge` for setup, inputs, outputs, energy,
+   orientation, automation, and multiblock requirements. Read the selected full
+   section rather than answering from a snippet.
+3. Batch exact acquisition and documentation reads. Follow only returned
+   ingredient, output, category, structure, or citation links.
+4. Use `/@schema` before filtering unknown machine fields. For several variants,
+   run one typed query and refine its `/result` instead of one call per machine.
+5. Separate verified requirements from optional optimizations and preserve
+   authority/completeness. If documentation or a compatible integration is
+   unavailable, say so instead of borrowing mechanics from a similar machine.
+6. A trusted structure or recipe presentation may be shown only from its exact
+   returned reference. Do not invent blocks, coordinates, UI layout, or a
+   Ponder scene.

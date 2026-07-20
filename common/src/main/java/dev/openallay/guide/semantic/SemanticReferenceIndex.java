@@ -17,7 +17,7 @@ import java.util.UUID;
 /** Same-request allowlist derived only from validated tool results and evidence sources. */
 public final class SemanticReferenceIndex {
     private static final java.util.Set<String> ITEM_FIELDS = java.util.Set.of(
-            "itemId", "resolvedItems", "counts", "alternatives");
+            "itemId", "item", "resolvedItems", "resolved_items", "counts", "alternatives");
     private static final java.util.Set<String> SOURCE_FIELDS = java.util.Set.of("sourceId");
 
     private final UUID requestId;
@@ -48,6 +48,8 @@ public final class SemanticReferenceIndex {
             }
             GuideToolActivity activity = tool.activity();
             String origin = activity.invocationId();
+            activity.uiReference().primaryResources().forEach(path ->
+                    collectPath(path.toString(), origin, values));
             for (GuideSource source : activity.sources()) {
                 put(values, SemanticReferenceKind.SOURCE, source.evidence().sourceId(), origin);
                 put(values, SemanticReferenceKind.EVIDENCE, source.evidence().sourceId(), origin);
@@ -84,6 +86,11 @@ public final class SemanticReferenceIndex {
                     SemanticReferenceKind.RECIPE,
                     RecipeSemanticHandle.encode(reference),
                     origin));
+            resourceRecipe(object).ifPresent(reference -> put(
+                    values,
+                    SemanticReferenceKind.RECIPE,
+                    RecipeSemanticHandle.encode(reference),
+                    origin));
             if ("sources".equals(field)) {
                 String sourceId = string(object, "id");
                 if (!sourceId.isBlank()) {
@@ -110,6 +117,9 @@ public final class SemanticReferenceIndex {
                 && ITEM_FIELDS.contains(field)) {
             putResource(values, SemanticReferenceKind.ITEM, element.getAsString(), origin);
         } else if (element.isJsonPrimitive() && element.getAsJsonPrimitive().isString()
+                && ("path".equals(field) || "target".equals(field))) {
+            collectPath(element.getAsString(), origin, values);
+        } else if (element.isJsonPrimitive() && element.getAsJsonPrimitive().isString()
                 && SOURCE_FIELDS.contains(field)) {
             put(values, SemanticReferenceKind.SOURCE, element.getAsString(), origin);
         }
@@ -129,6 +139,49 @@ public final class SemanticReferenceIndex {
             }
         }
         return Optional.empty();
+    }
+
+    private static Optional<RecipeReference> resourceRecipe(JsonObject object) {
+        if (!string(object, "source").isBlank()
+                && !string(object, "source_generation").isBlank()
+                && !string(object, "id").isBlank()) {
+            try {
+                return Optional.of(new RecipeReference(
+                        string(object, "source"),
+                        string(object, "source_generation"),
+                        string(object, "id")));
+            } catch (IllegalArgumentException ignored) {
+                return Optional.empty();
+            }
+        }
+        return Optional.empty();
+    }
+
+    private static void collectPath(
+            String encoded,
+            String origin,
+            Map<SemanticReferenceKind, Map<String, String>> values) {
+        try {
+            dev.openallay.resource.vfs.ResourcePath path =
+                    dev.openallay.resource.vfs.ResourcePath.parse(encoded);
+            if (path.segments().size() < 3) {
+                return;
+            }
+            String id = path.segments().get(1) + ":" + path.segments().get(2);
+            SemanticReferenceKind kind = switch (path.mount()) {
+                case "item" -> SemanticReferenceKind.ITEM;
+                case "block" -> SemanticReferenceKind.BLOCK;
+                case "fluid" -> SemanticReferenceKind.FLUID;
+                case "entity" -> SemanticReferenceKind.ENTITY;
+                case "biome" -> SemanticReferenceKind.BIOME;
+                default -> null;
+            };
+            if (kind != null) {
+                putResource(values, kind, id, origin);
+            }
+        } catch (IllegalArgumentException ignored) {
+            // Only canonical VFS paths contribute same-request semantic authority.
+        }
     }
 
     private static void putResource(

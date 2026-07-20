@@ -143,6 +143,28 @@ final class LocalAgentToolExecutorTest {
     }
 
     @Test
+    void compatibilityRetrievalToolsStayRegisteredButAreNotModelCallable() {
+        ToolRegistry registry = new ToolRegistry();
+        registry.register("compat", List.of(
+                factTool("openallay:find_recipes"),
+                factTool("openallay:resource_read")));
+        LocalAgentToolExecutor executor = new LocalAgentToolExecutor(registry, new Gson());
+
+        assertEquals(List.of("resource_read"), executor.definitions().stream()
+                .map(dev.openallay.model.ModelToolDefinition::name)
+                .toList());
+        assertTrue(registry.find("openallay:find_recipes").isPresent());
+        AgentToolResult hidden = executor.execute(
+                        "find_recipes",
+                        JsonParser.parseString("{\"value\":1}").getAsJsonObject(),
+                        ToolInvocationContext.developmentConsole("test"),
+                        new CancellationSignal())
+                .join();
+        assertTrue(hidden.failure());
+        assertEquals(AgentToolExecutor.UNKNOWN_TOOL_ID, hidden.toolId());
+    }
+
+    @Test
     void waitsForAnAsynchronousToolBeforeNormalizingItsResult() {
         ToolRegistry registry = new ToolRegistry();
         CompletableFuture<ToolResult<Output>> pending = new CompletableFuture<>();
@@ -172,5 +194,17 @@ final class LocalAgentToolExecutorTest {
         pending.complete(new ToolResult.Success<>(new Output(7)));
         assertEquals(7, execution.join().normalized()
                 .getAsJsonObject("value").get("fact").getAsInt());
+    }
+
+    private static Tool<Input, Output> factTool(String id) {
+        return new Tool<>() {
+            private final ToolDescriptor<Input, Output> descriptor = new ToolDescriptor<>(
+                    id, "Return a fact", Input.class, Output.class, ToolAccess.READ_ONLY);
+
+            @Override public ToolDescriptor<Input, Output> descriptor() { return descriptor; }
+            @Override public ToolResult<Output> invoke(ToolInvocationContext context, Input input) {
+                return new ToolResult.Success<>(new Output(input.value()));
+            }
+        };
     }
 }

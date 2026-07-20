@@ -110,7 +110,7 @@ public final class AnthropicJsonCodec {
             case ModelContent.ToolResult result -> {
                 encoded.addProperty("type", "tool_result");
                 encoded.addProperty("tool_use_id", result.toolUseId());
-                encoded.addProperty("content", gson.toJson(result.value()));
+                encoded.addProperty("content", result.text());
                 encoded.addProperty("is_error", result.error());
             }
         }

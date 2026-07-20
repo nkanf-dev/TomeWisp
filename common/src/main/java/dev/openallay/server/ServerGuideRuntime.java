@@ -24,7 +24,8 @@ public record ServerGuideRuntime(
         ModelConfig config,
         ServerAgentService service,
         dev.openallay.guide.GuideContextSpec contextSpec,
-        PlayerClientToolRouter clientTools) {
+        PlayerClientToolRouter clientTools,
+        dev.openallay.resource.runtime.ResourceRequestRegistry resources) {
     public static ToolResult<ServerGuideRuntime> create(
             OpenAllayRuntime runtime,
             Path configPath,
@@ -79,7 +80,11 @@ public record ServerGuideRuntime(
                 scheduled, gson, new Utf8ContextTokenEstimator(), new ToolResultContextReducer(),
                 config.contextBudget(), config.model(), Clock.systemUTC());
         PlayerClientToolRouter clientTools = new PlayerClientToolRouter(
-                runtime.tools(), gson, clientToolTransport, config.requestTimeout());
+                runtime.tools(),
+                gson,
+                clientToolTransport,
+                config.requestTimeout(),
+                runtime.resources());
         String prompt = dev.openallay.agent.AgentSystemPrompt.compose(
                 runtime.skills().metadataPrompt());
         int promptAndTools = new Utf8ContextTokenEstimator().estimate(
@@ -103,10 +108,30 @@ public record ServerGuideRuntime(
                                     .value();
                     GameGuideAgent agent = new GameGuideAgent(
                             scheduled, requestTools, sessions, gson, compactor);
+                    java.util.concurrent.atomic.AtomicReference<
+                                    dev.openallay.resource.runtime.ResourceRequestRegistry.RequestHandle>
+                            resourceHandle = new java.util.concurrent.atomic.AtomicReference<>();
                     return new ToolResult.Success<>(new ServerAgentService.RequestRuntime(
                             agent,
                             requestTools,
-                            () -> clientTools.close(actor, payload.requestId())));
+                            context -> resourceHandle.set(runtime.resources().open(
+                                    actor,
+                                    payload.sessionId(),
+                                    payload.requestId(),
+                                    runtime.resources().connectionGeneration(actor),
+                                    "server",
+                                    requestTools.definitions().stream()
+                                            .map(dev.openallay.model.ModelToolDefinition::name)
+                                            .collect(java.util.stream.Collectors.toUnmodifiableSet()),
+                                    contextSpec.budget(),
+                                    context)),
+                            () -> {
+                                var handle = resourceHandle.getAndSet(null);
+                                if (handle != null) {
+                                    handle.close();
+                                }
+                                clientTools.close(actor, payload.requestId());
+                            }));
                 },
                 sessions,
                 contexts,
@@ -115,6 +140,6 @@ public record ServerGuideRuntime(
                 prompt,
                 scheduled::awaitReady);
         return new ToolResult.Success<>(
-                new ServerGuideRuntime(config, service, contextSpec, clientTools));
+                new ServerGuideRuntime(config, service, contextSpec, clientTools, runtime.resources()));
     }
 }

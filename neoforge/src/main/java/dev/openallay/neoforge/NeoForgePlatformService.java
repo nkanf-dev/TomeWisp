@@ -2,6 +2,11 @@ package dev.openallay.neoforge;
 
 import dev.openallay.platform.PlatformService;
 import dev.openallay.platform.InstalledModMetadata;
+import dev.openallay.resource.mod.ModResourceEntry;
+import dev.openallay.resource.mod.ModResourceSnapshot;
+import java.io.IOException;
+import java.io.InputStream;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
@@ -55,6 +60,55 @@ public final class NeoForgePlatformService implements PlatformService {
                 })
                 .sorted(Comparator.comparing(InstalledModMetadata::id))
                 .toList();
+    }
+
+    @Override
+    public ModResourceSnapshot captureModResources() {
+        Instant capturedAt = Instant.now();
+        List<ModResourceEntry> entries = new ArrayList<>();
+        Map<String, String> diagnostics = new TreeMap<>();
+        var files = ModList.get().getModFiles();
+        for (int fileIndex = 0; fileIndex < files.size(); fileIndex++) {
+            captureModFile(files.get(fileIndex), files.size() - fileIndex, entries, diagnostics);
+        }
+        return ModResourceSnapshot.available(capturedAt, entries, diagnostics);
+    }
+
+    private static void captureModFile(
+            net.neoforged.neoforgespi.language.IModFileInfo fileInfo,
+            int precedence,
+            List<ModResourceEntry> entries,
+            Map<String, String> diagnostics) {
+        List<String> modIds = fileInfo.getMods().stream()
+                .map(net.neoforged.neoforgespi.language.IModInfo::getModId)
+                .sorted()
+                .toList();
+        try {
+            fileInfo.getFile().getContents().visitContent((logicalPath, resource) -> {
+                var location = ModResourceEntry.PublicLocation.parse(logicalPath);
+                if (location.isEmpty()) {
+                    return;
+                }
+                for (String modId : modIds) {
+                    String sourceId = "neoforge:" + modId + "/modfile/0";
+                    try (InputStream input = resource.open()) {
+                        entries.add(ModResourceEntry.capture(
+                                modId,
+                                location.orElseThrow(),
+                                input,
+                                resource.attributes().size(),
+                                precedence,
+                                sourceId));
+                    } catch (IOException | RuntimeException exception) {
+                        diagnostics.put(modId, "one_or_more_public_resources_unavailable");
+                    }
+                }
+            });
+        } catch (RuntimeException exception) {
+            for (String modId : modIds) {
+                diagnostics.put(modId, "public_resource_root_unavailable");
+            }
+        }
     }
 
     private static List<String> configStrings(

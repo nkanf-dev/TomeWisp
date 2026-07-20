@@ -8,6 +8,7 @@ public record ContextProjection(List<ModelMessage> messages, Kind kind, int esti
     public enum Kind {
         ORIGINAL,
         TOOL_RESULTS_REDUCED,
+        CURRENT_RESULTS_PROJECTED,
         SUMMARIZED
     }
 

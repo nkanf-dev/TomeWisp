@@ -28,7 +28,9 @@ import java.util.concurrent.CompletionException;
 import java.util.function.Consumer;
 
 public final class GameGuideAgent {
-    private static final String REPEATED_CALL_SENTINEL = "\u0000no_new_information";
+    private static final String NO_PROGRESS_ONCE = "\u0000no_new_information_once";
+    private static final String NO_PROGRESS_TWICE = "\u0000final_synthesis_requested";
+    private static final String FACT_PREFIX = "\u0000fact:";
     private final ModelClient model;
     private final AgentToolExecutor tools;
     private final AgentSessionStore sessions;
@@ -110,6 +112,8 @@ public final class GameGuideAgent {
                                     reused.orElseThrow().messages(),
                                     completeMessages,
                                     Map.of(),
+                                    Math.max(0, reused.orElseThrow().messages().size()
+                                            - (messages.size() - protectedFromIndex)),
                                     trace,
                                     events)
                             .exceptionally(throwable ->
@@ -119,7 +123,7 @@ public final class GameGuideAgent {
         }
         if (compactor != null
                 && compactor.requiresCompaction(
-                        request.systemPrompt(), messages, tools.definitions())) {
+                        request.systemPrompt(), messages, protectedFromIndex, tools.definitions())) {
             transition(AgentState.COMPACTING, trace, events);
             return compactor.compact(
                             request.systemPrompt(),
@@ -145,13 +149,15 @@ public final class GameGuideAgent {
                                 result.projection().messages(),
                                 completeMessages,
                                 Map.of(),
+                                Math.max(0, result.projection().messages().size()
+                                        - (messages.size() - protectedFromIndex)),
                                 trace,
                                 events);
                     })
                     .exceptionally(throwable -> fail(request, lease, trace, events, throwable));
         }
         transition(AgentState.MODEL_WAIT, trace, events);
-        return loop(request, lease, messages, completeMessages, Map.of(), trace, events)
+        return loop(request, lease, messages, completeMessages, Map.of(), protectedFromIndex, trace, events)
                 .exceptionally(throwable -> fail(request, lease, trace, events, throwable));
     }
 
@@ -161,12 +167,53 @@ public final class GameGuideAgent {
             List<ModelMessage> messages,
             List<ModelMessage> completeMessages,
             Map<String, String> previousCallOutcomes,
+            int protectedFromIndex,
             LiveAgentTraceRecorder trace,
             Consumer<AgentEvent> events) {
         lease.cancellation().throwIfCancelled();
+        dev.openallay.agent.context.ContextAssembler.Assembly assembly = compactor == null
+                ? null
+                : compactor.assemble(
+                        request.systemPrompt(), messages, protectedFromIndex, tools.definitions());
+        if (assembly != null && !assembly.fits()) {
+            transition(AgentState.COMPACTING, trace, events);
+            int currentSuffixSize = messages.size() - protectedFromIndex;
+            return compactor.compact(
+                            request.systemPrompt(),
+                            assembly.projection().messages(),
+                            protectedFromIndex,
+                            tools.definitions(),
+                            request.stream(),
+                            request.sessionKey().schedulingKey(),
+                            lease.cancellation())
+                    .thenCompose(result -> {
+                        if (result.checkpoint() != null) {
+                            sessions.recordCheckpoint(lease, result.checkpoint());
+                            events.accept(new AgentEvent.ContextCompacted(result.checkpoint()));
+                        }
+                        if (!result.successful()) {
+                            throw new ModelClientException(new dev.openallay.model.ModelFailure(
+                                    result.failureCode(), result.failureMessage(), null));
+                        }
+                        transition(AgentState.MODEL_WAIT, trace, events);
+                        List<ModelMessage> projected = result.projection().messages();
+                        return loop(
+                                request,
+                                lease,
+                                projected,
+                                completeMessages,
+                                previousCallOutcomes,
+                                Math.max(0, projected.size() - currentSuffixSize),
+                                trace,
+                                events);
+                    });
+        }
+        List<ModelMessage> dispatchMessages = assembly == null
+                ? messages
+                : assembly.projection().messages();
         ModelRequest modelRequest = new ModelRequest(
                 request.systemPrompt(),
-                messages,
+                dispatchMessages,
                 tools.definitions(),
                 request.stream(),
                 request.sessionKey().schedulingKey());
@@ -181,7 +228,7 @@ public final class GameGuideAgent {
                 .thenCompose(turn -> {
                     lease.cancellation().throwIfCancelled();
                     trace.modelTurn(turn);
-                    List<ModelMessage> nextMessages = new ArrayList<>(messages);
+                    List<ModelMessage> nextMessages = new ArrayList<>(dispatchMessages);
                     nextMessages.add(new ModelMessage(ModelRole.ASSISTANT, turn.content()));
                     List<ModelMessage> nextCompleteMessages = new ArrayList<>(completeMessages);
                     nextCompleteMessages.add(new ModelMessage(ModelRole.ASSISTANT, turn.content()));
@@ -219,6 +266,7 @@ public final class GameGuideAgent {
                                         outcome.messages(),
                                         outcome.completeMessages(),
                                         outcome.callOutcomes(),
+                                        protectedFromIndex,
                                         trace,
                                         events);
                             });
@@ -244,21 +292,23 @@ public final class GameGuideAgent {
                     .orElse(AgentToolExecutor.UNKNOWN_TOOL_ID);
             String callKey = exposedId + ":" + canonical(call.input());
             String previousOutcome = previousCallOutcomes.get(callKey);
-            if (REPEATED_CALL_SENTINEL.equals(previousOutcome)) {
+            if (NO_PROGRESS_TWICE.equals(previousOutcome)) {
                 throw new ModelClientException(new dev.openallay.model.ModelFailure(
                         "repeated_tool_call",
-                        "Model ignored a no-new-information result and repeated the same tool call again",
+                        "Model repeated a no-progress Tool call after explicit final-synthesis guidance",
                         null));
             }
             trace.toolCall(exposedId, call.input());
             if (previousOutcome != null || firstCalls.containsKey(callKey)) {
                 duplicatedThisTurn.add(callKey);
+                boolean finalSynthesis = NO_PROGRESS_ONCE.equals(previousOutcome);
                 pending.add(new PendingToolCall(
                         call,
                         exposedId,
                         callKey,
                         false,
-                        CompletableFuture.completedFuture(noNewInformation(exposedId))));
+                        CompletableFuture.completedFuture(
+                                noNewInformation(exposedId, finalSynthesis))));
                 continue;
             }
             events.accept(new AgentEvent.ToolStarted(
@@ -268,8 +318,7 @@ public final class GameGuideAgent {
             CompletableFuture<AgentToolResult> execution = tools
                     .execute(call.name(), call.input(), request.context(), lease.cancellation())
                     .handle((rawResult, executionFailure) -> executionFailure == null && rawResult != null
-                            ? new AgentToolResult(
-                                    exposedId, rawResult.normalized(), rawResult.failure())
+                            ? rawResult.withToolId(exposedId)
                             : recoverToolFailure(
                                     exposedId, executionFailure, lease.cancellation()));
             firstCalls.put(callKey, execution);
@@ -291,15 +340,34 @@ public final class GameGuideAgent {
                             item.call().id(),
                             result.toolId(),
                             result.failure(),
-                            result.normalized()));
+                            result.normalized(),
+                            result.uiReference(),
+                            result.diagnostics()));
+                }
+                String information = informationFingerprint(result);
+                boolean newInformation = !updatedCallOutcomes.containsKey(FACT_PREFIX + information);
+                String modelText = result.modelView().text();
+                if (item.executed() && !newInformation) {
+                    modelText += "\nprogress: no_new_information\n"
+                            + "guidance: answer from the existing resource evidence; do not repeat this lookup";
                 }
                 results.add(new ModelContent.ToolResult(
-                        item.call().id(), result.normalized(), result.failure()));
+                        item.call().id(),
+                        modelText,
+                        receiptPath(result),
+                        result.modelView().receipts(),
+                        result.modelView().semanticUnits(),
+                        result.failure()));
+                updatedCallOutcomes.put(FACT_PREFIX + information, "seen");
                 updatedCallOutcomes.put(
                         item.callKey(),
                         duplicatedThisTurn.contains(item.callKey())
-                                ? REPEATED_CALL_SENTINEL
-                                : canonical(result.normalized()));
+                                ? (NO_PROGRESS_ONCE.equals(previousCallOutcomes.get(item.callKey()))
+                                        ? NO_PROGRESS_TWICE
+                                        : NO_PROGRESS_ONCE)
+                                : (newInformation
+                                        ? canonical(result.normalized())
+                                        : NO_PROGRESS_ONCE));
             }
             List<ModelMessage> updated = new ArrayList<>(messages);
             updated.add(new ModelMessage(ModelRole.USER, results));
@@ -349,13 +417,58 @@ public final class GameGuideAgent {
         return canonicalizer.normalize(new ToolResult.Failure<>(code, message), Object.class);
     }
 
-    private AgentToolResult noNewInformation(String toolId) {
+    private AgentToolResult noNewInformation(String toolId, boolean finalSynthesis) {
         return new AgentToolResult(
                 toolId,
                 normalizedFailure(
                         "no_new_information",
-                        "This exact read-only call already completed against the same request snapshot; stop calling tools and answer from the existing evidence."),
+                        finalSynthesis
+                                ? "No new facts are available. Produce the final answer now from the retained evidence without another Tool call."
+                                : "This call adds no new resource path, field, range, or generation. Answer from the existing evidence or make one materially narrower read."),
                 true);
+    }
+
+    private String informationFingerprint(AgentToolResult result) {
+        String semantic = result.modelView().text().lines()
+                .filter(line -> line.startsWith("path:")
+                        || line.startsWith("generation:")
+                        || line.startsWith("authority:")
+                        || line.startsWith("completeness:")
+                        || line.startsWith("fields:")
+                        || line.startsWith("range:")
+                        || line.startsWith("record_identities:")
+                        || line.startsWith("returned:"))
+                .collect(java.util.stream.Collectors.joining("\n"));
+        if (!semantic.isBlank()) {
+            return semantic;
+        }
+        if (!result.modelView().receipts().isEmpty()) {
+            return result.modelView().receipts().stream()
+                    .map(receipt -> String.join("|",
+                            receipt.generationId(),
+                            receipt.kind(),
+                            receipt.authority(),
+                            receipt.completeness(),
+                            Long.toString(receipt.returned()),
+                            receipt.total() == null ? "" : Long.toString(receipt.total()),
+                            String.join(",", receipt.fields()),
+                            receipt.fromInclusive() == null ? "" : Long.toString(receipt.fromInclusive()),
+                            receipt.toExclusive() == null ? "" : Long.toString(receipt.toExclusive()),
+                            String.join(",", receipt.recordIdentities())))
+                    .sorted()
+                    .collect(java.util.stream.Collectors.joining("\n"));
+        }
+        return "legacy:" + canonical(result.normalized());
+    }
+
+    private static String receiptPath(AgentToolResult result) {
+        if (!result.modelView().receipts().isEmpty()
+                && result.modelView().receipts().getFirst().resultPath() != null) {
+            return result.modelView().receipts().getFirst().resultPath().toString();
+        }
+        return result.uiReference().resultPath() == null
+                ? null
+                : result.uiReference().resultPath().toString();
     }
 
     private AgentToolResult recoverToolFailure(

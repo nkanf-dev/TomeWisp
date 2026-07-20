@@ -23,8 +23,7 @@ public final class NativeDomainViewBindings {
                 .map(GuideUiRow.Tool.class::cast)
                 .filter(tool -> tool.requestId().equals(assistant.requestId()))
                 .filter(tool -> tool.activity().invocationId().equals(component.originInvocationId()))
-                .flatMap(tool -> GuideRecipePresenter.cards(
-                        tool.activity().toolId(), tool.activity().normalized()).stream())
+                .flatMap(tool -> GuideRecipePresenter.cards(tool.activity()).stream())
                 .filter(card -> card.references().contains(component.recipe()))
                 .findFirst()
                 .map(card -> new NativeDomainViewBinding.Recipe(
@@ -32,5 +31,30 @@ public final class NativeDomainViewBindings {
                                 + ":component:" + component.nodeId(),
                         component,
                         card));
+    }
+
+    /** Creates a native binding directly from validated Tool truth, without model-authored UI. */
+    public static NativeDomainViewBinding.Recipe recipe(
+            String stableId, String invocationId, GuideRecipeCard card) {
+        java.util.Objects.requireNonNull(card, "card");
+        String nodeId = sha256(stableId + "\n" + card.reference());
+        RichComponent.RecipeGrid component = new RichComponent.RecipeGrid(
+                nodeId,
+                card.reference(),
+                invocationId,
+                card.outputs().isEmpty() ? card.id() : card.outputs().getFirst().displayName(),
+                card.id(),
+                card.id());
+        return new NativeDomainViewBinding.Recipe(stableId, component, card);
+    }
+
+    private static String sha256(String value) {
+        try {
+            byte[] digest = java.security.MessageDigest.getInstance("SHA-256")
+                    .digest(value.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            return java.util.HexFormat.of().formatHex(digest);
+        } catch (java.security.NoSuchAlgorithmException impossible) {
+            throw new IllegalStateException(impossible);
+        }
     }
 }

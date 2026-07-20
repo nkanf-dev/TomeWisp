@@ -5,6 +5,12 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.TreeMap;
+import dev.openallay.tool.resource.RequestResourceContext;
+import dev.openallay.tool.resource.ResourceGlobTool;
+import dev.openallay.tool.resource.ResourceGrepTool;
+import dev.openallay.tool.resource.ResourceListTool;
+import dev.openallay.tool.resource.ResourceQueryTool;
+import dev.openallay.tool.resource.ResourceReadTool;
 
 public final class ToolRegistry {
     private final Map<String, RegisteredTool> tools = new TreeMap<>();
@@ -29,6 +35,16 @@ public final class ToolRegistry {
         for (Tool<?, ?> tool : snapshot) {
             tools.put(tool.descriptor().id(), new RegisteredTool(providerId, tool));
         }
+    }
+
+    /** Registers the complete stable model-facing VFS Tool family against one request context. */
+    public void registerResourceTools(String providerId, RequestResourceContext resources) {
+        register(providerId, List.of(
+                new ResourceListTool(resources),
+                new ResourceReadTool(resources),
+                new ResourceGlobTool(resources),
+                new ResourceGrepTool(resources),
+                new ResourceQueryTool(resources)));
     }
 
     public synchronized Optional<Tool<?, ?>> find(String id) {

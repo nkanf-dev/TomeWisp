@@ -17,10 +17,20 @@ import java.util.concurrent.TimeUnit;
 public final class ResultChunker {
     public List<RemoteToolResultChunkPayload> split(
             UUID correlationId, String content, int transportChunkBytes) {
+        return split(
+                correlationId,
+                BridgeViewIdentity.forOperation(correlationId),
+                content,
+                transportChunkBytes);
+    }
+
+    public List<RemoteToolResultChunkPayload> split(
+            UUID correlationId, String viewId, String content, int transportChunkBytes) {
         if (transportChunkBytes <= 0) {
             throw new IllegalArgumentException("transportChunkBytes must be positive");
         }
         byte[] all = content.getBytes(StandardCharsets.UTF_8);
+        viewId = BridgeViewIdentity.require(viewId);
         String hash = sha256(all);
         int total = Math.max(1, (all.length + transportChunkBytes - 1) / transportChunkBytes);
         List<RemoteToolResultChunkPayload> chunks = new ArrayList<>(total);
@@ -33,6 +43,7 @@ public final class ResultChunker {
                     correlationId,
                     index,
                     total,
+                    viewId,
                     hash,
                     Base64.getEncoder().encodeToString(part)));
         }
@@ -71,7 +82,7 @@ public final class ResultChunker {
         public synchronized java.util.Optional<String> accept(RemoteToolResultChunkPayload chunk) {
             Assembly assembly = assemblies.get(chunk.correlationId());
             if (assembly == null) {
-                assembly = new Assembly(chunk.total(), chunk.contentHash());
+                assembly = new Assembly(chunk.total(), chunk.viewId(), chunk.contentHash());
                 Assembly scheduled = assembly;
                 assembly.deadline = TIMEOUTS.schedule(
                         () -> expire(chunk.correlationId(), scheduled),
@@ -79,7 +90,9 @@ public final class ResultChunker {
                         TimeUnit.MILLISECONDS);
                 assemblies.put(chunk.correlationId(), assembly);
             }
-            if (assembly.total != chunk.total() || !assembly.hash.equals(chunk.contentHash())) {
+            if (assembly.total != chunk.total()
+                    || !assembly.viewId.equals(chunk.viewId())
+                    || !assembly.hash.equals(chunk.contentHash())) {
                 remove(chunk.correlationId());
                 throw new IllegalArgumentException("Chunk metadata changed during result assembly");
             }
@@ -134,12 +147,14 @@ public final class ResultChunker {
 
         private static final class Assembly {
             private final int total;
+            private final String viewId;
             private final String hash;
             private final Map<Integer, byte[]> parts;
             private volatile ScheduledFuture<?> deadline;
 
-            private Assembly(int total, String hash) {
+            private Assembly(int total, String viewId, String hash) {
                 this.total = total;
+                this.viewId = viewId;
                 this.hash = hash;
                 // Network metadata must never drive a proportional allocation before the
                 // corresponding packets have actually arrived.

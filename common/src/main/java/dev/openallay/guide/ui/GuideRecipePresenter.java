@@ -4,12 +4,29 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import dev.openallay.context.RecipeReference;
+import dev.openallay.guide.GuideToolActivity;
+import dev.openallay.resource.vfs.ResourcePresentation;
 import java.util.ArrayList;
 import java.util.List;
 
 /** Strictly derives native recipe cards from normalized grounded tool results. */
 public final class GuideRecipePresenter {
     private GuideRecipePresenter() {}
+
+    public static List<GuideRecipeCard> cards(GuideToolActivity activity) {
+        java.util.Objects.requireNonNull(activity, "activity");
+        boolean recipeResource = activity.uiReference().presentationKind()
+                        == ResourcePresentation.Kind.RECIPE
+                || activity.uiReference().primaryResources().stream()
+                        .anyMatch(path -> path.mount().equals("recipe"));
+        if (recipeResource) {
+            List<GuideRecipeCard> cards = resourceCards(activity.normalized());
+            if (!cards.isEmpty()) {
+                return cards;
+            }
+        }
+        return cards(activity.toolId(), activity.normalized());
+    }
 
     public static List<GuideRecipeCard> cards(String toolId, JsonObject normalized) {
         if (normalized == null || !"success".equals(string(normalized, "status"))) {
@@ -40,6 +57,105 @@ public final class GuideRecipePresenter {
             }
         }
         return List.copyOf(cards);
+    }
+
+    private static List<GuideRecipeCard> resourceCards(JsonObject normalized) {
+        if (normalized == null || !"success".equals(string(normalized, "status"))) {
+            return List.of();
+        }
+        JsonObject envelope = object(normalized, "value");
+        if (envelope == null) {
+            return List.of();
+        }
+        List<GuideRecipeCard> cards = new ArrayList<>();
+        for (JsonElement element : array(envelope, "items")) {
+            try {
+                JsonObject item = requiredObject(element, "resource result item");
+                if (!"success".equals(string(item, "status"))) {
+                    continue;
+                }
+                JsonObject read = requiredObject(item, "value");
+                String path = requiredString(read, "path");
+                if (!path.startsWith("/recipe/") || !"record".equals(string(read, "kind"))) {
+                    continue;
+                }
+                JsonObject recipe = requiredObject(read, "value");
+                GuideRecipeCard card = resourceCard(recipe);
+                if (!card.outputs().isEmpty()) {
+                    cards.add(card);
+                }
+            } catch (RuntimeException ignored) {
+                // One malformed resource cannot suppress other independently validated rows.
+            }
+        }
+        return List.copyOf(cards);
+    }
+
+    private static GuideRecipeCard resourceCard(JsonObject recipe) {
+        RecipeReference reference = new RecipeReference(
+                requiredString(recipe, "source"),
+                requiredString(recipe, "source_generation"),
+                requiredString(recipe, "id"));
+        return new GuideRecipeCard(
+                reference,
+                List.of(reference),
+                reference.recipeId(),
+                requiredString(recipe, "type"),
+                string(recipe, "workstation"),
+                resourceOutputs(recipe, "outputs"),
+                resourceIngredients(recipe, "ingredients"),
+                resourceIngredients(recipe, "catalysts"),
+                resourceOutputs(recipe, "byproducts"),
+                resourceProcessing(recipe));
+    }
+
+    private static List<GuideRecipeCard.Ingredient> resourceIngredients(
+            JsonObject recipe, String field) {
+        List<GuideRecipeCard.Ingredient> ingredients = new ArrayList<>();
+        for (JsonElement element : array(recipe, field)) {
+            JsonObject ingredient = requiredObject(element, "resource recipe ingredient");
+            List<GuideRecipeCard.Alternative> alternatives = new ArrayList<>();
+            for (JsonElement encoded : array(ingredient, "alternatives")) {
+                JsonObject alternative = requiredObject(encoded, "resource recipe alternative");
+                List<String> resolvedItems = new ArrayList<>();
+                for (JsonElement item : array(alternative, "resolved_items")) {
+                    resolvedItems.add(item.getAsString());
+                }
+                alternatives.add(new GuideRecipeCard.Alternative(
+                        requiredString(alternative, "kind"),
+                        requiredString(alternative, "id"),
+                        resolvedItems));
+            }
+            ingredients.add(new GuideRecipeCard.Ingredient(
+                    requiredString(ingredient, "key"),
+                    positiveLong(ingredient, "count"),
+                    bool(ingredient, "consumed", true),
+                    alternatives));
+        }
+        return List.copyOf(ingredients);
+    }
+
+    private static List<GuideRecipeCard.Output> resourceOutputs(JsonObject recipe, String field) {
+        List<GuideRecipeCard.Output> outputs = new ArrayList<>();
+        for (JsonElement element : array(recipe, field)) {
+            JsonObject output = requiredObject(element, "resource recipe output");
+            outputs.add(new GuideRecipeCard.Output(
+                    requiredString(output, "item"),
+                    positiveInteger(output, "count"),
+                    string(output, "name")));
+        }
+        return List.copyOf(outputs);
+    }
+
+    private static GuideRecipeCard.Processing resourceProcessing(JsonObject recipe) {
+        JsonObject processing = object(recipe, "processing");
+        if (processing == null) {
+            return GuideRecipeCard.Processing.unknown();
+        }
+        return new GuideRecipeCard.Processing(
+                nullableLong(processing, "duration_ticks"),
+                nullableLong(processing, "energy"),
+                nullableDouble(processing, "temperature"));
     }
 
     private static GuideRecipeCard card(JsonObject recipe) {

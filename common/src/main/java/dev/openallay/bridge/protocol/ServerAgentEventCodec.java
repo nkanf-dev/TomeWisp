@@ -5,9 +5,16 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import dev.openallay.agent.AgentEvent;
 import dev.openallay.agent.context.ContextCheckpointCodec;
+import dev.openallay.agent.tool.ToolResultDiagnostics;
+import dev.openallay.agent.tool.ToolUiReference;
+import dev.openallay.agent.tool.ToolUiSummary;
 import dev.openallay.guide.GuideToolMessageCodec;
 import dev.openallay.model.ModelEvent;
 import dev.openallay.model.ModelFailure;
+import dev.openallay.resource.vfs.ResourcePath;
+import dev.openallay.resource.vfs.ResourcePresentation;
+import java.time.Instant;
+import java.util.ArrayList;
 import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
@@ -31,6 +38,8 @@ public final class ServerAgentEventCodec {
             eventJson = checkpoints.encode(compacted.checkpoint());
         } else if (event instanceof AgentEvent.ToolStarted started) {
             eventJson = encodeToolStarted(started).toString();
+        } else if (event instanceof AgentEvent.ToolCompleted completed) {
+            eventJson = encodeToolCompleted(completed).toString();
         } else {
             Object body = event instanceof AgentEvent.ModelProgress progress ? progress.event() : event;
             eventJson = gson.toJson(body);
@@ -77,10 +86,7 @@ public final class ServerAgentEventCodec {
                     read(body, Set.of("stopReason"), ModelEvent.MessageComplete.class));
             case "model_failure" -> new AgentEvent.ModelProgress(readModelFailure(body));
             case "tool_started" -> readToolStarted(body);
-            case "tool_completed" -> read(
-                    body,
-                    Set.of("invocationId", "toolId", "failure", "normalized"),
-                    AgentEvent.ToolCompleted.class);
+            case "tool_completed" -> readToolCompleted(body);
             case "final_text" -> read(body, Set.of("text"), AgentEvent.FinalText.class);
             case "failed" -> read(body, Set.of("code", "message"), AgentEvent.Failed.class);
             default -> throw new IllegalArgumentException(
@@ -147,6 +153,158 @@ public final class ServerAgentEventCodec {
                 body.get("invocationId").getAsString(),
                 body.get("toolId").getAsString(),
                 GuideToolMessageCodec.decode(body.get("presentationMessages")));
+    }
+
+    private static JsonObject encodeToolCompleted(AgentEvent.ToolCompleted completed) {
+        JsonObject body = new JsonObject();
+        body.addProperty("invocationId", completed.invocationId());
+        body.addProperty("toolId", completed.toolId());
+        body.addProperty("failure", completed.failure());
+        body.add("normalized", completed.normalized());
+        body.add("uiReference", encodeUiReference(completed.uiReference()));
+        body.add("diagnostics", encodeDiagnostics(completed.diagnostics()));
+        return body;
+    }
+
+    private static AgentEvent.ToolCompleted readToolCompleted(JsonObject body) {
+        if (!body.keySet().equals(Set.of(
+                "invocationId", "toolId", "failure", "normalized", "uiReference", "diagnostics"))) {
+            throw new IllegalArgumentException("Server Tool completion schema mismatch");
+        }
+        return new AgentEvent.ToolCompleted(
+                requiredString(body, "invocationId"),
+                requiredString(body, "toolId"),
+                requiredBoolean(body, "failure"),
+                requiredObject(body, "normalized"),
+                readUiReference(requiredObject(body, "uiReference")),
+                readDiagnostics(requiredObject(body, "diagnostics")));
+    }
+
+    private static JsonObject encodeUiReference(ToolUiReference reference) {
+        JsonObject encoded = new JsonObject();
+        if (reference.resultPath() != null) {
+            encoded.addProperty("resultPath", reference.resultPath().toString());
+        }
+        var resources = new com.google.gson.JsonArray();
+        reference.primaryResources().forEach(path -> resources.add(path.toString()));
+        encoded.add("primaryResources", resources);
+        encoded.addProperty("presentationKind", reference.presentationKind().name());
+        encoded.addProperty("continuationAvailable", reference.continuationAvailable());
+        JsonObject summary = new JsonObject();
+        summary.addProperty("operation", reference.summary().operation());
+        summary.addProperty("succeeded", reference.summary().succeeded());
+        summary.addProperty("failed", reference.summary().failed());
+        var kinds = new com.google.gson.JsonArray();
+        reference.summary().resourceKinds().forEach(kinds::add);
+        summary.add("resourceKinds", kinds);
+        encoded.add("summary", summary);
+        return encoded;
+    }
+
+    private static ToolUiReference readUiReference(JsonObject encoded) {
+        Set<String> expected = encoded.has("resultPath")
+                ? Set.of("resultPath", "primaryResources", "presentationKind", "continuationAvailable", "summary")
+                : Set.of("primaryResources", "presentationKind", "continuationAvailable", "summary");
+        if (!encoded.keySet().equals(expected)
+                || !encoded.get("primaryResources").isJsonArray()) {
+            throw new IllegalArgumentException("Server Tool UI reference schema mismatch");
+        }
+        ArrayList<ResourcePath> resources = new ArrayList<>();
+        for (var element : encoded.getAsJsonArray("primaryResources")) {
+            if (!element.isJsonPrimitive() || !element.getAsJsonPrimitive().isString()) {
+                throw new IllegalArgumentException("Server Tool UI resource path must be text");
+            }
+            resources.add(ResourcePath.parse(element.getAsString()));
+        }
+        ResourcePath resultPath = encoded.has("resultPath")
+                ? ResourcePath.parse(requiredString(encoded, "resultPath")) : null;
+        ResourcePresentation.Kind kind;
+        try {
+            kind = ResourcePresentation.Kind.valueOf(requiredString(encoded, "presentationKind"));
+        } catch (IllegalArgumentException failure) {
+            throw new IllegalArgumentException("Unknown Server Tool presentation kind", failure);
+        }
+        return new ToolUiReference(
+                resultPath,
+                resources,
+                kind,
+                requiredBoolean(encoded, "continuationAvailable"),
+                readUiSummary(requiredObject(encoded, "summary")));
+    }
+
+    private static ToolUiSummary readUiSummary(JsonObject encoded) {
+        if (!encoded.keySet().equals(Set.of("operation", "succeeded", "failed", "resourceKinds"))
+                || !encoded.get("resourceKinds").isJsonArray()) {
+            throw new IllegalArgumentException("Server Tool UI summary schema mismatch");
+        }
+        ArrayList<String> kinds = new ArrayList<>();
+        for (var element : encoded.getAsJsonArray("resourceKinds")) {
+            if (!element.isJsonPrimitive() || !element.getAsJsonPrimitive().isString()) {
+                throw new IllegalArgumentException("Server Tool UI resource kind must be text");
+            }
+            kinds.add(element.getAsString());
+        }
+        return new ToolUiSummary(
+                requiredString(encoded, "operation"),
+                requiredInteger(encoded, "succeeded"),
+                requiredInteger(encoded, "failed"),
+                kinds);
+    }
+
+    private static JsonObject encodeDiagnostics(ToolResultDiagnostics diagnostics) {
+        JsonObject encoded = new JsonObject();
+        encoded.addProperty("normalizedBytes", diagnostics.normalizedBytes());
+        encoded.addProperty("modelCharacters", diagnostics.modelCharacters());
+        encoded.addProperty("generationId", diagnostics.generationId());
+        encoded.addProperty("projectedAt", diagnostics.projectedAt().toString());
+        return encoded;
+    }
+
+    private static ToolResultDiagnostics readDiagnostics(JsonObject encoded) {
+        if (!encoded.keySet().equals(Set.of(
+                "normalizedBytes", "modelCharacters", "generationId", "projectedAt"))) {
+            throw new IllegalArgumentException("Server Tool diagnostics schema mismatch");
+        }
+        return new ToolResultDiagnostics(
+                requiredInteger(encoded, "normalizedBytes"),
+                requiredInteger(encoded, "modelCharacters"),
+                requiredString(encoded, "generationId"),
+                Instant.parse(requiredString(encoded, "projectedAt")));
+    }
+
+    private static JsonObject requiredObject(JsonObject object, String field) {
+        if (!object.has(field) || !object.get(field).isJsonObject()) {
+            throw new IllegalArgumentException("Server Tool " + field + " must be an object");
+        }
+        return object.getAsJsonObject(field);
+    }
+
+    private static String requiredString(JsonObject object, String field) {
+        if (!object.has(field) || !object.get(field).isJsonPrimitive()
+                || !object.getAsJsonPrimitive(field).isString()) {
+            throw new IllegalArgumentException("Server Tool " + field + " must be text");
+        }
+        return object.get(field).getAsString();
+    }
+
+    private static boolean requiredBoolean(JsonObject object, String field) {
+        if (!object.has(field) || !object.get(field).isJsonPrimitive()
+                || !object.getAsJsonPrimitive(field).isBoolean()) {
+            throw new IllegalArgumentException("Server Tool " + field + " must be boolean");
+        }
+        return object.get(field).getAsBoolean();
+    }
+
+    private static int requiredInteger(JsonObject object, String field) {
+        if (!object.has(field) || !object.get(field).isJsonPrimitive()
+                || !object.getAsJsonPrimitive(field).isNumber()) {
+            throw new IllegalArgumentException("Server Tool " + field + " must be an integer");
+        }
+        try {
+            return object.get(field).getAsBigDecimal().intValueExact();
+        } catch (ArithmeticException failure) {
+            throw new IllegalArgumentException("Server Tool " + field + " must be an integer", failure);
+        }
     }
 
     private static String type(AgentEvent event) {

@@ -121,6 +121,31 @@ final class BridgeJsonCodecTest {
     }
 
     @Test
+    void rejectsChunksThatChangeResourceViewIdentityMidAssembly() {
+        UUID operation = UUID.randomUUID();
+        List<RemoteToolResultChunkPayload> chunks = new ResultChunker().split(
+                operation,
+                BridgeViewIdentity.forRequest(
+                        UUID.randomUUID(), "main", BridgeViewIdentity.Owner.SERVER),
+                "abcdef",
+                2);
+        ResultChunker.Reassembler reassembler = new ResultChunker.Reassembler();
+        assertFalse(reassembler.accept(chunks.getFirst()).isPresent());
+        RemoteToolResultChunkPayload changed = new RemoteToolResultChunkPayload(
+                BridgeProtocol.VERSION,
+                operation,
+                chunks.get(1).index(),
+                chunks.get(1).total(),
+                BridgeViewIdentity.forRequest(
+                        UUID.randomUUID(), "main", BridgeViewIdentity.Owner.SERVER),
+                chunks.get(1).contentHash(),
+                chunks.get(1).base64Data());
+
+        assertThrows(IllegalArgumentException.class, () -> reassembler.accept(changed));
+        assertEquals(0, reassembler.activeAssemblies());
+    }
+
+    @Test
     void untrustedHugeChunkCountDoesNotDriveProportionalAllocation() {
         byte[] data = "x".getBytes(java.nio.charset.StandardCharsets.UTF_8);
         RemoteToolResultChunkPayload chunk = new RemoteToolResultChunkPayload(

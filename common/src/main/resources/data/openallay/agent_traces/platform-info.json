@@ -6,17 +6,17 @@
   "steps": [
     {
       "type": "tool_call",
-      "tool": "openallay:inspect_game_state",
-      "arguments": {"section": "OVERVIEW", "query": "summary"},
+      "tool": "openallay:resource_read",
+      "arguments": {"paths": ["/game/runtime"]},
       "expect": {
         "status": "success",
-        "match": "schema",
-        "outputType": "dev.openallay.tool.builtin.InspectGameStateTool$Output"
+        "match": "contains",
+        "value": {"operation": "resource_read"}
       }
     },
     {
       "type": "assistant_message",
-      "content": "平台信息来自当前运行中的 OpenAllay 工具注册表。"
+      "content": "平台信息来自当前请求捕获的 /game/runtime 资源。"
     }
   ]
 }

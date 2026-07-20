@@ -50,6 +50,9 @@ public final class ToolNameCodec {
     }
 
     private static String encodeCandidate(String id) {
+        if (id.startsWith("openallay:resource_")) {
+            return id.substring("openallay:".length());
+        }
         return id.replace("/", "_slash_")
                 .replace(".", "_dot_")
                 .replace(":", "__");

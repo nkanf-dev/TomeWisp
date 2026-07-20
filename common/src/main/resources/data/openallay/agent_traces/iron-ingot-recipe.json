@@ -6,23 +6,26 @@
   "steps": [
     {
       "type": "tool_call",
-      "tool": "openallay:search_recipes",
+      "tool": "openallay:resource_grep",
       "arguments": {
-        "outputItem": "minecraft:iron_ingot"
+        "searches": [{
+          "roots": ["/recipe"],
+          "pattern": "minecraft:iron_ingot",
+          "mode": "TOKEN",
+          "fields": ["/outputs"]
+        }]
       },
       "expect": {
         "status": "success",
         "match": "contains",
         "value": {
-          "query": {
-            "outputItem": "minecraft:iron_ingot"
-          }
+          "operation": "resource_grep"
         }
       }
     },
     {
       "type": "assistant_message",
-      "content": "铁锭的制作方式应以工具返回的当前配方快照及其 authority/completeness 证据为准。"
+      "content": "铁锭的制作方式应以 VFS 返回的当前配方资源及其证据为准，并从结果路径继续精确读取。"
     }
   ]
 }

@@ -8,14 +8,32 @@ import dev.openallay.net.HttpCancellation;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.LinkedHashMap;
+import java.util.Objects;
+import java.util.concurrent.CancellationException;
+import java.util.concurrent.CompletionException;
 import java.util.concurrent.CompletableFuture;
 
 /** Concurrent, independently degrading search across fixed public documentation sources. */
 public final class OnlineKnowledgeSearchService {
     private final List<OnlineKnowledgeSource> sources;
+    private final Map<String, OnlineKnowledgeSource> sourcesById;
 
     public OnlineKnowledgeSearchService(List<? extends OnlineKnowledgeSource> sources) {
         this.sources = List.copyOf(sources);
+        LinkedHashMap<String, OnlineKnowledgeSource> byId = new LinkedHashMap<>();
+        for (OnlineKnowledgeSource source : this.sources) {
+            OnlineKnowledgeSource previous = byId.put(source.sourceId(), source);
+            if (previous != null) {
+                throw new IllegalArgumentException("Duplicate online knowledge source: " + source.sourceId());
+            }
+        }
+        this.sourcesById = Map.copyOf(byId);
+    }
+
+    public List<SourceDescriptor> sources() {
+        return sources.stream().map(source -> new SourceDescriptor(
+                source.sourceId(), source.provenance(), sourcePathSegment(source.sourceId()))).toList();
     }
 
     public CompletableFuture<OnlineKnowledgeSearch> search(
@@ -25,12 +43,49 @@ public final class OnlineKnowledgeSearchService {
             HttpCancellation cancellation) {
         List<CompletableFuture<SourceOutcome>> pending = sources.stream()
                 .map(source -> source.search(query, limit, cancellation)
-                        .handle((hits, failure) -> failure == null
-                                ? SourceOutcome.success(source, hits)
-                                : SourceOutcome.failure(source, unwrap(failure))))
+                        .handle((hits, failure) -> {
+                            if (cancellation.isCancelled()) {
+                                throw new CompletionException(new CancellationException(
+                                        "Online knowledge search cancelled"));
+                            }
+                            return failure == null
+                                    ? SourceOutcome.success(source, hits)
+                                    : SourceOutcome.failure(source, unwrap(failure));
+                        }))
                 .toList();
         return CompletableFuture.allOf(pending.toArray(CompletableFuture[]::new))
-                .thenApply(ignored -> combine(pending, context));
+                .thenApply(ignored -> {
+                    if (cancellation.isCancelled()) {
+                        throw new CancellationException("Online knowledge search cancelled");
+                    }
+                    return combine(pending, context);
+                });
+    }
+
+    public CompletableFuture<OnlineKnowledgeDocument> read(
+            String sourceId,
+            String reference,
+            dev.openallay.resource.vfs.ResourcePath path,
+            ToolInvocationContext context,
+            HttpCancellation cancellation) {
+        OnlineKnowledgeSource source = sourcesById.get(sourceId);
+        if (source == null) {
+            return CompletableFuture.failedFuture(new OnlineKnowledgeException(
+                    "online_source_unavailable", "The online knowledge source is unavailable"));
+        }
+        return source.read(reference, cancellation).thenApply(raw -> {
+            if (cancellation.isCancelled()) {
+                throw new CancellationException("Online knowledge document read cancelled");
+            }
+            return new OnlineKnowledgeDocument(
+                    source.sourceId(),
+                    path,
+                    raw.title(),
+                    raw.sections().stream().map(section -> new OnlineKnowledgeDocument.Section(
+                            section.id(), section.heading(), section.text())).toList(),
+                    raw.reference(),
+                    evidence(context, source, DataCompleteness.PARTIAL, "public_document"));
+        });
     }
 
     private static OnlineKnowledgeSearch combine(
@@ -49,7 +104,8 @@ public final class OnlineKnowledgeSearchService {
                         outcome.source().sourceId(), code, playerSafeMessage(code)));
                 continue;
             }
-            EvidenceMetadata evidence = evidence(context, outcome.source());
+            EvidenceMetadata evidence = evidence(
+                    context, outcome.source(), DataCompleteness.PARTIAL, "public_search_excerpt");
             for (OnlineKnowledgeSource.RawHit hit : outcome.hits()) {
                 hits.add(new OnlineKnowledgeHit(
                         outcome.source().sourceId(),
@@ -63,7 +119,10 @@ public final class OnlineKnowledgeSearchService {
     }
 
     private static EvidenceMetadata evidence(
-            ToolInvocationContext context, OnlineKnowledgeSource source) {
+            ToolInvocationContext context,
+            OnlineKnowledgeSource source,
+            DataCompleteness completeness,
+            String scope) {
         String gameVersion = context.observableGameState()
                 .map(snapshot -> snapshot.runtime().gameVersion())
                 .orElseGet(() -> context.registries()
@@ -76,13 +135,13 @@ public final class OnlineKnowledgeSearchService {
                         .orElse("unknown"));
         return new EvidenceMetadata(
                 DataAuthority.INTEGRATION_API,
-                DataCompleteness.PARTIAL,
+                completeness,
                 context.capturedAt(),
                 source.sourceId(),
                 source.provenance(),
                 gameVersion,
                 loader,
-                Map.of("openallay:scope", "public_search_excerpt"));
+                Map.of("openallay:scope", scope));
     }
 
     private static String playerSafeMessage(String code) {
@@ -115,5 +174,24 @@ public final class OnlineKnowledgeSearchService {
         private static SourceOutcome failure(OnlineKnowledgeSource source, Throwable failure) {
             return new SourceOutcome(source, List.of(), failure);
         }
+    }
+
+    public record SourceDescriptor(String sourceId, String provenance, String pathSegment) {
+        public SourceDescriptor {
+            if (sourceId == null || sourceId.isBlank() || provenance == null || provenance.isBlank()
+                    || pathSegment == null || pathSegment.isBlank()) {
+                throw new IllegalArgumentException("invalid online knowledge source descriptor");
+            }
+        }
+    }
+
+    static String sourcePathSegment(String sourceId) {
+        Objects.requireNonNull(sourceId, "sourceId");
+        int separator = sourceId.indexOf(':');
+        String value = separator < 0 ? sourceId : sourceId.substring(separator + 1);
+        if (!value.matches("[a-z0-9_.-]+")) {
+            throw new IllegalArgumentException("Online knowledge source ID has no safe path segment");
+        }
+        return value;
     }
 }

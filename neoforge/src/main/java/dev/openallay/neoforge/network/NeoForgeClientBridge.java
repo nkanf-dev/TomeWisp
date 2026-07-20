@@ -72,7 +72,8 @@ public final class NeoForgeClientBridge {
     public void configureClientTools(
             Supplier<ToolRuntimeCatalog> localToolCatalog,
             ClientToolExecutionEndpoint.ContextProvider contexts,
-            Gson gson) {
+            Gson gson,
+            dev.openallay.resource.runtime.ResourceRequestRegistry resources) {
         this.localToolCatalog = java.util.Objects.requireNonNull(
                 localToolCatalog, "localToolCatalog");
         this.clientTools = new ClientToolExecutionEndpoint(
@@ -80,7 +81,18 @@ public final class NeoForgeClientBridge {
                 chunk -> net.minecraft.client.Minecraft.getInstance().execute(
                         () -> send("client_tool_result", chunk)),
                 gson,
-                dev.openallay.bridge.protocol.BridgeProtocol.TRANSPORT_CHUNK_BYTES);
+                dev.openallay.bridge.protocol.BridgeProtocol.TRANSPORT_CHUNK_BYTES,
+                resources,
+                () -> {
+                    CapabilityPayload capability = capabilities.snapshot();
+                    if (!capability.serverModel()) {
+                        throw new IllegalStateException("Server model context budget is unavailable");
+                    }
+                    return new dev.openallay.agent.context.ContextBudget(
+                            capability.serverContextWindowTokens(),
+                            capability.serverMaxOutputTokens());
+                });
+        remoteTools.configureResources(resources);
     }
     public void onDisconnect(Runnable listener) { disconnectListeners.add(listener); }
     public void onCapabilitiesChanged(Runnable listener) { capabilityListeners.add(listener); }

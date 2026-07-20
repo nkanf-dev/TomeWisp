@@ -61,4 +61,28 @@ final class NativeDomainViewBindingsTest {
                 "d".repeat(64), reference, "call-other", "", "fallback", "narration");
         assertTrue(NativeDomainViewBindings.recipe(view, assistant, wrongOrigin).isEmpty());
     }
+
+    @Test
+    void createsStableNativeBindingDirectlyFromValidatedRecipeCard() {
+        String generation = "b".repeat(64);
+        RecipeReference reference = new RecipeReference(
+                "minecraft:recipe_manager", generation, "minecraft:apple");
+        dev.openallay.guide.ui.GuideRecipeCard card = new dev.openallay.guide.ui.GuideRecipeCard(
+                reference,
+                List.of(reference),
+                "minecraft:apple",
+                "minecraft:crafting",
+                "minecraft:crafting_table",
+                List.of(new dev.openallay.guide.ui.GuideRecipeCard.Output(
+                        "minecraft:apple", 1, "Apple")));
+
+        NativeDomainViewBinding.Recipe first = NativeDomainViewBindings.recipe(
+                "tool:request:call:recipe", "call-vfs", card);
+        NativeDomainViewBinding.Recipe second = NativeDomainViewBindings.recipe(
+                "tool:request:call:recipe", "call-vfs", card);
+
+        assertEquals(first, second);
+        assertEquals("call-vfs", first.component().originInvocationId());
+        assertEquals(64, first.component().nodeId().length());
+    }
 }

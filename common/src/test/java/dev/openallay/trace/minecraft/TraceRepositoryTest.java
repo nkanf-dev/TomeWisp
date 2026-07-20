@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 
 import dev.openallay.tool.ToolResult;
 import dev.openallay.trace.json.TraceParser;
+import dev.openallay.trace.model.ToolCallStep;
 import java.io.StringReader;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
@@ -56,7 +57,17 @@ final class TraceRepositoryTest {
                                 StandardCharsets.UTF_8)))
                 .toList();
 
-        assertEquals(ids, success(repository.load(sources)).value().ids());
+        TraceRepository.LoadedTraces loaded = success(repository.load(sources)).value();
+        assertEquals(ids, loaded.ids());
+        loaded.traces().values().stream()
+                .filter(trace -> !trace.id().equals("find-recipes-compatibility"))
+                .flatMap(trace -> trace.steps().stream())
+                .filter(ToolCallStep.class::isInstance)
+                .map(ToolCallStep.class::cast)
+                .forEach(call -> org.junit.jupiter.api.Assertions.assertTrue(
+                        call.tool().startsWith("openallay:resource_")
+                                || call.tool().equals("openallay:calculate_craftability"),
+                        call.tool()));
     }
 
     private static TraceRepository.TraceSource source(String name, String json) {

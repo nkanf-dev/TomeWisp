@@ -105,10 +105,11 @@ public final class GuideStateReducer {
                         completed.toolId(),
                         completed.failure() ? GuideToolStatus.FAILED : GuideToolStatus.SUCCEEDED,
                         completed.normalized(),
+                        completed.uiReference(),
+                        completed.diagnostics(),
                         mergePresentationMessages(
                                 running.activity().presentationMessages(),
-                                GuideToolPresentation.messages(
-                                        completed.toolId(), completed.normalized())),
+                                resultMessages(completed)),
                         toolSources);
                 ArrayList<GuideTimelineEntry> next = new ArrayList<>(timeline);
                 next.set(match, new GuideTimelineEntry.Tool(running.ordinal(), replacement));
@@ -298,6 +299,8 @@ public final class GuideStateReducer {
                 started.toolId(),
                 GuideToolStatus.RUNNING,
                 null,
+                dev.openallay.agent.tool.ToolUiReference.none(),
+                dev.openallay.agent.tool.ToolResultDiagnostics.none(),
                 started.presentationMessages(),
                 List.of())));
         return List.copyOf(next);
@@ -317,6 +320,24 @@ public final class GuideStateReducer {
             }
         }
         return List.copyOf(messages);
+    }
+
+    private static List<GuideToolMessage> resultMessages(AgentEvent.ToolCompleted completed) {
+        if (toolName(completed.toolId()).startsWith("resource_")
+                && !completed.uiReference().summary().operation().isBlank()) {
+            return GuideToolPresentation.resourceMessages(completed.uiReference());
+        }
+        ArrayList<GuideToolMessage> messages = new ArrayList<>(GuideToolPresentation.messages(
+                completed.toolId(), completed.normalized()));
+        if (completed.uiReference().continuationAvailable()) {
+            messages.add(GuideToolMessage.of(GuideToolMessage.Key.RESOURCE_RESULT_CONTINUATION));
+        }
+        return List.copyOf(messages);
+    }
+
+    private static String toolName(String toolId) {
+        int separator = toolId.indexOf(':');
+        return separator < 0 ? toolId : toolId.substring(separator + 1);
     }
 
     private List<GuideTimelineEntry> closeAssistant(

@@ -2,15 +2,13 @@ package dev.openallay.agent.context;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import com.google.gson.JsonElement;
-import com.google.gson.JsonObject;
-import com.google.gson.JsonParser;
 import dev.openallay.model.ModelContent;
 import dev.openallay.model.ModelMessage;
 import dev.openallay.model.ModelRole;
+import dev.openallay.resource.projection.ResourceReceipt;
+import dev.openallay.resource.vfs.ResourcePath;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 
@@ -18,106 +16,100 @@ final class ToolResultContextReducerTest {
     private final ToolResultContextReducer reducer = new ToolResultContextReducer();
 
     @Test
-    void reducesBulkRecipeInventoryAndDocumentDataButKeepsReferencesAndEvidence() {
-        JsonObject normalized = JsonParser.parseString("""
-                {"status":"success","outputType":"test.SearchRecipesOutput","value":{
-                  "recipes":[
-                    {"reference":{"sourceId":"viewer:jei","generation":"%s","recipeId":"farmersdelight:apple_cider"},"bulk":"%s"},
-                    {"reference":{"sourceId":"viewer:rei","generation":"%s","recipeId":"farmersdelight:apple_cider"},"bulk":"%s"}],
-                  "counts":{"minecraft:apple":64,"minecraft:sugar":32},
-                  "results":[{"referenceId":"patchouli:test/book/entry","excerpt":"%s"}],
-                  "craftable":false,"conclusive":true,"missingCount":2,
-                  "evidence":[{"authority":"CLIENT_VISIBLE","completeness":"PARTIAL",
-                    "capturedAt":"2026-07-18T00:00:00Z","sourceId":"viewer:jei",
-                    "provenance":"JEI public API","gameVersion":"26.2","loader":"fabric","details":{}}]}}
-                """.formatted("a".repeat(64), "x".repeat(8_000), "b".repeat(64),
-                        "y".repeat(8_000), "z".repeat(8_000))).getAsJsonObject();
-        List<ModelMessage> original = exchange(normalized, false);
+    void historicalBodyBecomesStructuralReceiptWithoutInspectingExactJson() {
+        String body = """
+                status: success
+                resource: /result/r1
+                generation: g1
+                authority: CLIENT_VISIBLE
+                completeness: COMPLETE
+                returned: 10/100
+                fields: id,name
+                  nested_bulk: %s
+                """.formatted("x".repeat(8_000));
 
-        ContextProjection projection = reducer.reduce(original, original.size());
-        JsonObject reduced = result(projection.messages().get(1)).getAsJsonObject();
+        ContextProjection projection = reducer.reduce(exchange("call", body, "/result/r1"), 2);
+        ModelContent.ToolResult reduced = result(projection.messages().get(1));
 
         assertEquals(ContextProjection.Kind.TOOL_RESULTS_REDUCED, projection.kind());
-        assertEquals("success", reduced.get("status").getAsString());
-        assertEquals("test.SearchRecipesOutput", reduced.get("outputType").getAsString());
-        assertEquals(2, reduced.getAsJsonArray("references").size());
-        assertEquals(1, reduced.getAsJsonArray("evidence").size());
-        assertEquals("patchouli:test/book/entry",
-                reduced.getAsJsonArray("stableIds").get(0).getAsJsonObject().get("value").getAsString());
-        assertFalse(reduced.toString().contains("x".repeat(100)));
-        assertFalse(reduced.toString().contains("minecraft:apple"));
-        assertTrue(reduced.getAsJsonObject("conclusions").get("craftable").isJsonPrimitive());
-        assertTrue(reduced.getAsJsonObject("conclusions").get("conclusive").isJsonPrimitive());
-        assertTrue(reduced.getAsJsonObject("conclusions").get("missingCount").isJsonPrimitive());
-        assertTrue(reduced.toString().length() < normalized.toString().length() / 5);
+        assertTrue(reduced.text().startsWith("historical_result: receipt"));
+        assertTrue(reduced.text().contains("resource: /result/r1"));
+        assertTrue(reduced.text().contains("authority: CLIENT_VISIBLE"));
+        assertTrue(reduced.text().contains("returned: 10/100"));
+        assertFalse(reduced.text().contains("nested_bulk"));
+        assertFalse(reduced.text().contains("x".repeat(100)));
     }
 
     @Test
-    void preservesStructuredFailureWithoutInventingSuccess() {
-        JsonObject failure = JsonParser.parseString("""
-                {"status":"failure","code":"stale_reference","message":"generation changed",
-                 "ignored":{"raw":"%s"}}
-                """.formatted("secret-body".repeat(100))).getAsJsonObject();
+    void failureAndLegacyHistoryRemainExplicitWithoutInventingLiveResources() {
+        ModelContent.ToolResult failure = result(reducer.reduce(exchange(
+                "failed", "status: failure\ncode: stale_resource\nmessage: generation changed",
+                null), 2).messages().get(1));
 
-        JsonObject reduced = result(reducer.reduce(exchange(failure, true), 2).messages().get(1))
-                .getAsJsonObject();
-
-        assertEquals("failure", reduced.get("status").getAsString());
-        assertEquals("stale_reference", reduced.get("code").getAsString());
-        assertEquals("generation changed", reduced.get("message").getAsString());
-        assertFalse(reduced.has("ignored"));
+        assertTrue(failure.text().contains("status: failure"));
+        assertTrue(failure.text().contains("code: stale_resource"));
+        assertTrue(failure.text().contains("resource: unavailable in restored legacy history"));
+        assertTrue(failure.error());
     }
 
     @Test
-    void malformedHistoricalResultBecomesAnExplicitReducedFailure() {
-        ModelMessage use = new ModelMessage(
-                ModelRole.ASSISTANT,
-                List.of(new ModelContent.ToolUse("call_1", "test__unknown", new JsonObject())));
-        ModelMessage malformed = new ModelMessage(
-                ModelRole.USER,
-                List.of(new ModelContent.ToolResult("call_1", JsonParser.parseString("[1,2,3]"), false)));
-
-        JsonObject reduced = result(reducer.reduce(List.of(use, malformed), 2).messages().get(1))
-                .getAsJsonObject();
-
-        assertEquals("failure", reduced.get("status").getAsString());
-        assertEquals("context_result_malformed", reduced.get("code").getAsString());
-    }
-
-    @Test
-    void messagesAtAndAfterProtectedBoundaryRemainExactlyEqual() {
-        JsonObject oldResult = JsonParser.parseString(
-                "{\"status\":\"success\",\"value\":{\"bulk\":\"" + "x".repeat(500) + "\"}}")
-                .getAsJsonObject();
-        JsonObject currentResult = JsonParser.parseString(
-                "{\"status\":\"success\",\"value\":{\"bulk\":\"" + "y".repeat(500) + "\"}}")
-                .getAsJsonObject();
-        List<ModelMessage> old = exchange(oldResult, false);
-        List<ModelMessage> current = exchange("call_2", currentResult, false);
+    void protectedCurrentExchangeRemainsExactlyEqual() {
+        List<ModelMessage> old = exchange("old", "status: success\nvalue: " + "x".repeat(500),
+                "/result/old");
+        List<ModelMessage> current = exchange("current", "status: success\nvalue: 42",
+                "/result/current");
         List<ModelMessage> all = java.util.stream.Stream.concat(old.stream(), current.stream()).toList();
 
         ContextProjection projection = reducer.reduce(all, 2);
 
-        assertNotEquals(all.get(1), projection.messages().get(1));
+        assertTrue(result(projection.messages().get(1)).text().startsWith("historical_result"));
         assertEquals(all.subList(2, 4), projection.messages().subList(2, 4));
-        assertEquals(currentResult, result(projection.messages().get(3)));
     }
 
-    private static List<ModelMessage> exchange(JsonObject normalized, boolean error) {
-        return exchange("call_1", normalized, error);
+    @Test
+    void structuredReceiptsDriveReductionWithoutParsingModelText() {
+        ResourceReceipt receipt = new ResourceReceipt(
+                ResourcePath.parse("/result/r1"),
+                "digest-1",
+                "table",
+                4,
+                40L,
+                List.of("id", "damage"),
+                "opaque-cursor",
+                "client_visible",
+                "complete",
+                0L,
+                4L,
+                List.of("minecraft:iron_sword"));
+        ModelMessage use = new ModelMessage(ModelRole.ASSISTANT, List.of(
+                new ModelContent.ToolUse("call", "resource_query", new com.google.gson.JsonObject())));
+        ModelMessage result = new ModelMessage(ModelRole.USER, List.of(
+                new ModelContent.ToolResult(
+                        "call",
+                        "status: failure\ngeneration: malicious-text\n{\"huge\":\"ignored\"}",
+                        "/result/r1",
+                        List.of(receipt),
+                        false)));
+
+        ModelContent.ToolResult reduced = result(reducer.reduce(List.of(use, result), 2)
+                .messages().get(1));
+
+        assertTrue(reduced.text().contains("generation: digest-1"));
+        assertTrue(reduced.text().contains("returned: 4/40"));
+        assertTrue(reduced.text().contains("next_cursor: opaque-cursor"));
+        assertFalse(reduced.text().contains("malicious-text"));
+        assertEquals(List.of(receipt), reduced.receipts());
     }
 
-    private static List<ModelMessage> exchange(String id, JsonObject normalized, boolean error) {
+    private static List<ModelMessage> exchange(String id, String text, String receiptPath) {
         return List.of(
-                new ModelMessage(
-                        ModelRole.ASSISTANT,
-                        List.of(new ModelContent.ToolUse(id, "test__tool", new JsonObject()))),
-                new ModelMessage(
-                        ModelRole.USER,
-                        List.of(new ModelContent.ToolResult(id, normalized, error))));
+                new ModelMessage(ModelRole.ASSISTANT, List.of(
+                        new ModelContent.ToolUse(id, "resource_read", new com.google.gson.JsonObject()))),
+                new ModelMessage(ModelRole.USER, List.of(
+                        new ModelContent.ToolResult(id, text, receiptPath, id.equals("failed")))));
     }
 
-    private static JsonElement result(ModelMessage message) {
-        return ((ModelContent.ToolResult) message.content().getFirst()).value();
+    private static ModelContent.ToolResult result(ModelMessage message) {
+        return (ModelContent.ToolResult) message.content().getFirst();
     }
 }

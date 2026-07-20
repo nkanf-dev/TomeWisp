@@ -6,10 +6,12 @@ import dev.openallay.agent.tool.AgentToolExecutor;
 import dev.openallay.agent.tool.AgentToolResult;
 import dev.openallay.agent.tool.ToolNameCodec;
 import dev.openallay.bridge.protocol.BridgeProtocol;
+import dev.openallay.bridge.protocol.BridgeViewIdentity;
 import dev.openallay.bridge.protocol.RemoteCancelPayload;
 import dev.openallay.bridge.protocol.RemoteToolCallPayload;
 import dev.openallay.bridge.protocol.RemoteToolResultChunkPayload;
 import dev.openallay.bridge.protocol.ResultChunker;
+import dev.openallay.bridge.ResourceToolPlacement;
 import dev.openallay.context.ContextCapability;
 import dev.openallay.context.ToolInvocationContext;
 import dev.openallay.model.CancellationSignal;
@@ -26,6 +28,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
+import dev.openallay.resource.runtime.ResourceRequestRegistry;
 
 public final class RemoteToolExecutor implements AgentToolExecutor {
     private static final String MODEL_PREFIX = "server__";
@@ -46,6 +49,7 @@ public final class RemoteToolExecutor implements AgentToolExecutor {
     private final Duration resultTimeout;
     private final ResultChunker.Reassembler reassembler = new ResultChunker.Reassembler();
     private final Map<UUID, Pending> pending = new ConcurrentHashMap<>();
+    private volatile ResourceRequestRegistry resources;
 
     public RemoteToolExecutor(RemoteCapabilityStore capabilities, Transport transport) {
         this(capabilities, transport, BridgeProtocol.PARTIAL_ASSEMBLY_TIMEOUT);
@@ -59,6 +63,15 @@ public final class RemoteToolExecutor implements AgentToolExecutor {
         if (resultTimeout.isZero() || resultTimeout.isNegative()) {
             throw new IllegalArgumentException("resultTimeout must be positive");
         }
+    }
+
+    /** Binds owner-local result publication after the client runtime has been bootstrapped. */
+    public synchronized void configureResources(ResourceRequestRegistry resources) {
+        java.util.Objects.requireNonNull(resources, "resources");
+        if (this.resources != null && this.resources != resources) {
+            throw new IllegalStateException("Remote Tool Resource registry is already configured");
+        }
+        this.resources = resources;
     }
 
     @Override
@@ -100,7 +113,7 @@ public final class RemoteToolExecutor implements AgentToolExecutor {
         }
         String toolId = codec().decode(modelToolName.substring(MODEL_PREFIX.length()));
         UUID correlation = UUID.randomUUID();
-        Pending value = new Pending(toolId, new CompletableFuture<>());
+        Pending value = new Pending(toolId, context.correlationId(), new CompletableFuture<>());
         pending.put(correlation, value);
         cancellation.onCancel(() -> cancelInvocation(correlation, value));
         RemoteToolCallPayload payload = new RemoteToolCallPayload(
@@ -108,7 +121,12 @@ public final class RemoteToolExecutor implements AgentToolExecutor {
                 correlation,
                 context.correlationId(),
                 toolId,
+                BridgeViewIdentity.forRequest(
+                        context.correlationId(),
+                        context.correlationId(),
+                        BridgeViewIdentity.Owner.SERVER),
                 arguments.toString());
+        value.viewId = payload.viewId();
         synchronized (value) {
             if (pending.get(correlation) != value || cancellation.isCancelled()) {
                 return value.result;
@@ -146,6 +164,9 @@ public final class RemoteToolExecutor implements AgentToolExecutor {
                 return false;
             }
             try {
+                if (!java.util.Objects.equals(value.viewId, chunk.viewId())) {
+                    throw new IllegalArgumentException("Remote resource view identity changed");
+                }
                 var complete = reassembler.accept(chunk);
                 if (complete.isPresent()) {
                     if (!pending.remove(chunk.correlationId(), value)) {
@@ -155,12 +176,21 @@ public final class RemoteToolExecutor implements AgentToolExecutor {
                     value.cancelDeadline();
                     JsonObject normalized =
                             JsonParser.parseString(complete.orElseThrow()).getAsJsonObject();
-                    if (!normalized.has("status") || !normalized.get("status").isJsonPrimitive()) {
-                        throw new IllegalArgumentException("Remote Tool result has no status");
-                    }
+                    validateNormalized(normalized);
                     boolean failure = normalized.has("status")
                             && normalized.get("status").getAsString().equals("failure");
-                    value.result.complete(new AgentToolResult(value.toolId, normalized, failure));
+                    ResourceRequestRegistry ownerResources = resources;
+                    AgentToolResult completed = !failure
+                                    && ownerResources != null
+                                    && ResourceToolPlacement.isResourceTool(value.toolId)
+                            ? ownerResources.importRemoteResult(
+                                    value.requestCorrelationId,
+                                    value.toolId,
+                                    chunk.correlationId().toString(),
+                                    normalized,
+                                    "server")
+                            : new AgentToolResult(value.toolId, normalized, failure);
+                    value.result.complete(completed);
                 }
                 return true;
             } catch (RuntimeException failure) {
@@ -247,18 +277,44 @@ public final class RemoteToolExecutor implements AgentToolExecutor {
         return new AgentToolResult(toolId, normalized, true);
     }
 
+    private static void validateNormalized(JsonObject normalized) {
+        if (!normalized.has("status") || !normalized.get("status").isJsonPrimitive()) {
+            throw new IllegalArgumentException("Remote Tool result has no status");
+        }
+        String status = normalized.get("status").getAsString();
+        if (status.equals("failure")) {
+            if (!normalized.keySet().equals(Set.of("status", "code", "message"))
+                    || !normalized.get("code").isJsonPrimitive()
+                    || !normalized.get("message").isJsonPrimitive()) {
+                throw new IllegalArgumentException("Remote Tool failure envelope is invalid");
+            }
+            return;
+        }
+        if (!status.equals("success")
+                || !normalized.keySet().equals(Set.of("status", "outputType", "value"))
+                || !normalized.get("outputType").isJsonPrimitive()) {
+            throw new IllegalArgumentException("Remote Tool success envelope is invalid");
+        }
+    }
+
     int activeResultAssemblies() {
         return reassembler.activeAssemblies();
     }
 
     private static final class Pending {
         private final String toolId;
+        private final String requestCorrelationId;
         private final CompletableFuture<AgentToolResult> result;
         private volatile ScheduledFuture<?> deadline;
+        private volatile String viewId;
         private boolean dispatched;
 
-        private Pending(String toolId, CompletableFuture<AgentToolResult> result) {
+        private Pending(
+                String toolId,
+                String requestCorrelationId,
+                CompletableFuture<AgentToolResult> result) {
             this.toolId = toolId;
+            this.requestCorrelationId = requestCorrelationId;
             this.result = result;
         }
 

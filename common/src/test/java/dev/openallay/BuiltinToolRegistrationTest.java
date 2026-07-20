@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 
 import dev.openallay.platform.PlatformService;
+import dev.openallay.tool.ToolCatalogPolicy;
 import java.util.Set;
 import java.util.stream.Collectors;
 import org.junit.jupiter.api.Test;
@@ -25,6 +26,10 @@ final class BuiltinToolRegistrationTest {
         assertTrue(toolIds.contains("openallay:inspect_game_state"));
         assertFalse(toolIds.contains("openallay:platform_info"));
         assertFalse(toolIds.contains("openallay:player_context"));
+        assertTrue(toolIds.stream()
+                .filter(id -> !id.equals("openallay:calculate_craftability"))
+                .allMatch(id -> !ToolCatalogPolicy.modelAdvertised(id)));
+        assertTrue(ToolCatalogPolicy.modelAdvertised("openallay:calculate_craftability"));
     }
 
     private static PlatformService testPlatform() {

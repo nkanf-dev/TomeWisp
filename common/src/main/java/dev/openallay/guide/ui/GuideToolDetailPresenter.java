@@ -5,7 +5,6 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import dev.openallay.guide.GuideToolActivity;
 import dev.openallay.guide.GuideToolMessage;
-import dev.openallay.guide.GuideToolPresentation;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -17,27 +16,55 @@ public final class GuideToolDetailPresenter {
     private GuideToolDetailPresenter() {}
 
     public static GuideToolDetailView project(GuideToolActivity activity, boolean debugMode) {
-        JsonObject normalized = activity.normalized();
-        Projection projection = projectCards(activity.toolId(), normalized);
-        List<GuideToolMessage> narration = GuideToolPresentation.messages(
-                activity.toolId(), normalized);
+        Projection projection = projectCards(activity);
+        List<GuideToolMessage> narration = GuideToolPresenter.messages(activity);
         Optional<GuideToolDetailView.Debug> debug = debugMode
                 ? Optional.of(new GuideToolDetailView.Debug(
                         activity.invocationId(),
                         activity.toolId(),
                         activity.sources(),
-                        normalized,
+                        activity.uiReference(),
+                        activity.diagnostics(),
+                        boundedDebugSummary(activity),
                         projection.diagnostic()))
                 : Optional.empty();
         return new GuideToolDetailView(
                 titleKey(activity.toolId()),
                 activity.status(),
                 projection.cards(),
-                narration,
+                List.copyOf(narration),
                 debug);
     }
 
-    private static Projection projectCards(String toolId, JsonObject normalized) {
+    private static JsonObject boundedDebugSummary(GuideToolActivity activity) {
+        JsonObject summary = new JsonObject();
+        summary.addProperty("status", activity.status().name());
+        if (!activity.uiReference().summary().operation().isBlank()) {
+            summary.addProperty("operation", activity.uiReference().summary().operation());
+            summary.addProperty("succeeded", activity.uiReference().summary().succeeded());
+            summary.addProperty("failed", activity.uiReference().summary().failed());
+        }
+        summary.addProperty("primaryResourceCount", activity.uiReference().primaryResources().size());
+        summary.addProperty("presentation", activity.uiReference().presentationKind().name());
+        summary.addProperty("continuation", activity.uiReference().continuationAvailable());
+        summary.addProperty("normalizedBytes", activity.diagnostics().normalizedBytes());
+        summary.addProperty("modelCharacters", activity.diagnostics().modelCharacters());
+        summary.addProperty("generation", activity.diagnostics().generationId());
+        summary.addProperty("projectedAt", activity.diagnostics().projectedAt().toString());
+        return summary;
+    }
+
+    private static Projection projectCards(GuideToolActivity activity) {
+        String toolId = activity.toolId();
+        String name = toolName(toolId);
+        if (name.startsWith("resource_") || activity.uiReference().resultPath() != null) {
+            try {
+                return resourceCards(activity);
+            } catch (RuntimeException exception) {
+                return new Projection(List.of(), "malformed semantic result");
+            }
+        }
+        JsonObject normalized = activity.normalized();
         if (normalized == null) {
             return new Projection(List.of(), "result unavailable");
         }
@@ -48,7 +75,6 @@ public final class GuideToolDetailPresenter {
         if (value == null) {
             return new Projection(List.of(), "value is missing");
         }
-        String name = toolName(toolId);
         try {
             return switch (name) {
                 case "search_recipes", "get_recipe" -> recipeCards(toolId, normalized);
@@ -60,6 +86,35 @@ public final class GuideToolDetailPresenter {
         } catch (RuntimeException exception) {
             return new Projection(List.of(), "malformed semantic result");
         }
+    }
+
+    private static Projection resourceCards(GuideToolActivity activity) {
+        boolean recipe = activity.uiReference().presentationKind()
+                        == dev.openallay.resource.vfs.ResourcePresentation.Kind.RECIPE
+                || activity.uiReference().primaryResources().stream()
+                        .anyMatch(path -> path.mount().equals("recipe"));
+        if (recipe) {
+            List<GuideRecipeCard> recipes = GuideRecipePresenter.cards(activity);
+            if (!recipes.isEmpty()) {
+                return new Projection(
+                        recipes.stream().<GuideDetailCard>map(GuideDetailCard.Recipe::new).toList(),
+                        "");
+            }
+        }
+        var summary = activity.uiReference().summary();
+        String firstRequested = activity.uiReference().primaryResources().isEmpty()
+                ? "" : activity.uiReference().primaryResources().getFirst().toString();
+        return new Projection(
+                List.of(new GuideDetailCard.ResourceSummary(
+                        summary.operation().isBlank() ? toolName(activity.toolId()) : summary.operation(),
+                        summary.succeeded(),
+                        summary.failed(),
+                        firstRequested,
+                        Math.max(0, activity.uiReference().primaryResources().size() - 1),
+                        summary.resourceKinds(),
+                        activity.uiReference().resultPath() == null
+                                ? "" : activity.uiReference().resultPath().toString(),
+                        activity.uiReference().continuationAvailable())), "");
     }
 
     private static Projection recipeCards(String toolId, JsonObject normalized) {
@@ -156,6 +211,11 @@ public final class GuideToolDetailPresenter {
 
     private static String titleKey(String toolId) {
         return switch (toolName(toolId)) {
+            case "resource_list" -> "screen.openallay.tool.resource_list";
+            case "resource_read" -> "screen.openallay.tool.resource_read";
+            case "resource_glob" -> "screen.openallay.tool.resource_glob";
+            case "resource_grep" -> "screen.openallay.tool.resource_grep";
+            case "resource_query" -> "screen.openallay.tool.resource_query";
             case "search_recipes" -> "screen.openallay.tool.search_recipes";
             case "get_recipe" -> "screen.openallay.tool.get_recipe";
             case "find_item_usages" -> "screen.openallay.tool.find_item_usages";

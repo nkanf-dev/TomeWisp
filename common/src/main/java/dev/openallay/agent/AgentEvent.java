@@ -2,6 +2,8 @@ package dev.openallay.agent;
 
 import com.google.gson.JsonObject;
 import dev.openallay.agent.context.ContextCheckpoint;
+import dev.openallay.agent.tool.ToolResultDiagnostics;
+import dev.openallay.agent.tool.ToolUiReference;
 import dev.openallay.guide.GuideToolMessage;
 import dev.openallay.model.ModelEvent;
 import java.util.List;
@@ -48,11 +50,29 @@ public sealed interface AgentEvent
             String invocationId,
             String toolId,
             boolean failure,
-            JsonObject normalized)
+            JsonObject normalized,
+            ToolUiReference uiReference,
+            ToolResultDiagnostics diagnostics)
             implements AgentEvent {
         public ToolCompleted {
             requireIdentity(invocationId, toolId);
             normalized = Objects.requireNonNull(normalized, "normalized").deepCopy();
+            uiReference = Objects.requireNonNull(uiReference, "uiReference");
+            diagnostics = Objects.requireNonNull(diagnostics, "diagnostics");
+        }
+
+        public ToolCompleted(
+                String invocationId,
+                String toolId,
+                boolean failure,
+                JsonObject normalized) {
+            this(
+                    invocationId,
+                    toolId,
+                    failure,
+                    normalized,
+                    ToolUiReference.none(),
+                    ToolResultDiagnostics.none());
         }
 
         @Override

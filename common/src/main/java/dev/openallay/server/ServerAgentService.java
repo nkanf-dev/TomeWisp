@@ -126,6 +126,7 @@ public final class ServerAgentService {
                             || owner.cancellation().isCancelled()) {
                         return CompletableFuture.completedFuture(null);
                     }
+                    runtime.prepare().accept(context);
                     AgentRequest request = new AgentRequest(
                             payload.requestId(),
                             sender,
@@ -216,11 +217,19 @@ public final class ServerAgentService {
     public record Accepted(UUID requestId, String sessionId) {}
 
     public record RequestRuntime(
-            GameGuideAgent agent, AgentToolExecutor tools, Runnable close) {
+            GameGuideAgent agent,
+            AgentToolExecutor tools,
+            java.util.function.Consumer<ToolInvocationContext> prepare,
+            Runnable close) {
         public RequestRuntime {
             java.util.Objects.requireNonNull(agent, "agent");
             java.util.Objects.requireNonNull(tools, "tools");
+            java.util.Objects.requireNonNull(prepare, "prepare");
             java.util.Objects.requireNonNull(close, "close");
+        }
+
+        public RequestRuntime(GameGuideAgent agent, AgentToolExecutor tools, Runnable close) {
+            this(agent, tools, ignored -> {}, close);
         }
     }
 

@@ -4,7 +4,15 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.google.gson.JsonParser;
+import dev.openallay.agent.tool.ToolResultDiagnostics;
+import dev.openallay.agent.tool.ToolUiReference;
+import dev.openallay.agent.tool.ToolUiSummary;
+import dev.openallay.guide.GuideToolActivity;
 import dev.openallay.guide.GuideToolMessage;
+import dev.openallay.guide.GuideToolStatus;
+import dev.openallay.resource.vfs.ResourcePath;
+import dev.openallay.resource.vfs.ResourcePresentation;
+import java.time.Instant;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 
@@ -60,5 +68,35 @@ final class GuideToolPresenterTest {
         assertTrue(!visible.contains("UNAVAILABLE"));
         assertTrue(!visible.contains("mod_not_loaded"));
         assertTrue(!visible.contains("0".repeat(64)));
+    }
+
+    @Test
+    void resourcePresentationReportsBatchOutcomeAndContinuationWithoutTruthDump() {
+        var normalized = JsonParser.parseString("""
+                {"status":"success","value":{"operation":"resource_query",
+                "resultPath":"/result/r2","items":[
+                {"inputIndex":0,"input":"/item","status":"success","value":{"rows":2}},
+                {"inputIndex":1,"input":"/missing","status":"failure",
+                 "failure":{"code":"resource_unavailable","message":"missing"}}]}}
+                """).getAsJsonObject();
+        GuideToolActivity activity = new GuideToolActivity(
+                "call-r2", 0, "openallay:resource_query", GuideToolStatus.SUCCEEDED,
+                normalized,
+                new ToolUiReference(
+                        ResourcePath.parse("/result/r2"),
+                        List.of(ResourcePath.parse("/item")),
+                        ResourcePresentation.Kind.TABLE,
+                        true,
+                        new ToolUiSummary("resource_query", 1, 1, List.of("table"))),
+                new ToolResultDiagnostics(800, 180, "a".repeat(64), Instant.EPOCH),
+                List.of(), List.of());
+
+        var messages = GuideToolPresenter.messages(activity);
+
+        assertEquals(GuideToolMessage.Key.RESOURCE_RESULT_SUMMARY, messages.getFirst().key());
+        assertEquals(List.of("resource_query", "1", "1"), messages.getFirst().arguments());
+        assertEquals(GuideToolMessage.Key.RESOURCE_RESULT_CONTINUATION, messages.getLast().key());
+        assertTrue(messages.toString().length() < normalized.toString().length());
+        assertTrue(!messages.toString().contains("resource_unavailable"));
     }
 }

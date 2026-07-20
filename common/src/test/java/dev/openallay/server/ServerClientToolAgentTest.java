@@ -58,7 +58,7 @@ final class ServerClientToolAgentTest {
                         failure.addProperty("code", "client_tool_unavailable");
                         failure.addProperty("message", "unavailable");
                         for (var chunk : new ResultChunker().split(
-                                payload.invocationId(), failure.toString(), 5)) {
+                                payload.invocationId(), payload.viewId(), failure.toString(), 5)) {
                             routerRef.get().receive(
                                     actorId,
                                     ClientToolResultChunkPayload.from(payload.requestId(), chunk));
@@ -141,8 +141,7 @@ final class ServerClientToolAgentTest {
             ModelContent.ToolResult result = assertInstanceOf(
                     ModelContent.ToolResult.class, resultMessage.content().getFirst());
             observedFailureResult = result.error()
-                    && result.value().getAsJsonObject().get("code").getAsString()
-                            .equals("client_tool_unavailable");
+                    && result.text().contains("code: client_tool_unavailable");
             return CompletableFuture.completedFuture(new ModelTurn(
                     "test",
                     "test",

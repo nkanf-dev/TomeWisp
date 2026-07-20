@@ -3,12 +3,32 @@ package dev.openallay.guide;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
+import dev.openallay.agent.tool.ToolUiReference;
 import java.util.ArrayList;
 import java.util.List;
 
 /** Deterministic locale-independent player projection of a normalized Tool result. */
 public final class GuideToolPresentation {
     private GuideToolPresentation() {}
+
+    public static List<GuideToolMessage> resourceMessages(ToolUiReference reference) {
+        java.util.Objects.requireNonNull(reference, "reference");
+        List<GuideToolMessage> messages = new ArrayList<>();
+        messages.add(message(
+                GuideToolMessage.Key.RESOURCE_RESULT_SUMMARY,
+                reference.summary().operation(),
+                Integer.toString(reference.summary().succeeded()),
+                Integer.toString(reference.summary().failed())));
+        if (reference.resultPath() != null) {
+            messages.add(message(
+                    GuideToolMessage.Key.RESOURCE_RESULT_PATH,
+                    reference.resultPath().toString()));
+        }
+        if (reference.continuationAvailable()) {
+            messages.add(message(GuideToolMessage.Key.RESOURCE_RESULT_CONTINUATION));
+        }
+        return List.copyOf(messages);
+    }
 
     public static List<GuideToolMessage> messages(String toolId, JsonObject normalized) {
         if (normalized == null) return one(GuideToolMessage.Key.RESULT_PENDING);
@@ -19,6 +39,8 @@ public final class GuideToolPresentation {
         if (value == null) return one(GuideToolMessage.Key.RESULT_VALUE_UNAVAILABLE);
         String name = toolId.substring(toolId.indexOf(':') + 1);
         return switch (name) {
+            case "resource_list", "resource_read", "resource_glob", "resource_grep", "resource_query" ->
+                    resourceResult(value);
             case "resolve_resource" -> resolvedResources(value);
             case "search_recipes" -> withCatalog(recipes(value), object(value, "catalog"));
             case "get_recipe" -> withCatalog(recipe(object(value, "recipe")), object(value, "catalog"));
@@ -35,6 +57,28 @@ public final class GuideToolPresentation {
             case "inspect_game_state" -> inspectedGameState(value);
             default -> one(GuideToolMessage.Key.RESULT_COMPLETED);
         };
+    }
+
+    private static List<GuideToolMessage> resourceResult(JsonObject value) {
+        JsonArray items = array(value, "items");
+        int succeeded = 0;
+        for (JsonElement element : items) {
+            if (element.isJsonObject()
+                    && "success".equals(string(element.getAsJsonObject(), "status"))) {
+                succeeded++;
+            }
+        }
+        List<GuideToolMessage> messages = new ArrayList<>();
+        messages.add(message(
+                GuideToolMessage.Key.RESOURCE_RESULT_SUMMARY,
+                string(value, "operation"),
+                Integer.toString(succeeded),
+                Integer.toString(items.size() - succeeded)));
+        String resultPath = string(value, "resultPath");
+        if (!resultPath.isBlank()) {
+            messages.add(message(GuideToolMessage.Key.RESOURCE_RESULT_PATH, resultPath));
+        }
+        return List.copyOf(messages);
     }
 
     private static List<GuideToolMessage> resolvedResources(JsonObject value) {

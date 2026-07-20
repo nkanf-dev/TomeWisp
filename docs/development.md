@@ -372,15 +372,16 @@ Across the client/server bridge, an attempt carries its relative timeout budget
 rather than a server wall-clock epoch. The receiving client derives a local
 display-only deadline, so clock skew cannot shorten, extend, or invalidate the
 server-owned watchdog.
-The server Agent protocol is version 5 and is decoded once in common
+The server Agent protocol is version 7 and is decoded once in common
 code. Unknown or malformed events fail only their correlated request; there is
 no silent client/server fallback. Server-model requests carry only the
 partition's visible user/completed-assistant history; they never carry restored
 capabilities, live evidence, reasoning, credentials, or full normalized tool
-results. Protocol v5 also carries the selected server model's actual context
-budget and canonical model identity, and splits the encoded request into independently strict,
-SHA-256-checked 24 KiB transport chunks so long histories do not depend on one
-Minecraft custom-payload string.
+results. Protocol v7 also carries the selected server model's actual context
+budget, canonical model identity, Resource VFS view identity and correlated
+result placement. Encoded requests and results are split into independently
+strict, SHA-256-checked 24 KiB transport chunks so long histories and exact
+validated Tool truth do not depend on one Minecraft custom-payload string.
 
 Normal-mode guide history is stored at `config/openallay/history.sqlite3` in the
 single current pre-release SQLite schema, currently schema 5. Because OpenAllay
@@ -526,106 +527,174 @@ configuration/capability state. Client profiles remain at
 key but never displays a stored secret. Model-mode changes affect future
 requests only and never trigger silent fallback.
 
-## Grounded built-in tools
+## Resource VFS and Agent tools
 
-Every factual success carries immutable evidence: authority, completeness,
-capture time, source, provenance, game version, loader, and optional scoped
-details. Client recipe-display facts are `CLIENT_VISIBLE`; server RecipeManager
-facts are `SERVER_AUTHORITATIVE`. An unloaded knowledge snapshot is `UNKNOWN`,
-not proof that no documents exist. The result normalizer rejects any
-`EvidenceBearing` success whose evidence list is empty.
+OpenAllay exposes captured game and knowledge data through a read-only virtual
+resource filesystem. This VFS is an application namespace, not
+`java.nio.file`, an operating-system mount, or a shell. A request captures one
+immutable `ResourceView`; all reads in that request use the same mount
+generations, actor, session, connection, topology and capability set.
 
-`openallay:resolve_resource` is the unified player-visible game-content catalog,
-not only an item-name converter. Its optional kind filter covers `item`,
-`block`, `effect`, `potion`, `entity`, and `attribute`. It searches active-locale
-display text, exact IDs and paths, translation-key aliases, bound public tags,
-default item component IDs, and a small detached map of public static metadata.
-Exact identity/name/path matches remain ahead of token and bounded edit-distance
-matches; all ties are deterministic and results are not silently truncated.
-An empty catalog match is an evidenced successful observation, while a missing
-registry capture is an explicit `missing_context` failure.
+Every factual node carries immutable evidence: authority, completeness,
+capture time, source, provenance, game version and loader. Exact typed values
+and normalized JSON remain the internal truth used for validation,
+deterministic calculations, bridge integrity and native UI. The model receives
+only a separately derived semantic text projection and structural receipt.
 
-The catalog's `COMPLETE` claim is scoped to registered entry types and the
-listed detached fields. It does not enumerate creative-tab/viewer item-stack
-variants or inspect component values such as written-book contents. Questions
-such as “which books discuss poison” resolve the mechanic when useful and then
-search the indexed knowledge corpus; answers say “all indexed matches” rather
-than claiming every possible book or item variant in the installation.
+### Paths and mounts
 
-Both client and server capture use the same common catalog projection. The
-capture helper re-checks owning-thread access, copies registry values into
-immutable records immediately, and the Tool searches only those records. A
-server-hosted model can request the player's client catalog through the existing
-client Tool bridge. This catalog never scans world blocks, nearby entities,
-containers, inventories, arbitrary paths, private fields, or component values.
-A registered book may therefore match as an `item`; its pages or guide text are
-not catalog metadata and remain exclusively under `search_knowledge`.
-
-The Phase 3A recipe workflow is:
+A canonical path is absolute and has this general shape:
 
 ```text
-openallay:resolve_resource
-openallay:search_recipes
-openallay:get_recipe
-openallay:find_item_usages
-openallay:inspect_inventory
-openallay:calculate_craftability
+/<mount>/<namespace>/<percent-encoded-resource-id>[/<field-or-relation>...]
 ```
 
-`calculate_craftability` uses deterministic global capacity allocation, so
-overlapping item/tag alternatives are not assigned greedily. It reports the
-observed allocation, missing requirements, maximum crafts, and whether the
-evidence is conclusive. It does not recursively craft intermediate items.
-Incomplete recipe or inventory evidence may show an observed positive result,
-but `conclusive` remains false. `openallay:find_recipes` is retained only as a
-deprecated compatibility projection over the same recipe catalog.
+Segments are decoded values with one canonical percent-encoded rendering. A
+Minecraft resource ID that contains `/` keeps that slash inside one encoded
+identity segment, for example
+`/recipe/farmersdelight/cooking%2Fapple_cider`. Empty segments, `.`/`..`,
+backslashes, controls, invalid escapes, non-canonical spellings and unregistered
+mounts are rejected rather than normalized into another resource. Record field
+selection uses RFC 6901 pointers in Tool arguments, not string parsing of the
+rendered result.
 
-### Player-observable outer game state
+Request views currently assemble the mounts available from the captured
+topology:
 
-Outer client/game context is exposed through one Tool ID rather than dozens of
-small Tools:
+- `/item`, `/block`, `/effect`, `/potion`, `/entity`, and `/attribute` expose
+  detached registry records and their runtime-discovered fields.
+- `/recipe` exposes all captured known recipes, source/generation identity,
+  inputs, outputs, category, provenance and native presentation references.
+- `/guide` and `/knowledge` expose indexed local documents; fixed-origin online
+  discovery is available beneath `/knowledge/online` when configured and
+  reachable.
+- `/mod/<modid>` exposes installed-mod metadata. Its `raw` child is the generic
+  fallback for logical public resources that do not yet have a typed adapter.
+- `/game` exposes detached runtime, options, packs, shaders, diagnostics and
+  allowed query results. `/player` exposes player-owned state such as inventory.
+- `/skill` exposes validated Skill metadata, instructions and references as
+  procedural resources; it does not turn Skills into executable files.
+- `/result` contains completed VFS operation results for the live scope.
+
+Every mount publishes one complete immutable generation. A failed reload keeps
+the previous generation available and degrades only the affected mount. Live
+Minecraft objects are captured on their owning thread and detached before a
+mount is built. `/world` remains reserved; spatial block, entity, structure and
+container scanning is not part of the current VFS.
+
+The generic mod subtree uses these logical paths:
 
 ```text
-openallay:inspect_game_state
+/mod/<modid>/raw/assets/<namespace>/<encoded-resource-path>
+/mod/<modid>/raw/data/<namespace>/<encoded-resource-path>
+/mod/<modid>/raw/metadata/<known-public-manifest>
 ```
 
-Its strict `section` enum is `OVERVIEW`, `MODS`, `OPTIONS`, `PACKS`, `SHADERS`,
-`DIAGNOSTICS`, `PLAYER`, or `WORLD_QUERY`. The optional `query` is parsed only
-by the selected section. `WORLD_QUERY` accepts only the registered read-only
-operations `time`, `weather`, `difficulty`, `world_border`, and `spawn`; it is
-not a Minecraft command string or expression language. Recipes and Guides stay
-in their own high-volume Tool families.
+It is populated through public loader and Minecraft resource APIs. Text and
+known structured resources may be read and indexed. Binary resources expose
+safe metadata, media type, size/digest and trusted presentation references
+only. Physical JAR paths, host filesystem paths, `.class` files, native
+libraries, signatures, credentials, unrelated private `META-INF` content and
+unsupported binary payloads are excluded. Pack precedence, active/shadowed
+state, namespace ownership and provenance remain evidence rather than being
+flattened away.
 
-`MODS` with no exact ID returns the complete lightweight installed index (ID,
-name, version, environment). Supplying an exact mod ID returns its public
-description, authors, licenses, contacts, and dependency metadata; the list
-path never implicitly dumps those large detail records into model context.
-Each server-authoritative `WORLD_QUERY` operation is permission-checked before
-lookup. An unauthorized operation returns `permission_denied` and no fact.
+### Five model-facing schemas
 
-Client-local capture runs on the Minecraft client thread and detaches immutable
-client-visible values before Tool/model work. It covers public loader metadata,
-Minecraft options exposed through verified APIs, resource-pack state,
-F3/HUD-style diagnostics including coordinates where available, and the
-player's own UI-visible state. A server-side capture or enhancement can return
-only the state the server can authoritatively observe. It cannot read the
-client's options, resource packs, or shader configuration unless a future
-accepted, authorized bridge explicitly transports a detached allowed snapshot.
+The advertised retrieval catalog contains one small batch-oriented family:
 
-Completeness is deliberately honest. An option not exposed through a verified
-public API is omitted and makes only its section partial. Shader information is
-unavailable when no shader mod is loaded; if a shader mod such as Iris is
-present without a verified compatible public adapter, the result reports the
-scoped `public_shader_adapter_unavailable` diagnostic instead of guessing a
-selected pack or options. Resource/data-pack visibility likewise reflects the
-current topology and API surface rather than an assumed complete catalog.
+- `openallay:resource_list` accepts `paths`, optional `includeMetadata`, or a
+  continuation `cursor`. It lists direct children only and never recursively
+  dumps a tree.
+- `openallay:resource_read` accepts exactly one of `paths` or `cursor`, plus
+  optional RFC 6901 `fields` and presentation `format` (`AUTO`, `TEXT`,
+  `RECORDS`, or `TABLE`).
+- `openallay:resource_glob` accepts batched `patterns`; each pattern contains an
+  absolute virtual pattern using segment-local `*`, `?`, or recursive `**` and
+  an optional exact resource `kind`.
+- `openallay:resource_grep` accepts batched `searches`; each search contains
+  `roots`, a literal/token `pattern`, mode `LITERAL` or `TOKEN`, and optional
+  RFC 6901 `fields`. Arbitrary regular expressions are intentionally absent.
+- `openallay:resource_query` accepts batched `plans`, each with `roots` and a
+  closed typed pipeline. Stages are `search`, `filter`, `select`, `expand`,
+  `sort`, `group`, `aggregate`, `take`, and `follow`. Filter operators are
+  `EQ`, `NE`, `CONTAINS`, `EXISTS`, `GT`, `GTE`, `LT`, and `LTE`; aggregate
+  functions are `COUNT`, `MIN`, `MAX`, `SUM`, and `AVG`.
 
-The Tool is read-only and cannot execute raw commands, modify settings/world or
-inventory state, use arbitrary paths/classes/reflection, scan maps/nearby
-blocks/entities/structures, or inspect external containers such as nearby
-chests. The player's own inventory is allowed because it is already
-player-owned UI-visible state. Future write commands and spatial interaction
-require separate accepted authority and approval designs.
+All five schemas correlate output items to their input index. Initial work and
+cursor continuation are mutually exclusive, so a continuation cannot silently
+change the original plan. `@schema` resources disclose captured field types and
+legal query operations; core code does not carry a nutrition, damage, duration,
+or other domain-field whitelist. Unknown mod fields can therefore participate
+when public codecs or a trusted Extension extractor exposes them.
+
+`openallay:calculate_craftability` remains a narrow deterministic action rather
+than a retrieval Tool. It globally allocates overlapping inventory alternatives
+and publishes the calculation back through `/result`; incomplete recipe or
+inventory evidence keeps `conclusive=false`. Phase 3 retrieval Tool IDs remain
+decodable for old history, trace replay and friendly presentation, but are not
+advertised to new model turns.
+
+### Results, projections, and context budget
+
+Every validated VFS Tool completion, including a structured failure, publishes
+one immutable `/result/<opaque-id>` node before any consumer projection. Its
+lineage records source resources, prior results, operation digest, invocation
+identity and evidence. Later VFS calls can list, read, grep or query that result
+exactly like another authorized resource. Equal internal content may be
+deduplicated without merging public invocation identities.
+
+Result paths are scoped to actor, live session and connection. They remain
+usable across turns in that live scope and are released on session deletion,
+disconnect or shutdown. A history row keeps only safe display receipts; it
+cannot resurrect an expired result, re-execute its operation or bind it to a
+new resource generation.
+
+Context pressure is handled in four layers:
+
+1. only the five stable retrieval schemas are disclosed, while domain
+   procedures are loaded progressively through Skills;
+2. each immediate Tool group is projected into complete semantic units before
+   provider continuation;
+3. old Tool bodies are replaced with validated receipts while preserving
+   ToolUse/ToolResult pairing and recent protected results;
+4. non-Tool conversation history is compacted only when it still cannot fit,
+   and summaries remain derived memory rather than factual evidence.
+
+Before every provider dispatch, including every Tool continuation,
+`ContextAssembler` uses the selected model profile's resolved context window
+and output reserve to estimate the provider-neutral request. Large result
+records, table rows or document sections are never cut in the middle and raw
+normalized JSON is never used as provider Tool text. The projection returns the
+complete units that fit plus a receipt and opaque cursor bound to actor,
+session, request, captured view and query plan. Continuing the cursor
+re-projects the next units from exact truth; it does not slice serialized JSON.
+
+### Placement, failure, and observability
+
+Tool placement is independent from model placement. `/game` and `/player` are
+client-owned, `/world` is reserved as server-owned, and `/result` is local to
+the Agent owner after a validated remote result is republished there. A single
+call that mixes client- and server-owned paths fails as a placement conflict
+instead of splitting authority implicitly. Server-hosted Agents may invoke the
+requesting player's enabled client Tools; client-hosted Agents may use allowed
+server resources. Bridge v7 binds actor, request, invocation and ResourceView
+identity, and cancellation/disconnect suppress late results.
+
+Stable failures include `invalid_resource_query`, `invalid_resource_path`,
+`invalid_glob`, `resource_unavailable`, `resource_not_found`,
+`stale_resource`, `resource_forbidden`, `resource_content_unavailable`,
+`operation_not_permitted`, and `context_compaction_failed`. Invalid or
+ambiguous input is never fuzzily reinterpreted. One optional mount or fixed
+online source may fail independently while unrelated current-game resources
+remain usable.
+
+Normal Tool cards use the exact validated UI reference, friendly summary, key
+fields, source and continuation status. Debug Mode adds bounded redacted
+diagnostics such as invocation ID, generation, sizes, timing, cursor state and
+failure code; it does not stringify full truth on the render thread or expose
+provider bodies, credentials, host paths or reasoning. Model text is narration
+and fallback, never the source of native component authority.
 
 ## Knowledge and Skills
 
@@ -639,9 +708,13 @@ publishes it atomically with the matching snapshot evidence. Search first
 protects exact document and linked item/recipe identities, then weights stable
 path aliases, source metadata, titles and Markdown headings before applying a
 Unicode-aware BM25-style score to section text. A result retains the exact
-`sourceId`/`documentId` pair used by `get_knowledge_document` and adds a stable
-heading-derived `sectionId` plus an evidenced excerpt. Documents without
-headings use the stable `document` section.
+`sourceId`/`documentId` pair represented by its `/knowledge` or `/guide` path
+and adds a stable heading-derived `sectionId` plus an evidenced excerpt.
+Documents without headings use the stable `document` section. Fixed-origin
+Minecraft Wiki and MC Encyclopedia searches enter through
+`/knowledge/online`; discovery returns request-scoped document paths and
+`resource_read` fetches the selected document instead of granting arbitrary URL
+access.
 
 This index deliberately remains pure Java. Knowledge generations already live
 as detached resource snapshots, so copying them into SQLite FTS would create a
@@ -683,6 +756,16 @@ references, and explicit override/edit actions; it has no generic Tool-style
 enable toggle. Player editing does not authorize the Agent to create or modify
 Skills, and Skills cannot execute scripts, fetch URLs, register tools, or grant
 permissions.
+
+The Agent sees Skill metadata first and reads `/skill/<name>/instructions` only
+when a domain workflow is genuinely needed. A Skill can then point to a narrow
+`/skill/<name>/reference/<path>` document for examples or pipeline details.
+Bundled procedures teach the list/read/glob/grep/query workflow, `@schema`
+inspection, batching, result-on-result refinement and exact final reads. Simple
+requests such as listing installed mods or reading a known path do not require
+a Skill. This progressive disclosure reduces prompt cost without turning Skill
+text into authority: mount access and Tool permissions still come only from
+registered code and the captured request view.
 
 ## Live provider acceptance
 
@@ -726,7 +809,6 @@ The following commands require game-master permission:
 
 ```text
 /openallay dev tools
-/openallay dev invoke openallay:inspect_game_state {"section":"OVERVIEW","query":"summary"}
 /openallay dev replay platform-info
 /openallay dev replay iron-ingot-recipe
 /openallay dev replay iron-block-craftability
@@ -737,7 +819,10 @@ The following commands require game-master permission:
 The initial development tool surface is intentionally read-only. It does not
 provide shell execution, arbitrary code execution, server-command execution,
 file-system access, unrestricted reflection, arbitrary command parsing, world
-or settings mutation, spatial scans, or external-container inspection.
+or settings mutation, spatial scans, or external-container inspection. Resource
+Tools require a live request-scoped `ResourceView`; exercise them through a
+Guide request or a VFS-aware deterministic fixture rather than a context-free
+development invocation.
 
 ## Deterministic Agent trace replay
 

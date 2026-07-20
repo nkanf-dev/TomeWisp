@@ -7,7 +7,7 @@ import org.junit.jupiter.api.Test;
 
 final class AgentSystemPromptTest {
     @Test
-    void keepsCasualConversationToolFreeAndDefinesGroundedRecovery() {
+    void teachesTheSmallUniversalVfsContractAndProgressiveSkills() {
         String prompt = AgentSystemPrompt.compose("""
                   <skill>
                     <name>inspect-game-state</name>
@@ -16,23 +16,35 @@ final class AgentSystemPromptTest {
                 """);
 
         assertTrue(prompt.contains("Greetings and casual conversation"));
-        assertTrue(prompt.contains("MUST call the registered load_skill Tool"));
+        assertTrue(prompt.contains("exact path is known"));
+        assertTrue(prompt.contains("resource_list, resource_glob, or resource_grep"));
+        assertTrue(prompt.contains("/@schema"));
+        assertTrue(prompt.contains("Batch independent paths, patterns, searches, or plans"));
+        assertTrue(prompt.contains("Use resource_query for typed filtering"));
+        assertTrue(prompt.contains("Follow only links returned by resources"));
+        assertTrue(prompt.contains("resource_read with only its cursor"));
+        assertTrue(prompt.contains("Do not drain a cursor"));
+        assertTrue(prompt.contains("/result"));
+        assertTrue(prompt.contains("evidence already answers the request"));
+        assertTrue(prompt.contains("MUST load it with the registered load_skill Tool"));
         assertTrue(prompt.contains("single most-specific matching Skill"));
         assertTrue(prompt.contains("Load at most one up front"));
-        assertTrue(prompt.contains("task domain changes"));
-        assertTrue(prompt.contains("previously loaded unrelated Skill"));
-        assertTrue(prompt.contains("simple, obvious one-call lookup"));
-        assertTrue(prompt.contains("merely because it lists the same Tool"));
-        assertTrue(prompt.contains("several fields that one Tool returns"));
-        assertTrue(prompt.contains("Never repeat a successful call"));
+        assertTrue(prompt.contains("If the domain changes"));
+        assertTrue(prompt.contains("installed-mod listing or exact-resource read"));
+        assertTrue(prompt.contains("cannot execute content, add Tools, grant mounts or permissions"));
+        assertTrue(prompt.contains("declared read-only references"));
         assertTrue(prompt.contains("current request's Tool definitions"));
-        assertFalse(prompt.contains("use inspect_game_state"));
         assertTrue(prompt.contains("<name>inspect-game-state</name>"));
+        assertFalse(prompt.contains("resolve_resource"));
+        assertFalse(prompt.contains("search_recipes"));
+        assertFalse(prompt.contains("inspect_game_state"));
         assertFalse(prompt.contains("server-hosted"));
         assertTrue(prompt.contains("You are OpenAllay,"));
         assertFalse(prompt.contains("OpenAllay (OpenAllay)"));
-        assertTrue(prompt.indexOf("## SKILL PREFLIGHT") < prompt.indexOf("## AVAILABLE SKILLS"));
-        assertTrue(prompt.indexOf("## AVAILABLE SKILLS") < prompt.indexOf("## EXECUTION"));
+        assertTrue(prompt.indexOf("## RESOURCE WORKFLOW") < prompt.indexOf("## SKILLS"));
+        assertTrue(prompt.indexOf("## SKILLS") < prompt.indexOf("## AVAILABLE SKILLS"));
+        assertTrue(prompt.substring(0, prompt.indexOf("## SEMANTIC UI")).length() < 5_000);
+        assertFalse(prompt.contains("Farmer's Delight"));
     }
 
     @Test

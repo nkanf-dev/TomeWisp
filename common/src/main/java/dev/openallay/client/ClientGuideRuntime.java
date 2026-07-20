@@ -36,6 +36,7 @@ import dev.openallay.model.config.ModelConfigLoader;
 import dev.openallay.model.openai.OpenAiChatClient;
 import dev.openallay.model.scheduling.ModelRequestScheduler;
 import dev.openallay.tool.ToolResult;
+import dev.openallay.resource.runtime.ResourceRequestRegistry;
 import java.nio.file.Path;
 import java.time.Clock;
 import java.util.List;
@@ -59,6 +60,7 @@ public final class ClientGuideRuntime implements GuideLocalEndpoint {
     private final Gson gson;
     private final AgentToolExecutor extension;
     private final Map<UUID, String> selectedSessions;
+    private final ResourceRequestRegistry resources;
 
     public ClientGuideRuntime(
             OpenAllayRuntime runtime,
@@ -66,7 +68,17 @@ public final class ClientGuideRuntime implements GuideLocalEndpoint {
             AgentSessionStore sessions,
             Gson gson,
             ClientEventDispatcher dispatcher) {
-        this(runtime, model, sessions, gson, dispatcher, null, new LiveTraceStore(null, Set.of()), null, null);
+        this(
+                model,
+                sessions,
+                gson,
+                dispatcher,
+                null,
+                new LiveTraceStore(null, Set.of()),
+                null,
+                null,
+                defaultCapabilities(runtime),
+                null);
     }
 
     public ClientGuideRuntime(
@@ -76,7 +88,30 @@ public final class ClientGuideRuntime implements GuideLocalEndpoint {
             Gson gson,
             ClientEventDispatcher dispatcher,
             AgentToolExecutor extension) {
-        this(runtime, model, sessions, gson, dispatcher, extension, new LiveTraceStore(null, Set.of()), null, null);
+        this(
+                model,
+                sessions,
+                gson,
+                dispatcher,
+                extension,
+                new LiveTraceStore(null, Set.of()),
+                null,
+                null,
+                defaultCapabilities(runtime),
+                null);
+    }
+
+    /** Explicit model metadata is required when the request-scoped Resource VFS is enabled. */
+    public ClientGuideRuntime(
+            OpenAllayRuntime runtime,
+            ModelClient model,
+            AgentSessionStore sessions,
+            Gson gson,
+            ClientEventDispatcher dispatcher,
+            ContextBudget contextBudget,
+            String modelIdentifier) {
+        this(runtime, model, sessions, gson, dispatcher, null,
+                new LiveTraceStore(null, Set.of()), contextBudget, modelIdentifier);
     }
 
     ClientGuideRuntime(
@@ -98,7 +133,8 @@ public final class ClientGuideRuntime implements GuideLocalEndpoint {
                 traces,
                 contextBudget,
                 modelIdentifier,
-                defaultCapabilities(runtime));
+                defaultCapabilities(runtime),
+                runtime.resources());
     }
 
     ClientGuideRuntime(
@@ -112,6 +148,30 @@ public final class ClientGuideRuntime implements GuideLocalEndpoint {
             String modelIdentifier,
             ClientCapabilitySnapshot capabilities) {
         this(
+                model,
+                sessions,
+                gson,
+                dispatcher,
+                extension,
+                traces,
+                contextBudget,
+                modelIdentifier,
+                capabilities,
+                null);
+    }
+
+    ClientGuideRuntime(
+            ModelClient model,
+            AgentSessionStore sessions,
+            Gson gson,
+            ClientEventDispatcher dispatcher,
+            AgentToolExecutor extension,
+            LiveTraceStore traces,
+            ContextBudget contextBudget,
+            String modelIdentifier,
+            ClientCapabilitySnapshot capabilities,
+            ResourceRequestRegistry resources) {
+        this(
                 endpoint(model, gson, contextBudget, modelIdentifier),
                 sessions,
                 gson,
@@ -119,7 +179,8 @@ public final class ClientGuideRuntime implements GuideLocalEndpoint {
                 extension,
                 traces,
                 capabilities,
-                new ConcurrentHashMap<>());
+                new ConcurrentHashMap<>(),
+                resources);
     }
 
     private ClientGuideRuntime(
@@ -130,7 +191,8 @@ public final class ClientGuideRuntime implements GuideLocalEndpoint {
             AgentToolExecutor extension,
             LiveTraceStore traces,
             ClientCapabilitySnapshot capabilities,
-            Map<UUID, String> selectedSessions) {
+            Map<UUID, String> selectedSessions,
+            ResourceRequestRegistry resources) {
         this.endpoint = Objects.requireNonNull(endpoint, "endpoint");
         this.sessions = Objects.requireNonNull(sessions, "sessions");
         this.dispatcher = Objects.requireNonNull(dispatcher, "dispatcher");
@@ -139,6 +201,7 @@ public final class ClientGuideRuntime implements GuideLocalEndpoint {
         this.gson = Objects.requireNonNull(gson, "gson");
         this.extension = extension;
         this.selectedSessions = Objects.requireNonNull(selectedSessions, "selectedSessions");
+        this.resources = resources;
         LocalAgentToolExecutor local = new LocalAgentToolExecutor(capabilities.localTools(), gson);
         toolExecutor = extension == null
                 ? local
@@ -158,7 +221,8 @@ public final class ClientGuideRuntime implements GuideLocalEndpoint {
                 extension,
                 traces,
                 replacement,
-                selectedSessions);
+                selectedSessions,
+                resources);
     }
 
     Object endpointIdentity() {
@@ -253,6 +317,20 @@ public final class ClientGuideRuntime implements GuideLocalEndpoint {
             String question,
             ToolInvocationContext context,
             Consumer<AgentEvent> events) {
+        ResourceRequestRegistry.RequestHandle resourceHandle = resources == null
+                ? null
+                : resources.open(
+                        actor,
+                        session,
+                        requestId,
+                        resources.connectionGeneration(actor),
+                        "client",
+                        capabilities.localTools().descriptors().stream()
+                                .map(descriptor -> descriptor.id())
+                                .collect(java.util.stream.Collectors.toUnmodifiableSet()),
+                        Objects.requireNonNull(endpoint.contextBudget(),
+                                "Resource VFS requires the selected model context budget"),
+                        context);
         AgentRequest request = new AgentRequest(
                 requestId,
                 actor,
@@ -261,12 +339,26 @@ public final class ClientGuideRuntime implements GuideLocalEndpoint {
                 systemPrompt(),
                 context,
                 true);
-        return agent.ask(request, event -> dispatcher.execute(() -> events.accept(event)))
+        CompletableFuture<AgentResult> completion;
+        try {
+            completion = agent.ask(request, event -> dispatcher.execute(() -> events.accept(event)));
+        } catch (RuntimeException failure) {
+            if (resourceHandle != null) {
+                resourceHandle.close();
+            }
+            throw failure;
+        }
+        return completion
                 .thenApply(result -> {
                     if (result.trace() != null) {
                         traces.record(result.trace());
                     }
                     return result;
+                })
+                .whenComplete((ignored, failure) -> {
+                    if (resourceHandle != null) {
+                        resourceHandle.close();
+                    }
                 });
     }
 
@@ -306,6 +398,9 @@ public final class ClientGuideRuntime implements GuideLocalEndpoint {
         boolean existed = sessions.sessions(actor).stream()
                 .anyMatch(key -> key.sessionId().equals(sessionId));
         sessions.clear(new AgentSessionKey(actor, sessionId));
+        if (resources != null) {
+            resources.deleteSession(actor, sessionId, resources.connectionGeneration(actor));
+        }
         if (selectedSession(actor).equals(sessionId)) {
             selectedSessions.put(actor, "main");
         }
@@ -324,9 +419,15 @@ public final class ClientGuideRuntime implements GuideLocalEndpoint {
     @Override
     public void clearSession(UUID actor, String sessionId) {
         sessions.clear(new AgentSessionKey(actor, sessionId));
+        if (resources != null) {
+            resources.deleteSession(actor, sessionId, resources.connectionGeneration(actor));
+        }
     }
 
     public void clearActor(UUID actor) {
+        if (resources != null) {
+            resources.disconnectActor(actor);
+        }
         sessions.clearActor(actor);
         selectedSessions.remove(actor);
     }

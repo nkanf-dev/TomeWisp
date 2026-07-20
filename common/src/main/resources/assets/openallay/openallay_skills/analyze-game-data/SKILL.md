@@ -1,42 +1,36 @@
 ---
 name: analyze-game-data
-description: Analyze, rank, group, aggregate, and batch-query captured Minecraft content without one Tool call per row.
-allowed-tools: "openallay:resolve_resource openallay:search_recipes"
+description: Use when a Minecraft question requires comparing, ranking, grouping, aggregating, or transforming a set of game resources.
+allowed-tools: "openallay:resource_list openallay:resource_read openallay:resource_glob openallay:resource_grep openallay:resource_query"
 ---
-Use this Skill when the player asks about a set rather than one known object:
-highest/lowest values, comparisons, counts, groups, all matches under a mod
-namespace, or recipes for several already-resolved targets.
+Use this Skill for set-level analysis: highest or lowest values, comparisons,
+counts, groups, all matches in a namespace, or a relationship traversal across
+many resources. A simple exact read does not need this Skill.
 
-1. Choose the smallest virtual dataset that contains the facts.
-2. If the exact field paths are not already present in a successful schema
-   result retained in context, call `resolve_resource` once with
-   `describe:true`, the dataset, and optional namespace. Never guess a path.
-3. Use only the returned RFC 6901 JSON Pointers and their declared operations.
-4. FILTER early, especially by `/namespace`, `/kind`, component, tag, or a
-   discovered `/data/...` path.
-5. For a ranking, FILTER the numeric field with `EXISTS`, SORT it, SELECT only
-   answer fields, then TAKE the requested rows.
-6. For counts or statistics, use GROUP or AGGREGATE instead of returning every
-   row for the model to count.
-7. Put multiple exact recipe criteria into one `queries` batch. Do not call
-   `search_recipes` once per target.
-8. If a result says `result_too_large`, add a stronger FILTER, SELECT,
-   AGGREGATE, or TAKE stage. Never repeat the unchanged query.
+1. Identify the narrowest VFS root that can contain the answer. Discover paths
+   with `resource_list`, `resource_glob`, or `resource_grep`; do not guess IDs.
+2. Before using an unfamiliar field, batch-read the relevant `/@schema` paths.
+   Use only returned field pointers, types, coverage, and legal operations.
+3. Use one `resource_query` pipeline for filtering, selecting, expanding,
+   sorting, grouping, aggregating, taking, or following registered links. Batch
+   independent plans in the same call.
+4. Filter early and select only answer fields. Let typed stages count, compare,
+   and sort; do not repeat their arithmetic in prose.
+5. Every operation returns a `/result` path. Run later grep/query/read steps on
+   that result when refinement is needed instead of fetching the original set
+   again.
+6. If a receipt has a cursor, continue with `resource_read` only when omitted
+   semantic units could change the answer. Otherwise synthesize immediately.
+7. If a field, mount, link, or source is unavailable, report that limitation.
+   Never approximate a numeric answer from display names.
 
-One unfamiliar set-level question means one schema-discovery call followed by
-one complete pipeline call. Do not search individual candidates, translate
-names one at a time, or call the Tool again to read fields already returned.
-When an array contains the values to compare, EXPAND its discovered parent
-array path before filtering or sorting its child paths.
+Load only the reference needed for the current step:
 
-Load only the reference required by the task:
+- `references/datasets.md` to choose VFS roots and discover fields.
+- `references/pipelines.md` to compose a typed query stage.
+- `references/examples.md` for worked poison, saturation, raw-mod, result
+  refinement, or mixed-authority patterns.
 
-- `references/datasets.md` when choosing a dataset or field name.
-- `references/pipelines.md` when selecting an operation, operator, sort, group,
-  or aggregate contract.
-- `references/examples.md` when composing a ranking, namespace summary, or
-  multi-recipe batch and the schema alone is insufficient.
-
-The pipeline is JSON data, not shell syntax: never invent pipes, scripts,
-regular expressions, paths, or callbacks. If a required dataset or field is
-unavailable, report that limitation instead of approximating it from names.
+The examples are Tool input data, not shell commands. Skills and their
+references cannot execute content, register Tools, grant mounts, or authorize
+paths beyond the current read-only ResourceView.

@@ -7,9 +7,11 @@ import com.google.gson.JsonParser;
 import dev.openallay.model.CancellationSignal;
 import dev.openallay.model.ModelClient;
 import dev.openallay.model.ModelClientException;
+import dev.openallay.model.ModelContent;
 import dev.openallay.model.ModelMessage;
 import dev.openallay.model.ModelRequest;
 import dev.openallay.model.ModelToolDefinition;
+import dev.openallay.resource.projection.ToolGroupBudgetAllocator;
 import java.time.Clock;
 import java.util.ArrayList;
 import java.util.List;
@@ -59,6 +61,7 @@ public final class ContextCompactor {
     private final ContextTokenEstimator estimator;
     private final ToolResultContextReducer reducer;
     private final ContextBudget budget;
+    private final ContextAssembler assembler;
     private final String modelIdentifier;
     private final Clock clock;
 
@@ -75,6 +78,8 @@ public final class ContextCompactor {
         this.estimator = Objects.requireNonNull(estimator, "estimator");
         this.reducer = Objects.requireNonNull(reducer, "reducer");
         this.budget = Objects.requireNonNull(budget, "budget");
+        this.assembler = new ContextAssembler(
+                estimator, reducer, new ToolGroupBudgetAllocator(), budget);
         if (modelIdentifier == null || modelIdentifier.isBlank()) {
             throw new IllegalArgumentException("modelIdentifier is required");
         }
@@ -95,16 +100,11 @@ public final class ContextCompactor {
         List<ModelToolDefinition> requestTools = List.copyOf(tools);
         List<ContextStructure.Unit> units = ContextStructure.units(messages);
         ContextStructure.requireBoundary(units, protectedFromIndex, messages.size());
-        int originalEstimate = estimator.estimate(systemPrompt, messages, requestTools);
-        if (originalEstimate <= budget.inputTokens()) {
-            return CompletableFuture.completedFuture(new Result(
-                    new ContextProjection(messages, ContextProjection.Kind.ORIGINAL, originalEstimate),
-                    null, null, null));
-        }
-        ContextProjection reduced = reducer.reduce(messages, protectedFromIndex);
-        int reducedEstimate = estimator.estimate(systemPrompt, reduced.messages(), requestTools);
-        reduced = reduced.withEstimate(reducedEstimate);
-        if (reducedEstimate <= budget.inputTokens()) {
+        ContextAssembler.Assembly assembly = assembler.assemble(
+                systemPrompt, messages, protectedFromIndex, requestTools);
+        ContextProjection reduced = assembly.projection();
+        int reducedEstimate = reduced.estimatedTokens();
+        if (assembly.fits()) {
             return CompletableFuture.completedFuture(new Result(reduced, null, null, null));
         }
         Prefix prefix = summaryPrefix(reduced.messages(), protectedFromIndex, schedulingKey);
@@ -185,7 +185,23 @@ public final class ContextCompactor {
             String systemPrompt,
             List<ModelMessage> messages,
             List<ModelToolDefinition> tools) {
-        return estimator.estimate(systemPrompt, messages, tools) > budget.inputTokens();
+        return requiresCompaction(systemPrompt, messages, 0, tools);
+    }
+
+    public boolean requiresCompaction(
+            String systemPrompt,
+            List<ModelMessage> messages,
+            int protectedFromIndex,
+            List<ModelToolDefinition> tools) {
+        return !assembler.assemble(systemPrompt, messages, protectedFromIndex, tools).fits();
+    }
+
+    public ContextAssembler.Assembly assemble(
+            String systemPrompt,
+            List<ModelMessage> messages,
+            int protectedFromIndex,
+            List<ModelToolDefinition> tools) {
+        return assembler.assemble(systemPrompt, messages, protectedFromIndex, tools);
     }
 
     public Optional<ContextProjection> reuse(
@@ -227,7 +243,7 @@ public final class ContextCompactor {
             if (unit.toIndexExclusive() > protectedFromIndex) break;
             List<ModelMessage> safe = ContextStructure.summarySafe(
                     messages.subList(0, unit.toIndexExclusive()));
-            String serialized = gson.toJson(safe);
+            String serialized = serializeForSummary(safe);
             ModelRequest request = new ModelRequest(
                     SUMMARY_SYSTEM, List.of(ModelMessage.userText(serialized)), List.of(), false,
                     schedulingKey);
@@ -238,6 +254,71 @@ public final class ContextCompactor {
             best = serialized;
         }
         return bestEnd < 1 ? null : new Prefix(bestEnd, best);
+    }
+
+    private static String serializeForSummary(List<ModelMessage> messages) {
+        StringBuilder output = new StringBuilder();
+        for (ModelMessage message : messages) {
+            output.append("message: ").append(message.role().name().toLowerCase()).append('\n');
+            for (ModelContent content : message.content()) {
+                switch (content) {
+                    case ModelContent.Text text -> appendIndented(output, "text", text.text());
+                    case ModelContent.ToolUse use -> {
+                        output.append("  tool_use: ").append(use.name()).append('\n');
+                        output.append("    id: ").append(use.id()).append('\n');
+                        output.append("    arguments:\n");
+                        appendJson(output, use.input(), 3, null);
+                    }
+                    case ModelContent.ToolResult result -> {
+                        output.append("  tool_result: ").append(result.toolUseId()).append('\n');
+                        output.append("    error: ").append(result.error()).append('\n');
+                        if (result.receiptPath() != null) {
+                            output.append("    resource: ").append(result.receiptPath()).append('\n');
+                        }
+                        appendIndented(output, "content", result.text(), 2);
+                    }
+                    case ModelContent.Reasoning ignored -> {
+                        // summarySafe removes this; keep the serializer closed if called directly.
+                    }
+                }
+            }
+        }
+        return output.toString().stripTrailing();
+    }
+
+    private static void appendJson(
+            StringBuilder output, JsonElement value, int depth, String field) {
+        String indent = "  ".repeat(depth);
+        if (value == null || value.isJsonNull() || value.isJsonPrimitive()) {
+            output.append(indent);
+            if (field != null) output.append(field).append(": ");
+            output.append(value == null || value.isJsonNull()
+                    ? "null" : value.getAsJsonPrimitive().getAsString()).append('\n');
+            return;
+        }
+        if (value.isJsonArray()) {
+            if (field != null) output.append(indent).append(field).append(":\n");
+            int childDepth = field == null ? depth : depth + 1;
+            for (JsonElement item : value.getAsJsonArray()) {
+                output.append("  ".repeat(childDepth)).append("-\n");
+                appendJson(output, item, childDepth + 1, null);
+            }
+            return;
+        }
+        if (field != null) output.append(indent).append(field).append(":\n");
+        int childDepth = field == null ? depth : depth + 1;
+        value.getAsJsonObject().keySet().stream().sorted()
+                .forEach(key -> appendJson(output, value.getAsJsonObject().get(key), childDepth, key));
+    }
+
+    private static void appendIndented(StringBuilder output, String field, String text) {
+        appendIndented(output, field, text, 1);
+    }
+
+    private static void appendIndented(
+            StringBuilder output, String field, String text, int depth) {
+        output.append("  ".repeat(depth)).append(field).append(":\n");
+        text.lines().forEach(line -> output.append("  ".repeat(depth + 1)).append(line).append('\n'));
     }
 
     private ContextCheckpoint failedCheckpoint(

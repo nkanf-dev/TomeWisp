@@ -66,6 +66,7 @@ public final class NeoForgeServerBridge {
                 if (serverGuide instanceof ToolResult.Success<ServerGuideRuntime> success) {
                     success.value().service().disconnect(actor);
                     success.value().clientTools().disconnect(actor);
+                    success.value().resources().disconnectActor(actor);
                 }
             }
         });

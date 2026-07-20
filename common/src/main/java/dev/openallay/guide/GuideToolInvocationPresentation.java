@@ -44,6 +44,11 @@ public final class GuideToolInvocationPresentation {
                     GuideToolMessage.Key.INVOCATION_INSPECT_GAME_STATE,
                     GuideToolMessage.Key.INVOCATION_INSPECT_GAME_STATE_SECTION,
                     safeName(input, "section"));
+            case "resource_list" -> one(GuideToolMessage.Key.INVOCATION_RESOURCE_LIST);
+            case "resource_read" -> one(GuideToolMessage.Key.INVOCATION_RESOURCE_READ);
+            case "resource_glob" -> one(GuideToolMessage.Key.INVOCATION_RESOURCE_GLOB);
+            case "resource_grep" -> one(GuideToolMessage.Key.INVOCATION_RESOURCE_GREP);
+            case "resource_query" -> one(GuideToolMessage.Key.INVOCATION_RESOURCE_QUERY);
             default -> List.of();
         };
     }

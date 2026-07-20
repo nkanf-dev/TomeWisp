@@ -54,7 +54,8 @@ public final class Utf8ContextTokenEstimator implements ContextTokenEstimator {
             case ModelContent.ToolResult result -> bytes("tool_result")
                     + bytes(result.toolUseId())
                     + 1
-                    + bytes(result.value().toString());
+                    + bytes(result.text())
+                    + bytes(result.receiptPath() == null ? "" : result.receiptPath());
         };
     }
 

@@ -74,7 +74,8 @@ public final class RemoteToolServer {
                 .thenApply(context -> invoke(tool, context, payload.argumentsJson(), cancellation))
                 .exceptionally(throwable -> new ToolResult.Failure<>(
                         "remote_tool_failure", safeMessage(throwable)))
-                .thenAccept(result -> finish(sender, payload.correlationId(), tool, result));
+                .thenAccept(result -> finish(
+                        sender, payload.correlationId(), payload.viewId(), tool, result));
         return new ToolResult.Success<>(new VoidResult());
     }
 
@@ -86,12 +87,17 @@ public final class RemoteToolServer {
         return correlations.cancelActor(sender);
     }
 
-    private void finish(UUID actor, UUID correlation, Tool<?, ?> tool, ToolResult<?> result) {
+    private void finish(
+            UUID actor,
+            UUID correlation,
+            String viewId,
+            Tool<?, ?> tool,
+            ToolResult<?> result) {
         if (!correlations.complete(actor, correlation)) {
             return;
         }
         String json = gson.toJson(normalizer.normalize(result, tool.descriptor().outputType()));
-        new ResultChunker().split(correlation, json, transportChunkBytes)
+        new ResultChunker().split(correlation, viewId, json, transportChunkBytes)
                 .forEach(chunk -> responses.send(actor, chunk));
     }
 

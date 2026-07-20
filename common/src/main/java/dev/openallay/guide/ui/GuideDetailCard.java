@@ -8,6 +8,7 @@ public sealed interface GuideDetailCard permits
         GuideDetailCard.Recipe,
         GuideDetailCard.ItemGrid,
         GuideDetailCard.Requirements,
+        GuideDetailCard.ResourceSummary,
         GuideDetailCard.Text,
         GuideDetailCard.Error {
 
@@ -55,6 +56,26 @@ public sealed interface GuideDetailCard permits
             }
             allocatedItems = List.copyOf(allocatedItems);
             alternatives = List.copyOf(alternatives);
+        }
+    }
+
+    record ResourceSummary(
+            String operation,
+            int succeeded,
+            int failed,
+            String firstRequestedPath,
+            int additionalRequestedPaths,
+            List<String> kinds,
+            String resultPath,
+            boolean continuationAvailable) implements GuideDetailCard {
+        public ResourceSummary {
+            operation = requireText(operation, "operation");
+            if (succeeded < 0 || failed < 0 || additionalRequestedPaths < 0) {
+                throw new IllegalArgumentException("resource summary counts must not be negative");
+            }
+            firstRequestedPath = firstRequestedPath == null ? "" : firstRequestedPath;
+            kinds = List.copyOf(kinds);
+            resultPath = resultPath == null ? "" : resultPath;
         }
     }
 

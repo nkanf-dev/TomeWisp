@@ -6,42 +6,30 @@
   "steps": [
     {
       "type": "tool_call",
-      "tool": "openallay:search_recipes",
+      "tool": "openallay:resource_read",
       "arguments": {
-        "outputItem": "minecraft:iron_block"
+        "paths": ["/recipe/minecraft/iron_block"]
       },
       "expect": {
         "status": "success",
         "match": "contains",
         "value": {
-          "query": {
-            "outputItem": "minecraft:iron_block"
-          }
+          "operation": "resource_read"
         }
       }
     },
     {
       "type": "tool_call",
-      "tool": "openallay:get_recipe",
+      "tool": "openallay:resource_glob",
       "arguments": {
-        "sourceId": "minecraft:recipe_manager",
-        "generation": "0000000000000000000000000000000000000000000000000000000000000000",
-        "recipeId": "minecraft:iron_block"
+        "patterns": [{"pattern": "/player/inventory/slot/*", "kind": "RECORD"}]
       },
       "expect": {
         "status": "success",
-        "match": "schema",
-        "outputType": "dev.openallay.tool.builtin.GetRecipeTool$Output"
-      }
-    },
-    {
-      "type": "tool_call",
-      "tool": "openallay:inspect_inventory",
-      "arguments": {},
-      "expect": {
-        "status": "success",
-        "match": "schema",
-        "outputType": "dev.openallay.tool.builtin.InspectInventoryTool$Output"
+        "match": "contains",
+        "value": {
+          "operation": "resource_glob"
+        }
       }
     },
     {
@@ -65,7 +53,7 @@
     },
     {
       "type": "assistant_message",
-      "content": "结论必须区分当前快照中的材料分配结果与证据是否足以定论，并列出工具返回的缺口。"
+      "content": "结论必须区分当前 VFS 快照中的材料分配结果与证据是否足以定论，并列出工具返回的缺口。"
     }
   ]
 }

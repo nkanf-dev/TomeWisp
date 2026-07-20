@@ -80,7 +80,7 @@ public final class OpenAiJsonCodec {
                 JsonObject encoded = new JsonObject();
                 encoded.addProperty("role", "tool");
                 encoded.addProperty("tool_call_id", result.toolUseId());
-                encoded.addProperty("content", gson.toJson(result.value()));
+                encoded.addProperty("content", result.text());
                 output.add(encoded);
             }
             return;

@@ -6,6 +6,9 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import dev.openallay.agent.context.ContextCheckpoint;
 import dev.openallay.agent.context.ContextCheckpointCodec;
+import dev.openallay.agent.tool.ToolResultDiagnostics;
+import dev.openallay.agent.tool.ToolUiReference;
+import dev.openallay.agent.tool.ToolUiSummary;
 import dev.openallay.context.DataAuthority;
 import dev.openallay.context.DataCompleteness;
 import dev.openallay.context.EvidenceMetadata;
@@ -16,6 +19,8 @@ import dev.openallay.guide.GuideToolActivity;
 import dev.openallay.guide.GuideToolMessageCodec;
 import dev.openallay.guide.GuideToolStatus;
 import dev.openallay.guide.semantic.SemanticDocumentCodec;
+import dev.openallay.resource.vfs.ResourcePath;
+import dev.openallay.resource.vfs.ResourcePresentation;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -29,9 +34,18 @@ public final class GuideHistoryCodec {
     private final SemanticDocumentCodec semanticDocuments = new SemanticDocumentCodec();
     private static final Set<String> ASSISTANT_FIELDS =
             Set.of("type", "ordinal", "text", "semantic", "streaming", "sources");
-    private static final Set<String> TOOL_FIELDS = Set.of(
+    private static final Set<String> LEGACY_TOOL_FIELDS = Set.of(
             "type", "ordinal", "invocationId", "index", "toolId", "status",
             "presentationMessages", "sources");
+    private static final Set<String> TOOL_FIELDS = Set.of(
+            "type", "ordinal", "invocationId", "index", "toolId", "status",
+            "uiReference", "diagnostics", "presentationMessages", "sources");
+    private static final Set<String> UI_REFERENCE_FIELDS = Set.of(
+            "resultPath", "primaryResources", "presentationKind", "continuationAvailable", "summary");
+    private static final Set<String> UI_SUMMARY_FIELDS = Set.of(
+            "operation", "succeeded", "failed", "resourceKinds");
+    private static final Set<String> DIAGNOSTIC_FIELDS = Set.of(
+            "normalizedBytes", "modelCharacters", "generationId", "projectedAt");
     private static final Set<String> SOURCE_FIELDS = Set.of("toolId", "evidence");
     private static final Set<String> EVIDENCE_FIELDS = Set.of(
             "authority", "completeness", "capturedAt", "sourceId", "provenance",
@@ -144,6 +158,8 @@ public final class GuideHistoryCodec {
         object.addProperty("index", activity.index());
         object.addProperty("toolId", activity.toolId());
         object.addProperty("status", activity.status().name());
+        object.add("uiReference", encodeUiReference(activity.uiReference()));
+        object.add("diagnostics", encodeDiagnostics(activity.diagnostics()));
         object.add("presentationMessages", GuideToolMessageCodec.encode(
                 activity.presentationMessages()));
         object.add("sources", encodeSourcesArray(activity.sources()));
@@ -161,16 +177,101 @@ public final class GuideHistoryCodec {
     }
 
     private static GuideTimelineEntry.Tool decodeTool(JsonObject object) {
-        requireFields(object, TOOL_FIELDS, "tool timeline entry");
+        boolean legacy = object.keySet().equals(LEGACY_TOOL_FIELDS);
+        if (!legacy) {
+            requireFields(object, TOOL_FIELDS, "tool timeline entry");
+        }
         GuideToolActivity activity = new GuideToolActivity(
                 string(object, "invocationId"),
                 integer(object, "index"),
                 string(object, "toolId"),
                 enumValue(GuideToolStatus.class, string(object, "status"), "tool status"),
                 null,
+                legacy
+                        ? ToolUiReference.none()
+                        : decodeUiReference(object(object.get("uiReference"), "tool UI reference")),
+                legacy
+                        ? ToolResultDiagnostics.none()
+                        : decodeDiagnostics(object(object.get("diagnostics"), "tool diagnostics")),
                 GuideToolMessageCodec.decode(object.get("presentationMessages")),
                 decodeSourcesArray(array(object, "sources")));
         return new GuideTimelineEntry.Tool(integer(object, "ordinal"), activity);
+    }
+
+    private static JsonObject encodeUiReference(ToolUiReference reference) {
+        JsonObject encoded = new JsonObject();
+        encoded.addProperty(
+                "resultPath",
+                reference.resultPath() == null ? "" : reference.resultPath().toString());
+        JsonArray resources = new JsonArray();
+        reference.primaryResources().forEach(path -> resources.add(path.toString()));
+        encoded.add("primaryResources", resources);
+        encoded.addProperty("presentationKind", reference.presentationKind().name());
+        encoded.addProperty("continuationAvailable", reference.continuationAvailable());
+        JsonObject summary = new JsonObject();
+        summary.addProperty("operation", reference.summary().operation());
+        summary.addProperty("succeeded", reference.summary().succeeded());
+        summary.addProperty("failed", reference.summary().failed());
+        JsonArray kinds = new JsonArray();
+        reference.summary().resourceKinds().forEach(kinds::add);
+        summary.add("resourceKinds", kinds);
+        encoded.add("summary", summary);
+        return encoded;
+    }
+
+    private static ToolUiReference decodeUiReference(JsonObject encoded) {
+        requireFields(encoded, UI_REFERENCE_FIELDS, "tool UI reference");
+        String result = string(encoded, "resultPath");
+        List<ResourcePath> resources = new ArrayList<>();
+        for (JsonElement element : array(encoded, "primaryResources")) {
+            if (!element.isJsonPrimitive() || !element.getAsJsonPrimitive().isString()) {
+                throw new IllegalArgumentException("tool UI resource path must be text");
+            }
+            resources.add(ResourcePath.parse(element.getAsString()));
+        }
+        return new ToolUiReference(
+                result.isBlank() ? null : ResourcePath.parse(result),
+                resources,
+                enumValue(
+                        ResourcePresentation.Kind.class,
+                        string(encoded, "presentationKind"),
+                        "presentation kind"),
+                bool(encoded, "continuationAvailable"),
+                decodeUiSummary(object(encoded.get("summary"), "tool UI summary")));
+    }
+
+    private static ToolUiSummary decodeUiSummary(JsonObject encoded) {
+        requireFields(encoded, UI_SUMMARY_FIELDS, "tool UI summary");
+        List<String> kinds = new ArrayList<>();
+        for (JsonElement element : array(encoded, "resourceKinds")) {
+            if (!element.isJsonPrimitive() || !element.getAsJsonPrimitive().isString()) {
+                throw new IllegalArgumentException("tool UI resource kind must be text");
+            }
+            kinds.add(element.getAsString());
+        }
+        return new ToolUiSummary(
+                string(encoded, "operation"),
+                integer(encoded, "succeeded"),
+                integer(encoded, "failed"),
+                kinds);
+    }
+
+    private static JsonObject encodeDiagnostics(ToolResultDiagnostics diagnostics) {
+        JsonObject encoded = new JsonObject();
+        encoded.addProperty("normalizedBytes", diagnostics.normalizedBytes());
+        encoded.addProperty("modelCharacters", diagnostics.modelCharacters());
+        encoded.addProperty("generationId", diagnostics.generationId());
+        encoded.addProperty("projectedAt", diagnostics.projectedAt().toString());
+        return encoded;
+    }
+
+    private static ToolResultDiagnostics decodeDiagnostics(JsonObject encoded) {
+        requireFields(encoded, DIAGNOSTIC_FIELDS, "tool diagnostics");
+        return new ToolResultDiagnostics(
+                integer(encoded, "normalizedBytes"),
+                integer(encoded, "modelCharacters"),
+                string(encoded, "generationId"),
+                Instant.parse(string(encoded, "projectedAt")));
     }
 
     public String encodeSources(List<GuideSource> sources) {

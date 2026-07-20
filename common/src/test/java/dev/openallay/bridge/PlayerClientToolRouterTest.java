@@ -7,6 +7,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.google.gson.Gson;
 import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
 import dev.openallay.agent.tool.AgentToolExecutor;
 import dev.openallay.agent.tool.AgentToolResult;
 import dev.openallay.bridge.protocol.BridgeProtocol;
@@ -16,19 +17,27 @@ import dev.openallay.bridge.protocol.ClientToolResultChunkPayload;
 import dev.openallay.bridge.protocol.ResultChunker;
 import dev.openallay.bridge.server.PlayerClientToolRouter;
 import dev.openallay.context.ToolInvocationContext;
+import dev.openallay.agent.context.ContextBudget;
+import dev.openallay.knowledge.KnowledgeRegistry;
+import dev.openallay.platform.InstalledModMetadata;
+import dev.openallay.platform.PlatformService;
+import dev.openallay.resource.mod.ModResourceSnapshot;
+import dev.openallay.resource.runtime.ResourceRequestRegistry;
+import dev.openallay.testing.GroundedTestFixtures;
 import dev.openallay.model.CancellationSignal;
 import dev.openallay.tool.Tool;
 import dev.openallay.tool.ToolAccess;
 import dev.openallay.tool.ToolDescriptor;
 import dev.openallay.tool.ToolRegistry;
 import dev.openallay.tool.ToolResult;
-import dev.openallay.tool.builtin.ResolveResourceTool;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 import java.time.Duration;
+import java.time.Instant;
 import org.junit.jupiter.api.Test;
 
 final class PlayerClientToolRouterTest {
@@ -66,6 +75,7 @@ final class PlayerClientToolRouterTest {
         normalized.add("value", value);
         for (var chunk : new ResultChunker().split(
                 calls.getFirst().payload().invocationId(),
+                calls.getFirst().payload().viewId(),
                 normalized.toString(),
                 3)) {
             assertTrue(router.receive(
@@ -76,6 +86,96 @@ final class PlayerClientToolRouterTest {
         assertFalse(completed.failure());
         assertEquals("test:fact", completed.toolId());
         assertEquals(99, completed.normalized().getAsJsonObject("value").get("value").getAsInt());
+    }
+
+    @Test
+    void republishesClientResourceTruthIntoTheServerModelOwnersResultMount() {
+        ResourceRequestRegistry resources = new ResourceRequestRegistry(
+                new TestPlatform(), new KnowledgeRegistry());
+        ToolRegistry registry = new ToolRegistry();
+        registry.registerResourceTools("test:vfs", resources);
+        List<SentCall> calls = new ArrayList<>();
+        PlayerClientToolRouter router = new PlayerClientToolRouter(
+                registry,
+                new Gson(),
+                transport(calls, new ArrayList<>()),
+                Duration.ofMinutes(1),
+                resources);
+        UUID actor = GroundedTestFixtures.PLAYER_ID;
+        UUID requestId = UUID.randomUUID();
+        ToolInvocationContext fixture = GroundedTestFixtures.fullContext();
+        ToolInvocationContext context = new ToolInvocationContext(
+                requestId.toString(), fixture.capturedAt(), fixture.caller(), fixture.player(),
+                fixture.registries(), fixture.recipes(), fixture.observableGameState(), fixture.metrics());
+        try (var handle = resources.open(
+                actor,
+                "main",
+                requestId,
+                13,
+                "server",
+                Set.of("openallay:resource_read"),
+                new ContextBudget(100_000, 4_096),
+                context)) {
+            AgentToolExecutor tools = success(router.open(
+                    actor,
+                    requestId,
+                    "main",
+                    List.of("openallay:resource_read")));
+            JsonObject input = JsonParser.parseString(
+                    "{\"paths\":[\"/game/runtime\"]}").getAsJsonObject();
+            CompletableFuture<AgentToolResult> result = tools.execute(
+                    "resource_read", input, context, new CancellationSignal());
+
+            ClientToolCallPayload call = calls.getFirst().payload();
+            String normalized = """
+                    {
+                      "status":"success",
+                      "outputType":"dev.openallay.tool.resource.ResourceToolOutput",
+                      "value":{
+                        "operation":"resource_read",
+                        "resultPath":"/result/client-copy",
+                        "items":[{
+                          "inputIndex":0,
+                          "input":"/game/runtime",
+                          "status":"success",
+                          "value":{
+                            "path":"/game/runtime",
+                            "kind":"record",
+                            "presentation":"diagnostics",
+                            "presentationReferences":{},
+                            "value":{"loader":"fabric"}
+                          }
+                        }],
+                        "evidence":[{
+                          "authority":"CLIENT_VISIBLE",
+                          "completeness":"COMPLETE",
+                          "capturedAt":"1970-01-01T00:00:00Z",
+                          "sourceId":"minecraft:client_state",
+                          "provenance":"minecraft:client_state",
+                          "gameVersion":"26.2",
+                          "loader":"fabric",
+                          "details":{}
+                        }]
+                      }
+                    }
+                    """;
+            for (var chunk : new ResultChunker().split(
+                    call.invocationId(), call.viewId(), normalized, 17)) {
+                assertTrue(router.receive(
+                        actor, ClientToolResultChunkPayload.from(requestId, chunk)));
+            }
+
+            AgentToolResult completed = result.join();
+            assertFalse(completed.failure());
+            assertTrue(completed.uiReference().resultPath().toString().startsWith("/result/"));
+            assertEquals(completed.uiReference().resultPath(),
+                    completed.modelView().receipts().getFirst().resultPath());
+            assertEquals("client_visible", completed.modelView().receipts().getFirst().authority());
+            assertTrue(resources.capture(context, new CancellationSignal()).view()
+                    .require(completed.uiReference().resultPath()) != null);
+            assertTrue(router.close(actor, requestId));
+        }
+        resources.close();
     }
 
     @Test
@@ -101,7 +201,7 @@ final class PlayerClientToolRouterTest {
         var chunk = ClientToolResultChunkPayload.from(
                 requestId,
                 new ResultChunker().split(
-                                call.invocationId(), normalized.toString(), 128)
+                                call.invocationId(), call.viewId(), normalized.toString(), 128)
                         .getFirst());
 
         assertFalse(router.receive(UUID.randomUUID(), chunk));
@@ -144,6 +244,7 @@ final class PlayerClientToolRouterTest {
                         requestId,
                         new ResultChunker().split(
                                         calls.getFirst().payload().invocationId(),
+                                        calls.getFirst().payload().viewId(),
                                         late.toString(),
                                         128)
                                 .getFirst())));
@@ -176,7 +277,7 @@ final class PlayerClientToolRouterTest {
     @Test
     void serverAuthoritativeWorldQueryPlacementStaysLocalWithoutFallback() {
         ToolRegistry registry = registry();
-        registry.register("game", List.of(new InspectTool()));
+        registry.register("resource", List.of(new ResourceReadTool()));
         List<SentCall> calls = new ArrayList<>();
         PlayerClientToolRouter router = new PlayerClientToolRouter(
                 registry, new Gson(), transport(calls, new ArrayList<>()));
@@ -186,12 +287,11 @@ final class PlayerClientToolRouterTest {
                 actor,
                 requestId,
                 "main",
-                List.of("openallay:inspect_game_state")));
-        JsonObject input = new JsonObject();
-        input.addProperty("section", "WORLD_QUERY");
+                List.of("openallay:resource_read")));
+        JsonObject input = paths("/world/dimension");
 
         AgentToolResult result = tools.execute(
-                        "openallay:inspect_game_state",
+                        "openallay:resource_read",
                         input,
                         ToolInvocationContext.developmentConsole(requestId.toString()),
                         new CancellationSignal())
@@ -207,7 +307,7 @@ final class PlayerClientToolRouterTest {
     @Test
     void playerVisibleGameStatePlacementRoutesToTheRequestingClient() {
         ToolRegistry registry = registry();
-        registry.register("game", List.of(new InspectTool()));
+        registry.register("resource", List.of(new ResourceReadTool()));
         List<SentCall> calls = new ArrayList<>();
         PlayerClientToolRouter router = new PlayerClientToolRouter(
                 registry, new Gson(), transport(calls, new ArrayList<>()));
@@ -217,27 +317,26 @@ final class PlayerClientToolRouterTest {
                 actor,
                 requestId,
                 "main",
-                List.of("openallay:inspect_game_state")));
-        JsonObject input = new JsonObject();
-        input.addProperty("section", "OPTIONS");
+                List.of("openallay:resource_read")));
+        JsonObject input = paths("/game/options");
 
         CompletableFuture<AgentToolResult> result = tools.execute(
-                "openallay:inspect_game_state",
+                "openallay:resource_read",
                 input,
                 ToolInvocationContext.developmentConsole(requestId.toString()),
                 new CancellationSignal());
 
         assertEquals(1, calls.size());
         assertEquals(actor, calls.getFirst().actorId());
-        assertEquals("openallay:inspect_game_state", calls.getFirst().payload().toolId());
+        assertEquals("openallay:resource_read", calls.getFirst().payload().toolId());
         assertTrue(router.close(actor, requestId));
         assertTrue(result.isCompletedExceptionally());
     }
 
     @Test
-    void gameContentCatalogPlacementRoutesToTheRequestingClient() {
+    void playerResourcePlacementRoutesToTheRequestingClient() {
         ToolRegistry registry = registry();
-        registry.register("catalog", List.of(new ResolveResourceTool()));
+        registry.register("resource", List.of(new ResourceReadTool()));
         List<SentCall> calls = new ArrayList<>();
         PlayerClientToolRouter router = new PlayerClientToolRouter(
                 registry, new Gson(), transport(calls, new ArrayList<>()));
@@ -247,19 +346,18 @@ final class PlayerClientToolRouterTest {
                 actor,
                 requestId,
                 "main",
-                List.of("openallay:resolve_resource")));
-        JsonObject input = new JsonObject();
-        input.addProperty("query", "中毒");
+                List.of("openallay:resource_read")));
+        JsonObject input = paths("/player/inventory");
 
         CompletableFuture<AgentToolResult> result = tools.execute(
-                "openallay:resolve_resource",
+                "openallay:resource_read",
                 input,
                 ToolInvocationContext.developmentConsole(requestId.toString()),
                 new CancellationSignal());
 
         assertEquals(1, calls.size());
         assertEquals(actor, calls.getFirst().actorId());
-        assertEquals("openallay:resolve_resource", calls.getFirst().payload().toolId());
+        assertEquals("openallay:resource_read", calls.getFirst().payload().toolId());
         assertTrue(router.close(actor, requestId));
         assertTrue(result.isCompletedExceptionally());
     }
@@ -312,7 +410,11 @@ final class PlayerClientToolRouterTest {
             ClientToolResultChunkPayload firstChunk = ClientToolResultChunkPayload.from(
                     requestId,
                     new ResultChunker()
-                            .split(call.invocationId(), "{\"status\":\"failure\"}", 1)
+                            .split(
+                                    call.invocationId(),
+                                    call.viewId(),
+                                    "{\"status\":\"failure\"}",
+                                    1)
                             .getFirst());
 
             CompletableFuture.allOf(
@@ -352,6 +454,14 @@ final class PlayerClientToolRouterTest {
         return result;
     }
 
+    private static JsonObject paths(String... values) {
+        JsonObject result = new JsonObject();
+        com.google.gson.JsonArray paths = new com.google.gson.JsonArray();
+        for (String value : values) paths.add(value);
+        result.add("paths", paths);
+        return result;
+    }
+
     private static ToolRegistry registry() {
         ToolRegistry registry = new ToolRegistry();
         registry.register("test", List.of(new FactTool()));
@@ -373,13 +483,13 @@ final class PlayerClientToolRouterTest {
         }
     }
 
-    private static final class InspectTool implements Tool<InspectTool.Input, InspectTool.Output> {
-        record Input(String section) {}
+    private static final class ResourceReadTool implements Tool<ResourceReadTool.Input, ResourceReadTool.Output> {
+        record Input(List<String> paths) {}
         record Output(String placement) {}
 
         private static final ToolDescriptor<Input, Output> DESCRIPTOR = new ToolDescriptor<>(
-                "openallay:inspect_game_state",
-                "Inspect game state",
+                "openallay:resource_read",
+                "Read resource paths",
                 Input.class,
                 Output.class,
                 ToolAccess.READ_ONLY);
@@ -389,6 +499,17 @@ final class PlayerClientToolRouterTest {
         @Override
         public ToolResult<Output> invoke(ToolInvocationContext context, Input input) {
             return new ToolResult.Success<>(new Output("server"));
+        }
+    }
+
+    private static final class TestPlatform implements PlatformService {
+        @Override public String platformName() { return "test"; }
+        @Override public boolean isModLoaded(String modId) { return false; }
+        @Override public boolean isDevelopmentEnvironment() { return true; }
+        @Override public String gameVersion() { return "26.2"; }
+        @Override public List<InstalledModMetadata> installedMods() { return List.of(); }
+        @Override public ModResourceSnapshot captureModResources() {
+            return ModResourceSnapshot.unavailable(Instant.EPOCH, "fixture");
         }
     }
 

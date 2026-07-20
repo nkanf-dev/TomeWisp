@@ -6,17 +6,27 @@
   "steps": [
     {
       "type": "tool_call",
-      "tool": "openallay:inspect_game_state",
-      "arguments": {"section": "PLAYER", "query": "summary"},
+      "tool": "openallay:resource_read",
+      "arguments": {"paths": ["/player/profile"]},
       "expect": {
         "status": "success",
-        "match": "schema",
-        "outputType": "dev.openallay.tool.builtin.InspectGameStateTool$Output"
+        "match": "contains",
+        "value": {"operation": "resource_read"}
+      }
+    },
+    {
+      "type": "tool_call",
+      "tool": "openallay:resource_glob",
+      "arguments": {"patterns": [{"pattern": "/player/inventory/slot/*", "kind": "RECORD"}]},
+      "expect": {
+        "status": "success",
+        "match": "contains",
+        "value": {"operation": "resource_glob"}
       }
     },
     {
       "type": "assistant_message",
-      "content": "回答将只使用本次调用捕获的玩家与背包快照，并按 completeness 证据说明可见范围。"
+      "content": "回答将使用本次 VFS 视图中的玩家资料与背包资源，并按证据说明可见范围。"
     }
   ]
 }

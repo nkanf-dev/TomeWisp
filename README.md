@@ -48,9 +48,12 @@ you can view or manage them in-game.
 
 - Find recipes and item uses, then check whether your inventory contains the
   required ingredients.
+- Search items, blocks, effects, potions, entities, and other details from the
+  mods in your current instance, then compare or narrow many matches together.
 - Inspect installed mods, video settings, resource packs, coordinates, and
   F3-style information.
-- Search supported guide-book content and local notes.
+- Search supported guide-book content, local notes, and available Minecraft
+  knowledge sources, then open the exact sections behind an answer.
 - Follow multi-step requests through live progress and friendly tool details.
 - Use multiple conversations, saved history, model profiles, copy, and export
   from the native OpenAllay screen.

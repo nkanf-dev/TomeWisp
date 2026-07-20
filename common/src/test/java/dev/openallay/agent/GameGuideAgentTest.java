@@ -129,9 +129,7 @@ final class GameGuideAgentTest {
         ModelContent.ToolResult toolResult = (ModelContent.ToolResult) model.requests.get(1)
                 .messages().getLast().content().getFirst();
         assertTrue(toolResult.error());
-        assertEquals(
-                "tool_unavailable",
-                toolResult.value().getAsJsonObject().get("code").getAsString());
+        assertTrue(toolResult.text().contains("code: tool_unavailable"));
         assertTrue(events.stream()
                 .filter(AgentEvent.ToolStarted.class::isInstance)
                 .map(AgentEvent.ToolStarted.class::cast)
@@ -153,9 +151,7 @@ final class GameGuideAgentTest {
         ModelContent.ToolResult toolResult = (ModelContent.ToolResult) model.requests.get(1)
                 .messages().getLast().content().getFirst();
         assertTrue(toolResult.error());
-        assertEquals(
-                "tool_failure",
-                toolResult.value().getAsJsonObject().get("code").getAsString());
+        assertTrue(toolResult.text().contains("code: tool_failure"));
     }
 
     @Test
@@ -183,10 +179,8 @@ final class GameGuideAgentTest {
                 .toList();
         assertEquals(List.of("call_first", "call_second"),
                 results.stream().map(ModelContent.ToolResult::toolUseId).toList());
-        assertEquals(List.of(1, 2), results.stream()
-                .map(value -> value.value().getAsJsonObject().getAsJsonObject("value")
-                        .get("fact").getAsInt())
-                .toList());
+        assertTrue(results.get(0).text().contains("fact: 1"));
+        assertTrue(results.get(1).text().contains("fact: 2"));
     }
 
     @Test
@@ -272,17 +266,40 @@ final class GameGuideAgentTest {
         assertEquals(1, events.stream().filter(AgentEvent.ToolStarted.class::isInstance).count());
         ModelContent.ToolResult repeated = (ModelContent.ToolResult) model.requests.get(2)
                 .messages().getLast().content().getFirst();
-        assertEquals("no_new_information", repeated.value().getAsJsonObject().get("code").getAsString());
+        assertTrue(repeated.text().contains("code: no_new_information"));
         assertTrue(repeated.error());
         assertNotNull(result.trace());
     }
 
     @Test
-    void failsIfModelIgnoresNoNewInformationAndRepeatsAgain() {
+    void secondNoProgressAttemptRequestsFinalSynthesisBeforeTermination() {
         QueueModelClient model = new QueueModelClient();
         model.enqueue(CompletableFuture.completedFuture(toolTurn("call_1", 42)));
         model.enqueue(CompletableFuture.completedFuture(toolTurn("call_2", 42)));
         model.enqueue(CompletableFuture.completedFuture(toolTurn("call_3", 42)));
+        model.enqueue(CompletableFuture.completedFuture(textTurn("final from retained evidence")));
+        FakeTools tools = new FakeTools();
+
+        AgentResult result = new GameGuideAgent(
+                        model, tools, new AgentSessionStore(), new Gson())
+                .ask(request(UUID.randomUUID()), ignored -> {})
+                .join();
+
+        assertEquals(AgentState.COMPLETED, result.state());
+        assertEquals("final from retained evidence", result.text());
+        assertEquals(1, tools.invocations.get());
+        ModelContent.ToolResult finalGuidance = (ModelContent.ToolResult) model.requests.get(3)
+                .messages().getLast().content().getFirst();
+        assertTrue(finalGuidance.text().contains("Produce the final answer now"));
+    }
+
+    @Test
+    void failsPreciselyIfModelStillCallsTheSameToolAfterFinalSynthesisGuidance() {
+        QueueModelClient model = new QueueModelClient();
+        model.enqueue(CompletableFuture.completedFuture(toolTurn("call_1", 42)));
+        model.enqueue(CompletableFuture.completedFuture(toolTurn("call_2", 42)));
+        model.enqueue(CompletableFuture.completedFuture(toolTurn("call_3", 42)));
+        model.enqueue(CompletableFuture.completedFuture(toolTurn("call_4", 42)));
         FakeTools tools = new FakeTools();
 
         AgentResult result = new GameGuideAgent(
@@ -327,6 +344,56 @@ final class GameGuideAgentTest {
         assertTrue(model.requests.get(1).messages().getFirst().content().stream()
                 .map(ModelContent.Text.class::cast)
                 .anyMatch(text -> text.text().contains("NOT factual evidence")));
+    }
+
+    @Test
+    void budgetsEveryToolContinuationBeforeProviderDispatch() {
+        QueueModelClient model = new QueueModelClient();
+        model.enqueue(CompletableFuture.completedFuture(toolTurn("large_call", 42)));
+        model.enqueue(CompletableFuture.completedFuture(textTurn("bounded")));
+        ContextBudget budget = new ContextBudget(1_200, 100);
+        ContextCompactor compactor = new ContextCompactor(
+                model, new Gson(), new Utf8ContextTokenEstimator(),
+                new ToolResultContextReducer(), budget, "test-model", Clock.systemUTC());
+
+        AgentResult result = new GameGuideAgent(
+                        model, new LargeResultTools(), new AgentSessionStore(), new Gson(), compactor)
+                .ask(request(UUID.randomUUID()), ignored -> {})
+                .join();
+
+        assertEquals("bounded", result.text());
+        Utf8ContextTokenEstimator estimator = new Utf8ContextTokenEstimator();
+        assertEquals(2, model.requests.size(), "a Tool continuation must not require a summary call");
+        assertTrue(model.requests.stream().allMatch(request -> estimator.estimate(
+                request.systemPrompt(), request.messages(), request.tools()) <= budget.inputTokens()));
+        ModelContent.ToolResult projected = (ModelContent.ToolResult) model.requests.get(1)
+                .messages().getLast().content().getFirst();
+        assertTrue(projected.text().contains("resource: /result/large"));
+        assertFalse(projected.text().contains("row-199"));
+    }
+
+    @Test
+    void repeatedLargeToolTurnsStayWithinResolvedOneHundredKWindow() {
+        QueueModelClient model = new QueueModelClient();
+        for (int index = 0; index < 12; index++) {
+            model.enqueue(CompletableFuture.completedFuture(toolTurn("large_" + index, index)));
+        }
+        model.enqueue(CompletableFuture.completedFuture(textTurn("complete")));
+        ContextBudget budget = new ContextBudget(100_000, 4_096);
+        ContextCompactor compactor = new ContextCompactor(
+                model, new Gson(), new Utf8ContextTokenEstimator(),
+                new ToolResultContextReducer(), budget, "100k-model", Clock.systemUTC());
+
+        AgentResult result = new GameGuideAgent(
+                        model, new LargeResultTools(), new AgentSessionStore(), new Gson(), compactor)
+                .ask(request(UUID.randomUUID()), ignored -> {})
+                .join();
+
+        assertEquals("complete", result.text());
+        assertEquals(13, model.requests.size());
+        Utf8ContextTokenEstimator estimator = new Utf8ContextTokenEstimator();
+        assertTrue(model.requests.stream().allMatch(request -> estimator.estimate(
+                request.systemPrompt(), request.messages(), request.tools()) <= budget.inputTokens()));
     }
 
     @Test
@@ -482,7 +549,7 @@ final class GameGuideAgentTest {
         }
     }
 
-    private static final class FakeTools implements AgentToolExecutor {
+    private static class FakeTools implements AgentToolExecutor {
         private final AtomicInteger invocations = new AtomicInteger();
 
         @Override
@@ -552,6 +619,42 @@ final class GameGuideAgentTest {
                 ToolInvocationContext context,
                 CancellationSignal cancellation) {
             return CompletableFuture.failedFuture(new IllegalStateException("raw private failure"));
+        }
+    }
+
+    private static final class LargeResultTools extends FakeTools {
+        @Override
+        public CompletableFuture<AgentToolResult> execute(
+                String modelToolName,
+                JsonObject arguments,
+                ToolInvocationContext context,
+                CancellationSignal cancellation) {
+            JsonObject normalized = new JsonObject();
+            normalized.addProperty("status", "success");
+            normalized.addProperty("outputType", "test.Large");
+            JsonObject value = new JsonObject();
+            value.addProperty("bulk", "x".repeat(40_000));
+            normalized.add("value", value);
+            StringBuilder text = new StringBuilder(
+                    "status: success\ngeneration: g1\nkind: table\nreturned: 200/200\n");
+            for (int index = 0; index < 200; index++) {
+                text.append("row-").append(index).append(": ").append("x".repeat(80)).append('\n');
+            }
+            dev.openallay.resource.projection.ResourceReceipt receipt =
+                    new dev.openallay.resource.projection.ResourceReceipt(
+                            dev.openallay.resource.vfs.ResourcePath.parse("/result/large"),
+                            "g1", "table", 200, 200L, List.of("row"), "cursor-next");
+            dev.openallay.agent.tool.ModelToolResultView modelView =
+                    new dev.openallay.agent.tool.ModelToolResultView(
+                            text.toString().stripTrailing(), List.of(receipt), text.length());
+            return CompletableFuture.completedFuture(new AgentToolResult(
+                    "test:fact", normalized, modelView,
+                    new dev.openallay.agent.tool.ToolUiReference(
+                            dev.openallay.resource.vfs.ResourcePath.parse("/result/large"),
+                            List.of(), dev.openallay.resource.vfs.ResourcePresentation.Kind.NONE),
+                    new dev.openallay.agent.tool.ToolResultDiagnostics(
+                            40_000, text.length(), "g1", java.time.Instant.EPOCH),
+                    false));
         }
     }
 

@@ -8,11 +8,12 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import com.google.gson.Gson;
 import com.google.gson.JsonObject;
 import dev.openallay.OpenAllayRuntime;
+import dev.openallay.agent.context.ContextBudget;
 import dev.openallay.agent.session.AgentSessionStore;
+import dev.openallay.capability.CapabilitySettingsCatalog;
 import dev.openallay.client.ClientGuideRuntime;
 import dev.openallay.devmode.DevelopmentToolInspector;
 import dev.openallay.integration.patchouli.PatchouliMultiblockStore;
-import dev.openallay.guide.ui.GuideRecipePresenter;
 import dev.openallay.knowledge.KnowledgeRegistry;
 import dev.openallay.model.CancellationSignal;
 import dev.openallay.model.ModelClient;
@@ -24,13 +25,11 @@ import dev.openallay.model.ModelUsage;
 import dev.openallay.platform.PlatformService;
 import dev.openallay.skill.SkillParser;
 import dev.openallay.skill.SkillRepository;
+import dev.openallay.resource.runtime.ResourceRequestRegistry;
 import dev.openallay.testing.GroundedTestFixtures;
 import dev.openallay.tool.ToolRegistry;
 import dev.openallay.tool.ToolResult;
 import dev.openallay.tool.builtin.CalculateCraftabilityTool;
-import dev.openallay.tool.builtin.GetRecipeTool;
-import dev.openallay.tool.builtin.InspectInventoryTool;
-import dev.openallay.tool.builtin.SearchRecipesTool;
 import java.time.Clock;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
@@ -46,20 +45,14 @@ final class GuideProductE2ETest {
     void realAgentServiceAndGroundedToolsCompleteLongCraftabilityTrace() {
         Gson gson = new Gson();
         ToolRegistry tools = new ToolRegistry();
-        tools.register("e2e", List.of(
-                new SearchRecipesTool(),
-                new GetRecipeTool(),
-                new InspectInventoryTool(),
-                new CalculateCraftabilityTool()));
         OpenAllayRuntime base = runtime(tools);
         ScriptedModel model = new ScriptedModel(List.of(
-                toolWithText("1", "准备查询配方。", "openallay__search_recipes", json(
-                        "outputItem", "minecraft:iron_block")),
-                toolWithText("2", "我再确认完整配方。", "openallay__get_recipe", json(
-                        "sourceId", "minecraft:recipe_manager",
-                        "generation", GroundedTestFixtures.RECIPE_GENERATION,
-                        "recipeId", "minecraft:iron_block")),
-                toolWithText("3", "现在检查你的库存。", "openallay__inspect_inventory", new JsonObject()),
+                toolWithText("1", "准备查询配方。", "resource_grep", vfsGrep(
+                        "/recipe", "minecraft:iron_block")),
+                toolWithText("2", "我再确认完整配方。", "resource_read", vfsRead(
+                        "/recipe/minecraft/iron_block")),
+                toolWithText("3", "现在检查你的库存。", "resource_read", vfsRead(
+                        "/player/inventory")),
                 toolWithText("4", "最后计算材料缺口。", "openallay__calculate_craftability", json(
                         "sourceId", "minecraft:recipe_manager",
                         "generation", GroundedTestFixtures.RECIPE_GENERATION,
@@ -67,7 +60,8 @@ final class GuideProductE2ETest {
                         "crafts", 1)),
                 text("你有 4 个铁锭；制作 1 个铁块还缺 5 个。")));
         ClientGuideRuntime local = new ClientGuideRuntime(
-                base, model, new AgentSessionStore(), gson, Runnable::run);
+                base, model, new AgentSessionStore(), gson, Runnable::run,
+                new ContextBudget(100_000, 4_096), "fixture:vfs-e2e");
         GuideRemoteEndpoint noServer = new GuideRemoteEndpoint() {
             @Override public boolean serverModelAvailable() { return false; }
             @Override public boolean serverToolsAvailable() { return false; }
@@ -108,34 +102,63 @@ final class GuideProductE2ETest {
                 completed.timeline().stream().map(Object::getClass).toList());
         assertTrue(completed.tools().stream().allMatch(
                 value -> value.status() == GuideToolStatus.SUCCEEDED));
-        JsonObject recipeSearch = completed.tools().getFirst().normalized();
-        assertTrue(recipeSearch.getAsJsonObject("value").has("catalog"));
-        assertEquals(1, GuideRecipePresenter.cards(
-                completed.tools().getFirst().toolId(), recipeSearch).size());
+        assertEquals(
+                dev.openallay.resource.vfs.ResourcePresentation.Kind.RECIPE,
+                completed.tools().get(1).uiReference().presentationKind());
         assertFalse(completed.sources().isEmpty());
         assertEquals("你有 4 个铁锭；制作 1 个铁块还缺 5 个。", completed.assistantText());
         assertEquals(5, model.requests.size());
         assertTrue(model.requests.get(4).messages().getLast().content().stream()
                 .filter(ModelContent.ToolResult.class::isInstance)
                 .map(ModelContent.ToolResult.class::cast)
-                .anyMatch(result -> result.value().toString().contains("\"missing\":5")));
+                .anyMatch(result -> result.value().toString().contains("missing: 5")));
     }
 
     private static OpenAllayRuntime runtime(ToolRegistry tools) {
-        return new OpenAllayRuntime(
-                new PlatformService() {
+        PlatformService platform = new PlatformService() {
                     @Override public String platformName() { return "common-test"; }
-                    @Override public String gameVersion() { return "test"; }
+                    @Override public String gameVersion() { return "26.2"; }
                     @Override public boolean isModLoaded(String id) { return false; }
                     @Override public boolean isDevelopmentEnvironment() { return true; }
-                },
+                };
+        KnowledgeRegistry knowledge = new KnowledgeRegistry();
+        ResourceRequestRegistry resources = new ResourceRequestRegistry(platform, knowledge);
+        tools.registerResourceTools("e2e:vfs", resources);
+        tools.register("e2e:craftability", List.of(new CalculateCraftabilityTool()));
+        SkillRepository skills = new SkillRepository(new SkillParser(), tools.descriptors().stream()
+                .map(value -> value.id()).toList());
+        return new OpenAllayRuntime(
+                platform,
                 tools,
-                new KnowledgeRegistry(),
+                knowledge,
                 new PatchouliMultiblockStore(),
-                new SkillRepository(new SkillParser(), tools.descriptors().stream()
-                        .map(value -> value.id()).toList()),
+                skills,
                 new DevelopmentToolInspector(tools),
-                null);
+                null,
+                new CapabilitySettingsCatalog(),
+                resources);
+    }
+
+    private static JsonObject vfsRead(String path) {
+        JsonObject input = new JsonObject();
+        com.google.gson.JsonArray paths = new com.google.gson.JsonArray();
+        paths.add(path);
+        input.add("paths", paths);
+        return input;
+    }
+
+    private static JsonObject vfsGrep(String root, String pattern) {
+        JsonObject search = new JsonObject();
+        com.google.gson.JsonArray roots = new com.google.gson.JsonArray();
+        roots.add(root);
+        search.add("roots", roots);
+        search.addProperty("pattern", pattern);
+        search.addProperty("mode", "LITERAL");
+        com.google.gson.JsonArray searches = new com.google.gson.JsonArray();
+        searches.add(search);
+        JsonObject input = new JsonObject();
+        input.add("searches", searches);
+        return input;
     }
 
     private static ModelTurn tool(String id, String name, JsonObject arguments) {

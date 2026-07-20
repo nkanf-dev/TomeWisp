@@ -997,6 +997,25 @@ public final class OpenAllayScreen extends Screen {
                         Component.translatable("screen.openallay.debug.section").getString(), detail, y + 4);
                 y = detailLine(graphics, "invocationId: " + debug.invocationId(), detail, y);
                 y = detailLine(graphics, "toolId: " + debug.toolId(), detail, y);
+                if (debug.uiReference().resultPath() != null) {
+                    y = detailLine(graphics,
+                            "resultPath: " + debug.uiReference().resultPath(), detail, y);
+                }
+                y = detailLine(graphics,
+                        "resources: " + debug.uiReference().primaryResources().size()
+                                + " · presentation: " + debug.uiReference().presentationKind()
+                                + " · continuation: " + debug.uiReference().continuationAvailable(),
+                        detail,
+                        y);
+                y = detailLine(graphics,
+                        "exact/model: " + debug.diagnostics().normalizedBytes() + " B / "
+                                + debug.diagnostics().modelCharacters() + " chars",
+                        detail,
+                        y);
+                y = detailLine(graphics,
+                        "generation: " + debug.diagnostics().generationId(), detail, y);
+                y = detailLine(graphics,
+                        "projectedAt: " + debug.diagnostics().projectedAt(), detail, y);
                 if (!debug.validationDiagnostic().isBlank()) {
                     y = detailLine(graphics,
                             "validation: " + debug.validationDiagnostic(), detail, y);
@@ -1005,7 +1024,7 @@ public final class OpenAllayScreen extends Screen {
                     y = evidence(graphics, source, detail, y);
                 }
                 if (debug.normalized() != null) {
-                    y = detailLine(graphics, "normalized: " + debug.normalized(), detail, y);
+                    y = detailLine(graphics, "boundedSummary: " + debug.normalized(), detail, y);
                 }
             }
         } else if (selectedSource != null) {
@@ -1036,9 +1055,58 @@ public final class OpenAllayScreen extends Screen {
                     itemGridCard(graphics, grid, detail, y, mouseX, mouseY);
             case GuideDetailCard.Requirements requirements ->
                     requirementsCard(graphics, requirements, detail, y, mouseX, mouseY);
+            case GuideDetailCard.ResourceSummary resource ->
+                    resourceSummaryCard(graphics, resource, detail, y);
             case GuideDetailCard.Text text -> textCard(graphics, text, detail, y);
             case GuideDetailCard.Error error -> errorCard(graphics, error, detail, y);
         };
+    }
+
+    private int resourceSummaryCard(
+            GuiGraphicsExtractor graphics,
+            GuideDetailCard.ResourceSummary card,
+            GuideUiLayout.Rect detail,
+            int y) {
+        int start = y;
+        y = detailLine(graphics,
+                Component.translatable("screen.openallay.detail.resource").getString(), detail, y);
+        y = detailLine(graphics,
+                Component.translatable(
+                        "screen.openallay.detail.resource_summary",
+                        card.operation(), card.succeeded(), card.failed()).getString(),
+                detail, y);
+        if (!card.firstRequestedPath().isBlank()) {
+            Component requested = card.additionalRequestedPaths() == 0
+                    ? Component.translatable(
+                            "screen.openallay.detail.resource_requested_one",
+                            card.firstRequestedPath())
+                    : Component.translatable(
+                            "screen.openallay.detail.resource_requested",
+                            card.firstRequestedPath(), card.additionalRequestedPaths());
+            y = detailLine(graphics,
+                    requested.getString(),
+                    detail, y);
+        }
+        if (!card.kinds().isEmpty()) {
+            y = detailLine(graphics,
+                    Component.translatable(
+                            "screen.openallay.detail.resource_kinds",
+                            String.join(", ", card.kinds())).getString(),
+                    detail, y);
+        }
+        if (!card.resultPath().isBlank()) {
+            y = detailLine(graphics,
+                    Component.translatable(
+                            "screen.openallay.detail.resource_result", card.resultPath()).getString(),
+                    detail, y);
+        }
+        if (card.continuationAvailable()) {
+            y = detailLine(graphics,
+                    Component.translatable(
+                            "screen.openallay.detail.resource_continuation").getString(),
+                    detail, y);
+        }
+        return Math.max(y, start + 25);
     }
 
     private int itemGridCard(

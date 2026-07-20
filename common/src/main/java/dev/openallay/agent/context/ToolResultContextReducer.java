@@ -1,40 +1,22 @@
 package dev.openallay.agent.context;
 
-import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
-import com.google.gson.JsonObject;
+import com.google.gson.JsonPrimitive;
 import dev.openallay.model.ModelContent;
 import dev.openallay.model.ModelMessage;
+import dev.openallay.resource.projection.ResourceReceipt;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.TreeMap;
 
-/** Replaces bulk historical tool outputs with evidence-bearing stable memory. */
+/** Structurally replaces old model-facing Tool bodies with stable semantic receipts. */
 public final class ToolResultContextReducer {
-    private static final Set<String> CONCLUSION_KEYS = Set.of(
-            "available",
-            "capability",
-            "complete",
-            "completeness",
-            "conclusive",
-            "craftable",
-            "found",
-            "matched",
-            "maximumCrafts",
-            "missingCount",
-            "requestedCrafts",
-            "state",
-            "unlockState",
-            "visibility");
-    private static final Set<String> STABLE_ID_KEYS = Set.of(
-            "referenceId",
-            "documentId",
-            "entryId",
-            "multiblockId",
-            "resourceId");
+    private static final Set<String> RECEIPT_FIELDS = Set.of(
+            "status", "code", "message", "resource", "path", "generation", "kind",
+            "authority", "completeness", "returned", "range", "fields", "lineage",
+            "next_cursor");
 
     public ContextProjection reduce(List<ModelMessage> messages, int protectedFromIndex) {
         messages = List.copyOf(messages);
@@ -49,167 +31,125 @@ public final class ToolResultContextReducer {
                 continue;
             }
             ArrayList<ModelContent> content = new ArrayList<>(message.content().size());
+            boolean messageChanged = false;
             for (ModelContent item : message.content()) {
                 if (item instanceof ModelContent.ToolResult result) {
-                    ReducedToolResult projection = reduceResult(result.value(), result.error());
+                    String receipt = receipt(
+                            result.text(), result.receiptPath(), result.receipts(), result.error());
                     content.add(new ModelContent.ToolResult(
-                            result.toolUseId(), projection.value(), projection.error()));
-                    changed = true;
+                            result.toolUseId(), receipt, result.receiptPath(), result.receipts(), result.error()));
+                    messageChanged |= !receipt.equals(result.text());
                 } else {
                     content.add(item);
                 }
             }
-            reduced.add(changed && content.stream().anyMatch(ModelContent.ToolResult.class::isInstance)
-                    ? new ModelMessage(message.role(), content)
-                    : message);
+            reduced.add(messageChanged ? new ModelMessage(message.role(), content) : message);
+            changed |= messageChanged;
         }
         return ContextProjection.unestimated(
                 reduced,
-                changed
-                        ? ContextProjection.Kind.TOOL_RESULTS_REDUCED
+                changed ? ContextProjection.Kind.TOOL_RESULTS_REDUCED
                         : ContextProjection.Kind.ORIGINAL);
     }
 
+    /** Compatibility entry point for old context fixtures; output is always model text. */
     public ReducedToolResult reduceResult(JsonElement value, boolean originalError) {
-        if (value == null || !value.isJsonObject()) {
-            return malformed();
+        if (value == null) {
+            return new ReducedToolResult(new JsonPrimitive(receipt(
+                    "status: failure\ncode: context_result_malformed",
+                    null,
+                    List.of(),
+                    true)), true);
         }
-        JsonObject source = value.getAsJsonObject();
-        String status = text(source, "status");
-        if (status == null) {
-            return malformed();
-        }
-        if (status.equals("failure")) {
-            JsonObject failure = new JsonObject();
-            failure.addProperty("status", "failure");
-            addText(source, failure, "code");
-            addText(source, failure, "message");
-            if (!failure.has("code")) {
-                failure.addProperty("code", "historical_tool_failure");
-            }
-            if (!failure.has("message")) {
-                failure.addProperty("message", "Historical tool call failed");
-            }
-            return new ReducedToolResult(failure, true);
-        }
-        if (!status.equals("success")) {
-            return malformed();
-        }
-
-        JsonObject result = new JsonObject();
-        result.addProperty("status", "success");
-        addText(source, result, "outputType");
-        Collector collector = new Collector();
-        if (source.has("value")) {
-            collect(source.get("value"), collector, false);
-        }
-        if (!collector.conclusions.isEmpty()) {
-            JsonObject conclusions = new JsonObject();
-            collector.conclusions.forEach(conclusions::add);
-            result.add("conclusions", conclusions);
-        }
-        if (!collector.references.isEmpty()) {
-            JsonArray references = new JsonArray();
-            collector.references.values().forEach(references::add);
-            result.add("references", references);
-        }
-        if (!collector.stableIds.isEmpty()) {
-            JsonArray stableIds = new JsonArray();
-            collector.stableIds.values().forEach(stableIds::add);
-            result.add("stableIds", stableIds);
-        }
-        if (!collector.evidence.isEmpty()) {
-            JsonArray evidence = new JsonArray();
-            collector.evidence.values().forEach(evidence::add);
-            result.add("evidence", evidence);
-        }
-        return new ReducedToolResult(result, originalError);
-    }
-
-    private static void collect(JsonElement element, Collector collector, boolean insideReference) {
-        if (element == null || element.isJsonNull() || element.isJsonPrimitive()) {
-            return;
-        }
-        if (element.isJsonArray()) {
-            for (JsonElement item : element.getAsJsonArray()) {
-                collect(item, collector, insideReference);
-            }
-            return;
-        }
-        JsonObject object = element.getAsJsonObject();
-        boolean referenceObject = insideReference || looksLikeReference(object);
-        if (referenceObject && looksLikeReference(object)) {
-            collector.references.putIfAbsent(object.toString(), object.deepCopy());
-        }
-        for (String key : new java.util.TreeSet<>(object.keySet())) {
-            JsonElement child = object.get(key);
-            if (key.equals("evidence") && child.isJsonArray()) {
-                for (JsonElement evidence : child.getAsJsonArray()) {
-                    if (evidence.isJsonObject()) {
-                        collector.evidence.putIfAbsent(evidence.toString(), evidence.deepCopy());
-                    }
-                }
-                continue;
-            }
-            if (key.equals("reference") && child.isJsonObject()) {
-                JsonObject reference = child.getAsJsonObject();
-                collector.references.putIfAbsent(reference.toString(), reference.deepCopy());
-                collect(child, collector, true);
-                continue;
-            }
-            if (!insideReference && CONCLUSION_KEYS.contains(key) && child.isJsonPrimitive()) {
-                collector.conclusions.putIfAbsent(key, child.deepCopy());
-            }
-            if (!insideReference && STABLE_ID_KEYS.contains(key)
-                    && child.isJsonPrimitive() && child.getAsJsonPrimitive().isString()) {
-                JsonObject stable = new JsonObject();
-                stable.addProperty("kind", key);
-                stable.addProperty("value", child.getAsString());
-                collector.stableIds.putIfAbsent(key + "\u0000" + child.getAsString(), stable);
-            }
-            collect(child, collector, referenceObject);
-        }
-    }
-
-    private static boolean looksLikeReference(JsonObject object) {
-        if (!object.has("sourceId")) {
-            return false;
-        }
-        return object.has("recipeId")
-                || object.has("referenceId")
-                || object.has("documentId")
-                || object.has("entryId")
-                || object.has("resourceId");
-    }
-
-    private static ReducedToolResult malformed() {
-        JsonObject failure = new JsonObject();
-        failure.addProperty("status", "failure");
-        failure.addProperty("code", "context_result_malformed");
-        failure.addProperty("message", "Historical tool result was not normalized");
-        return new ReducedToolResult(failure, true);
-    }
-
-    private static String text(JsonObject object, String key) {
-        JsonElement value = object.get(key);
-        return value != null
-                        && value.isJsonPrimitive()
-                        && value.getAsJsonPrimitive().isString()
+        String text = value.isJsonPrimitive() && value.getAsJsonPrimitive().isString()
                 ? value.getAsString()
-                : null;
+                : new ModelContent.ToolResult("legacy", value, originalError).text();
+        return new ReducedToolResult(
+                new JsonPrimitive(receipt(text, null, List.of(), originalError)), originalError);
     }
 
-    private static void addText(JsonObject source, JsonObject target, String key) {
-        String value = text(source, key);
-        if (value != null) {
-            target.addProperty(key, value);
+    private static String receipt(
+            String text,
+            String receiptPath,
+            List<ResourceReceipt> receipts,
+            boolean error) {
+        if (!receipts.isEmpty()) {
+            return structuredReceipt(receipts, error);
         }
+        return legacyReceipt(text, receiptPath, error);
     }
 
-    private static final class Collector {
-        private final Map<String, JsonElement> conclusions = new TreeMap<>();
-        private final Map<String, JsonElement> references = new LinkedHashMap<>();
-        private final Map<String, JsonElement> stableIds = new LinkedHashMap<>();
-        private final Map<String, JsonElement> evidence = new LinkedHashMap<>();
+    private static String structuredReceipt(List<ResourceReceipt> receipts, boolean error) {
+        StringBuilder output = new StringBuilder("historical_result: receipt\n")
+                .append("status: ").append(error ? "failure" : "retained").append('\n');
+        for (int index = 0; index < receipts.size(); index++) {
+            ResourceReceipt receipt = receipts.get(index);
+            String prefix = receipts.size() == 1 ? "" : "receipt_" + index + '_';
+            if (receipt.resultPath() != null) {
+                output.append(prefix).append("resource: ").append(receipt.resultPath()).append('\n');
+            }
+            output.append(prefix).append("generation: ").append(receipt.generationId()).append('\n')
+                    .append(prefix).append("kind: ").append(receipt.kind()).append('\n')
+                    .append(prefix).append("authority: ").append(receipt.authority()).append('\n')
+                    .append(prefix).append("completeness: ").append(receipt.completeness()).append('\n')
+                    .append(prefix).append("returned: ").append(receipt.returned());
+            if (receipt.total() != null) {
+                output.append('/').append(receipt.total());
+            }
+            output.append('\n');
+            if (receipt.fromInclusive() != null) {
+                output.append(prefix).append("range: ")
+                        .append(receipt.fromInclusive()).append("..").append(receipt.toExclusive()).append('\n');
+            }
+            if (!receipt.fields().isEmpty()) {
+                output.append(prefix).append("fields: ")
+                        .append(String.join(",", receipt.fields())).append('\n');
+            }
+            if (receipt.nextCursor() != null) {
+                output.append(prefix).append("next_cursor: ").append(receipt.nextCursor()).append('\n');
+            }
+        }
+        ResourceReceipt first = receipts.getFirst();
+        if (first.nextCursor() != null) {
+            output.append("next: call resource_read with cursor=").append(first.nextCursor()).append('\n');
+        } else if (first.resultPath() != null) {
+            output.append("next: call resource_read on ").append(first.resultPath())
+                    .append(" with narrower fields when exact live content is needed\n");
+        }
+        return output.toString().stripTrailing();
+    }
+
+    /** Display-only compatibility for pre-VFS history, where no structured receipt exists. */
+    private static String legacyReceipt(String text, String receiptPath, boolean error) {
+        Map<String, String> fields = new LinkedHashMap<>();
+        for (String line : text.lines().toList()) {
+            if (line.isBlank() || Character.isWhitespace(line.charAt(0))) {
+                continue;
+            }
+            int separator = line.indexOf(':');
+            if (separator < 1) {
+                continue;
+            }
+            String key = line.substring(0, separator).trim();
+            String value = line.substring(separator + 1).trim();
+            if (RECEIPT_FIELDS.contains(key) && !value.isBlank()) {
+                fields.putIfAbsent(key, value);
+            }
+        }
+        fields.putIfAbsent("status", error ? "failure" : "retained");
+        if (receiptPath != null) {
+            fields.put("resource", receiptPath);
+        } else {
+            fields.putIfAbsent("resource", "unavailable in restored legacy history");
+        }
+        StringBuilder output = new StringBuilder("historical_result: receipt\n");
+        fields.forEach((key, value) -> output.append(key).append(": ").append(value).append('\n'));
+        if (receiptPath != null) {
+            output.append("next: call resource_read on ").append(receiptPath)
+                    .append(" to inspect exact live content\n");
+        } else {
+            output.append("next: perform a fresh resource lookup if exact content is needed\n");
+        }
+        return output.toString().stripTrailing();
     }
 }

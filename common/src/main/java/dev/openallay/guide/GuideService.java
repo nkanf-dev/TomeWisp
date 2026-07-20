@@ -1440,6 +1440,8 @@ public final class GuideService implements GuideHistoryAdministration {
                                         tool.activity().toolId(),
                                         tool.activity().status(),
                                         null,
+                                        tool.activity().uiReference(),
+                                        tool.activity().diagnostics(),
                                         tool.activity().presentationMessages(),
                                         tool.activity().sources()))
                         : entry)

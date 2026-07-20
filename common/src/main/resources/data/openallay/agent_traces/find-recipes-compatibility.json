@@ -20,7 +20,7 @@
     },
     {
       "type": "assistant_message",
-      "content": "旧工具仅作为兼容投影保留；新工作流应使用 search_recipes 和 get_recipe。"
+      "content": "旧工具仅作为兼容回放保留；新工作流应通过 resource_grep 发现路径，再用 resource_read 精确读取。"
     }
   ]
 }

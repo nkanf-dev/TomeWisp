@@ -2,12 +2,15 @@ package dev.openallay.bridge.client;
 
 import com.google.gson.Gson;
 import dev.openallay.agent.tool.ToolRuntimeCatalog;
+import dev.openallay.agent.context.ContextBudget;
 import dev.openallay.bridge.protocol.BridgeProtocol;
+import dev.openallay.bridge.protocol.BridgeViewIdentity;
 import dev.openallay.bridge.protocol.ClientToolCallPayload;
 import dev.openallay.bridge.protocol.ClientToolCancelPayload;
 import dev.openallay.bridge.protocol.ClientToolResultChunkPayload;
 import dev.openallay.bridge.protocol.ResultChunker;
 import dev.openallay.context.ContextCapability;
+import dev.openallay.context.CallerKind;
 import dev.openallay.context.ToolInvocationContext;
 import dev.openallay.model.CancellationSignal;
 import dev.openallay.tool.Tool;
@@ -15,6 +18,7 @@ import dev.openallay.tool.ToolAccess;
 import dev.openallay.tool.ToolResult;
 import dev.openallay.trace.replay.ToolArgumentCodec;
 import dev.openallay.trace.replay.ToolResultNormalizer;
+import dev.openallay.resource.runtime.ResourceRequestRegistry;
 import java.util.List;
 import java.util.HashMap;
 import java.util.Map;
@@ -23,6 +27,7 @@ import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executor;
+import java.util.function.Supplier;
 
 /**
  * Hosts one frozen local capability catalog for each active server-model request.
@@ -47,6 +52,8 @@ public final class ClientToolExecutionEndpoint {
     private final ToolResultNormalizer normalizer;
     private final int transportChunkBytes;
     private final Executor worker;
+    private final ResourceRequestRegistry resources;
+    private final Supplier<ContextBudget> serverBudget;
     private final Map<UUID, RequestState> requests = new ConcurrentHashMap<>();
 
     public ClientToolExecutionEndpoint(
@@ -59,6 +66,27 @@ public final class ClientToolExecutionEndpoint {
                 responses,
                 gson,
                 transportChunkBytes,
+                null,
+                null,
+                command -> Thread.ofVirtual()
+                        .name("openallay-client-tool-worker")
+                        .start(command));
+    }
+
+    public ClientToolExecutionEndpoint(
+            ContextProvider contexts,
+            ResponseSink responses,
+            Gson gson,
+            int transportChunkBytes,
+            ResourceRequestRegistry resources,
+            Supplier<ContextBudget> serverBudget) {
+        this(
+                contexts,
+                responses,
+                gson,
+                transportChunkBytes,
+                resources,
+                serverBudget,
                 command -> Thread.ofVirtual()
                         .name("openallay-client-tool-worker")
                         .start(command));
@@ -70,6 +98,17 @@ public final class ClientToolExecutionEndpoint {
             Gson gson,
             int transportChunkBytes,
             Executor worker) {
+        this(contexts, responses, gson, transportChunkBytes, null, null, worker);
+    }
+
+    ClientToolExecutionEndpoint(
+            ContextProvider contexts,
+            ResponseSink responses,
+            Gson gson,
+            int transportChunkBytes,
+            ResourceRequestRegistry resources,
+            Supplier<ContextBudget> serverBudget,
+            Executor worker) {
         if (transportChunkBytes <= 0) {
             throw new IllegalArgumentException("transportChunkBytes must be positive");
         }
@@ -78,6 +117,12 @@ public final class ClientToolExecutionEndpoint {
         this.gson = java.util.Objects.requireNonNull(gson, "gson");
         this.transportChunkBytes = transportChunkBytes;
         this.worker = java.util.Objects.requireNonNull(worker, "worker");
+        this.resources = resources;
+        this.serverBudget = serverBudget;
+        if ((resources == null) != (serverBudget == null)) {
+            throw new IllegalArgumentException(
+                    "Resource registry and server context budget must be configured together");
+        }
         arguments = new ToolArgumentCodec(gson);
         normalizer = new ToolResultNormalizer(gson);
     }
@@ -94,7 +139,30 @@ public final class ClientToolExecutionEndpoint {
                 .map(descriptor -> descriptor.id())
                 .sorted()
                 .toList();
-        RequestState state = new RequestState(sessionId, frozenTools, Set.copyOf(exported));
+        ContextBudget budget;
+        try {
+            budget = resources == null
+                    ? null
+                    : java.util.Objects.requireNonNull(
+                            serverBudget.get(), "Server context budget is unavailable");
+        } catch (RuntimeException unavailable) {
+            return new ToolResult.Failure<>(
+                    "server_model_context_unavailable",
+                    "Server model context capability is unavailable");
+        }
+        Set<ContextCapability> requiredContext = frozenTools.descriptors().stream()
+                .filter(descriptor -> exported.contains(descriptor.id()))
+                .flatMap(descriptor -> descriptor.requiredContext().stream())
+                .collect(java.util.stream.Collectors.toUnmodifiableSet());
+        RequestState state = new RequestState(
+                requestId,
+                sessionId,
+                BridgeViewIdentity.forRequest(
+                        requestId, sessionId, BridgeViewIdentity.Owner.CLIENT),
+                frozenTools,
+                Set.copyOf(exported),
+                requiredContext,
+                budget);
         if (requests.putIfAbsent(requestId, state) != null) {
             return new ToolResult.Failure<>(
                     "duplicate_request", "Client Tool request ID is already active");
@@ -113,6 +181,11 @@ public final class ClientToolExecutionEndpoint {
             sendFailure(payload, "client_tool_rejected", "Client Tool session does not match");
             return new ToolResult.Failure<>(
                     "client_tool_rejected", "Client Tool session does not match");
+        }
+        if (!request.viewId.equals(payload.viewId())) {
+            sendFailure(payload, "stale_resource", "Client resource view identity does not match");
+            return new ToolResult.Failure<>(
+                    "stale_resource", "Client resource view identity does not match");
         }
         Tool<?, ?> tool = request.exported.contains(payload.toolId())
                 ? request.tools.find(payload.toolId()).orElse(null)
@@ -135,8 +208,7 @@ public final class ClientToolExecutionEndpoint {
         }
         CompletableFuture<ToolInvocationContext> capture;
         try {
-            capture = contexts.capture(
-                    tool.descriptor().requiredContext(), payload.invocationId().toString());
+            capture = request.context(contexts, resources);
         } catch (RuntimeException failure) {
             finish(payload, request, tool, new ToolResult.Failure<>(
                     "client_tool_context_failed", "Client Tool context capture failed"));
@@ -227,7 +299,7 @@ public final class ClientToolExecutionEndpoint {
         }
         try {
             sendNormalized(
-                    payload.requestId(), payload.invocationId(),
+                    payload.requestId(), payload.invocationId(), payload.viewId(),
                     normalizer.normalize(result, tool.descriptor().outputType()));
         } catch (RuntimeException failure) {
             sendFailure(payload, "client_tool_result_invalid", "Client Tool result was invalid");
@@ -238,13 +310,17 @@ public final class ClientToolExecutionEndpoint {
         sendNormalized(
                 payload.requestId(),
                 payload.invocationId(),
+                payload.viewId(),
                 normalizer.normalize(new ToolResult.Failure<>(code, message), Object.class));
     }
 
     private void sendNormalized(
-            UUID requestId, UUID invocationId, com.google.gson.JsonObject normalized) {
+            UUID requestId,
+            UUID invocationId,
+            String viewId,
+            com.google.gson.JsonObject normalized) {
         new ResultChunker().split(
-                        invocationId, gson.toJson(normalized), transportChunkBytes)
+                        invocationId, viewId, gson.toJson(normalized), transportChunkBytes)
                 .stream()
                 .map(chunk -> ClientToolResultChunkPayload.from(requestId, chunk))
                 .forEach(responses::send);
@@ -272,17 +348,82 @@ public final class ClientToolExecutionEndpoint {
     }
 
     private static final class RequestState {
+        private final UUID requestId;
         private final String sessionId;
+        private final String viewId;
         private final ToolRuntimeCatalog tools;
         private final Set<String> exported;
+        private final Set<ContextCapability> requiredContext;
+        private final ContextBudget contextBudget;
         private final Map<UUID, CancellationSignal> pending = new HashMap<>();
+        private CompletableFuture<ToolInvocationContext> frozenContext;
+        private ResourceRequestRegistry.RequestHandle resourceHandle;
         private boolean closed;
 
         private RequestState(
-                String sessionId, ToolRuntimeCatalog tools, Set<String> exported) {
+                UUID requestId,
+                String sessionId,
+                String viewId,
+                ToolRuntimeCatalog tools,
+                Set<String> exported,
+                Set<ContextCapability> requiredContext,
+                ContextBudget contextBudget) {
+            this.requestId = requestId;
             this.sessionId = sessionId;
+            this.viewId = viewId;
             this.tools = tools;
             this.exported = exported;
+            this.requiredContext = requiredContext;
+            this.contextBudget = contextBudget;
+        }
+
+        private synchronized CompletableFuture<ToolInvocationContext> context(
+                ContextProvider contexts, ResourceRequestRegistry resources) {
+            if (closed) {
+                return CompletableFuture.failedFuture(
+                        new IllegalStateException("Client Tool request is no longer active"));
+            }
+            if (frozenContext != null) {
+                return frozenContext;
+            }
+            CompletableFuture<ToolInvocationContext> captured =
+                    contexts.capture(requiredContext, requestId.toString());
+            if (captured == null) {
+                return CompletableFuture.failedFuture(
+                        new IllegalStateException("Client Tool context capture failed"));
+            }
+            frozenContext = captured.thenApply(context -> bind(context, resources));
+            return frozenContext;
+        }
+
+        private ToolInvocationContext bind(
+                ToolInvocationContext context, ResourceRequestRegistry resources) {
+            java.util.Objects.requireNonNull(context, "context");
+            ResourceRequestRegistry.RequestHandle opened = null;
+            if (resources != null) {
+                if (context.caller().kind() != CallerKind.PLAYER) {
+                    throw new IllegalStateException(
+                            "Server-hosted client Tools require a captured player caller");
+                }
+                UUID actorId = context.caller().uuid();
+                opened = resources.open(
+                        actorId,
+                        sessionId,
+                        requestId,
+                        resources.connectionGeneration(actorId),
+                        "client_for_server_model",
+                        exported,
+                        contextBudget,
+                        context);
+            }
+            synchronized (this) {
+                if (closed) {
+                    if (opened != null) opened.close();
+                    throw new IllegalStateException("Client Tool request is no longer active");
+                }
+                resourceHandle = opened;
+                return context;
+            }
         }
 
         private synchronized Registration register(
@@ -302,6 +443,7 @@ public final class ClientToolExecutionEndpoint {
 
         private void close() {
             List<CancellationSignal> cancellations;
+            ResourceRequestRegistry.RequestHandle handle;
             synchronized (this) {
                 if (closed) {
                     return;
@@ -309,8 +451,11 @@ public final class ClientToolExecutionEndpoint {
                 closed = true;
                 cancellations = List.copyOf(pending.values());
                 pending.clear();
+                handle = resourceHandle;
+                resourceHandle = null;
             }
             cancellations.forEach(CancellationSignal::cancel);
+            if (handle != null) handle.close();
         }
     }
 }

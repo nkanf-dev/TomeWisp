@@ -7,6 +7,8 @@ import dev.openallay.OpenAllayConstants;
 import dev.openallay.context.ContextCapability;
 import dev.openallay.context.ContextMetrics;
 import dev.openallay.context.ToolInvocationContext;
+import dev.openallay.agent.context.ContextBudget;
+import dev.openallay.resource.runtime.ResourceRequestRegistry;
 import dev.openallay.tool.Tool;
 import dev.openallay.tool.ToolDescriptor;
 import dev.openallay.tool.ToolRegistry;
@@ -19,6 +21,9 @@ import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import java.util.Set;
+import java.util.UUID;
+import java.util.stream.Collectors;
 
 public final class AgentTraceReplayer {
     private final ToolRegistry tools;
@@ -26,10 +31,17 @@ public final class AgentTraceReplayer {
     private final ToolArgumentCodec arguments;
     private final ToolResultNormalizer normalizer;
     private final ExpectationMatcher matcher;
+    private final ResourceRequestRegistry resources;
 
     public AgentTraceReplayer(ToolRegistry tools, Gson gson) {
+        this(tools, gson, null);
+    }
+
+    public AgentTraceReplayer(
+            ToolRegistry tools, Gson gson, ResourceRequestRegistry resources) {
         this.tools = Objects.requireNonNull(tools, "tools");
         this.gson = Objects.requireNonNull(gson, "gson");
+        this.resources = resources;
         arguments = new ToolArgumentCodec(gson);
         normalizer = new ToolResultNormalizer(gson);
         matcher = new ExpectationMatcher();
@@ -44,6 +56,53 @@ public final class AgentTraceReplayer {
         if (missingContext != null) {
             return report(trace, false, reports, context.metrics(), resultBytes, started, missingContext);
         }
+
+        if (requiresResourceView(trace)) {
+            if (resources == null) {
+                return report(trace, false, reports, context.metrics(), resultBytes, started,
+                        "resource_vfs_unavailable");
+            }
+            UUID actorId = context.caller().uuid() == null
+                    ? UUID.nameUUIDFromBytes(("trace-console:" + context.caller().displayName())
+                            .getBytes(StandardCharsets.UTF_8))
+                    : context.caller().uuid();
+            UUID requestId = UUID.nameUUIDFromBytes(
+                    ("trace-request:" + context.correlationId()).getBytes(StandardCharsets.UTF_8));
+            Set<String> capabilities = trace.steps().stream()
+                    .filter(ToolCallStep.class::isInstance)
+                    .map(ToolCallStep.class::cast)
+                    .map(ToolCallStep::tool)
+                    .collect(Collectors.toUnmodifiableSet());
+            ResourceRequestRegistry.RequestHandle handle;
+            try {
+                handle = resources.open(
+                        actorId,
+                        "trace:" + trace.id(),
+                        requestId,
+                        resources.connectionGeneration(actorId),
+                        "trace-replay",
+                        capabilities,
+                        new ContextBudget(100_000, 4_096),
+                        context);
+            } catch (RuntimeException failure) {
+                OpenAllayConstants.LOGGER.error(
+                        "Could not bind Resource VFS for trace {}", trace.id(), failure);
+                return report(trace, false, reports, context.metrics(), resultBytes, started,
+                        "resource_vfs_unavailable");
+            }
+            try (handle) {
+                return replaySteps(trace, context, reports, resultBytes, started);
+            }
+        }
+        return replaySteps(trace, context, reports, resultBytes, started);
+    }
+
+    private ReplayReport replaySteps(
+            AgentTrace trace,
+            ToolInvocationContext context,
+            List<ReplayStepReport> reports,
+            long resultBytes,
+            long started) {
 
         for (int index = 0; index < trace.steps().size(); index++) {
             TraceStep step = trace.steps().get(index);
@@ -113,6 +172,14 @@ public final class AgentTraceReplayer {
             }
         }
         return report(trace, true, reports, context.metrics(), resultBytes, started, null);
+    }
+
+    private static boolean requiresResourceView(AgentTrace trace) {
+        return trace.steps().stream()
+                .filter(ToolCallStep.class::isInstance)
+                .map(ToolCallStep.class::cast)
+                .map(ToolCallStep::tool)
+                .anyMatch(tool -> tool.startsWith("openallay:resource_"));
     }
 
     private static String missingContext(AgentTrace trace, ToolInvocationContext context) {

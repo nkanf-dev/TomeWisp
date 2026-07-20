@@ -9,6 +9,7 @@ public record ClientToolResultChunkPayload(
         UUID invocationId,
         int index,
         int total,
+        String viewId,
         String contentHash,
         String base64Data) {
     public ClientToolResultChunkPayload {
@@ -18,6 +19,7 @@ public record ClientToolResultChunkPayload(
         if (index < 0 || total <= 0 || index >= total) {
             throw new IllegalArgumentException("Invalid client Tool result chunk position");
         }
+        viewId = BridgeViewIdentity.require(viewId);
         if (contentHash == null || !contentHash.matches("[0-9a-f]{64}")) {
             throw new IllegalArgumentException("Invalid client Tool result SHA-256 hash");
         }
@@ -33,13 +35,32 @@ public record ClientToolResultChunkPayload(
 
     public RemoteToolResultChunkPayload asRemoteChunk() {
         return new RemoteToolResultChunkPayload(
-                version, invocationId, index, total, contentHash, base64Data);
+                version, invocationId, index, total, viewId, contentHash, base64Data);
     }
 
     public static ClientToolResultChunkPayload from(
             UUID requestId, RemoteToolResultChunkPayload chunk) {
         return new ClientToolResultChunkPayload(
                 chunk.version(), requestId, chunk.correlationId(), chunk.index(), chunk.total(),
-                chunk.contentHash(), chunk.base64Data());
+                chunk.viewId(), chunk.contentHash(), chunk.base64Data());
+    }
+
+    public ClientToolResultChunkPayload(
+            int version,
+            UUID requestId,
+            UUID invocationId,
+            int index,
+            int total,
+            String contentHash,
+            String base64Data) {
+        this(
+                version,
+                requestId,
+                invocationId,
+                index,
+                total,
+                BridgeViewIdentity.forOperation(invocationId),
+                contentHash,
+                base64Data);
     }
 }

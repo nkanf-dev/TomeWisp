@@ -125,7 +125,8 @@ public final class OpenAllayNeoForgeClient {
                     });
                     return captured;
                 },
-                gson);
+                gson,
+                runtime.resources());
         PayloadGuideRemoteEndpoint remote = new PayloadGuideRemoteEndpoint(
                 new PayloadGuideRemoteEndpoint.Port() {
                     @Override public dev.openallay.bridge.protocol.CapabilityPayload capabilities() {

@@ -98,6 +98,16 @@ public final class LocalAgentToolExecutor implements AgentToolExecutor {
                             }
                             JsonObject normalized = normalizer.normalize(
                                     result, tool.descriptor().outputType());
+                            if (result instanceof ToolResult.Success<?> projectedSuccess
+                                    && projectedSuccess.value() instanceof AgentToolProjectionCarrier projection) {
+                                return new AgentToolResult(
+                                        toolId,
+                                        normalized,
+                                        projection.modelView(),
+                                        projection.uiReference(),
+                                        projection.diagnostics(),
+                                        projection.failure());
+                            }
                             return new AgentToolResult(
                                     toolId,
                                     normalized,

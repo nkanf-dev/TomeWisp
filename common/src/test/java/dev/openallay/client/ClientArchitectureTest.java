@@ -111,7 +111,7 @@ final class ClientArchitectureTest {
 
         String protocol = Files.readString(root.resolve(
                 "common/src/main/java/dev/openallay/bridge/protocol/BridgeProtocol.java"));
-        assertTrue(protocol.contains("VERSION = 6"));
+        assertTrue(protocol.contains("VERSION = 7"));
         for (Path bridge : List.of(
                 root.resolve("fabric/src/main/java/dev/openallay/fabric/network/FabricServerBridge.java"),
                 root.resolve("neoforge/src/main/java/dev/openallay/neoforge/network/NeoForgeServerBridge.java"))) {

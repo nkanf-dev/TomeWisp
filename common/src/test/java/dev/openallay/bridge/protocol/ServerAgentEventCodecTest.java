@@ -8,9 +8,14 @@ import com.google.gson.Gson;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import dev.openallay.agent.AgentEvent;
+import dev.openallay.agent.tool.ToolResultDiagnostics;
+import dev.openallay.agent.tool.ToolUiReference;
+import dev.openallay.agent.tool.ToolUiSummary;
 import dev.openallay.agent.context.ContextCheckpoint;
 import dev.openallay.guide.GuideToolMessage;
 import dev.openallay.model.ModelEvent;
+import dev.openallay.resource.vfs.ResourcePath;
+import dev.openallay.resource.vfs.ResourcePresentation;
 import dev.openallay.model.ModelUsage;
 import java.util.List;
 import java.util.Set;
@@ -103,9 +108,21 @@ final class ServerAgentEventCodecTest {
                                 "call-1",
                                 "openallay:get_recipe",
                                 false,
-                                new JsonObject())),
+                                new JsonObject(),
+                                new ToolUiReference(
+                                        ResourcePath.parse("/result/r1"),
+                                        List.of(ResourcePath.parse("/recipe/minecraft/apple")),
+                                        ResourcePresentation.Kind.RECIPE,
+                                        true,
+                                        new ToolUiSummary("resource_read", 1, 0, List.of("record"))),
+                                new ToolResultDiagnostics(
+                                        500, 120, "a".repeat(64), Instant.EPOCH))),
                         request));
         assertEquals("call-1", completed.invocationId());
+        assertEquals(ResourcePath.parse("/result/r1"), completed.uiReference().resultPath());
+        assertEquals(ResourcePresentation.Kind.RECIPE, completed.uiReference().presentationKind());
+        assertEquals("resource_read", completed.uiReference().summary().operation());
+        assertEquals(500, completed.diagnostics().normalizedBytes());
 
         ContextCheckpoint checkpoint = new ContextCheckpoint(
                 UUID.randomUUID(), 0, 2, "a".repeat(64), "model", 1, 1,

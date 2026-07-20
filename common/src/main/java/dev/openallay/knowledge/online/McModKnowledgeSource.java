@@ -63,4 +63,43 @@ public final class McModKnowledgeSource implements OnlineKnowledgeSource {
             return List.copyOf(hits);
         });
     }
+
+    @Override
+    public CompletableFuture<RawDocument> read(
+            String reference, HttpCancellation cancellation) {
+        URI uri = fixedDocumentReference(reference);
+        HttpExchangeRequest request = HttpExchangeRequest.newBuilder(uri)
+                .timeout(Duration.ofSeconds(12))
+                .header("Accept", "text/html;charset=UTF-8")
+                .header("User-Agent", "OpenAllay/1.0 (Minecraft knowledge integration)")
+                .get()
+                .build();
+        return transport.execute(request, cancellation, (status, headers, body) -> {
+            if (status < 200 || status >= 300) {
+                throw new OnlineKnowledgeException(
+                        "online_http_status", "MC百科 document read failed");
+            }
+            String html = new String(body.readAllBytes(), StandardCharsets.UTF_8);
+            String title = OnlineKnowledgeHtml.title(html).orElse("MC百科");
+            List<RawSection> sections = OnlineKnowledgeHtml.sections(title, html);
+            return new RawDocument(title, sections, uri.toString());
+        });
+    }
+
+    private static URI fixedDocumentReference(String reference) {
+        URI uri;
+        try {
+            uri = URI.create(reference);
+        } catch (RuntimeException failure) {
+            throw new OnlineKnowledgeException(
+                    "online_reference_invalid", "MC百科 reference is invalid");
+        }
+        if (!"https".equals(uri.getScheme()) || !"www.mcmod.cn".equals(uri.getHost())
+                || uri.getUserInfo() != null || uri.getRawFragment() != null
+                || uri.getRawPath() == null || !uri.getRawPath().matches("/[a-z]+/[0-9]+\\.html")) {
+            throw new OnlineKnowledgeException(
+                    "online_reference_invalid", "MC百科 reference is outside the fixed origin");
+        }
+        return uri;
+    }
 }

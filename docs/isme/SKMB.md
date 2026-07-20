@@ -102,6 +102,14 @@ SKMB-2026-07-20-026 supersedes the Agent-facing domain Tool and typed virtual
 dataset architecture after the withdrawn `0.1.1-SNAPSHOT` emergency fix showed
 that generic result flattening and a result-reader Tool were not sufficient.
 The historical rolled-back SKMB-025 identifier is deliberately not reused.
+The accepted contract is implemented through the `dev.openallay.resource`
+mount, query, result, cursor and projection packages; the five
+`dev.openallay.tool.resource` schemas; `ContextAssembler`; bridge protocol v7;
+and truth-bound Guide presentations. The executable sequence and applicable
+verification commands remain in
+`docs/superpowers/plans/2026-07-20-resource-vfs-tool-architecture.md`.
+Acceptance of this decision does not itself claim a live-provider or graphical
+client run; those claims require separately retained evidence.
 
 ## Named States
 
@@ -141,7 +149,7 @@ The historical rolled-back SKMB-025 identifier is deliberately not reused.
 | knowledge_index_degraded | The newest knowledge index failed and the prior valid/local lexical path remains active | KnowledgeRegistry | Source-scoped diagnostic; never fabricated empty knowledge | SKMB-2026-07-19-022 |
 | tool_group_wait | Independent calls from one model turn are settling into indexed correlated slots | GameGuideAgent | Provider continuation waits for the complete ordered group | SKMB-2026-07-19-024 |
 | model_transport_retry_wait | A no-progress transport failure is waiting for its bounded retry | ModelRequestScheduler | Cancellable; never entered after visible response progress | SKMB-2026-07-19-024 |
-| online_knowledge_degraded | One fixed public-documentation adapter failed while local/other sources remain usable | SearchKnowledgeTool | Source-scoped and partial; no arbitrary URL fallback | SKMB-2026-07-19-024 |
+| online_knowledge_degraded | One fixed public-documentation adapter failed while local/other sources remain usable | OnlineKnowledgeRequestAccess | Source-scoped `/knowledge/online` grep/read degradation; no arbitrary URL fallback | SKMB-2026-07-19-024, SKMB-2026-07-20-026 |
 | resource_snapshot_building | One VFS mount is capturing and validating a detached generation | ResourceMountRegistry | Prior valid generation remains readable until atomic publication | SKMB-2026-07-20-026 |
 | resource_snapshot_ready | A mount generation is immutable and available for request capture | ResourceMountRegistry | Contains exact truth, evidence, children, links and projections, never live game objects | SKMB-2026-07-20-026 |
 | resource_view_ready | One Agent request has captured exact mount generations and actor/topology authority | ResourceView | All reads in the request remain generation-stable | SKMB-2026-07-20-026 |
@@ -208,7 +216,7 @@ The historical rolled-back SKMB-025 identifier is deliberately not reused.
 | T53 | model_wait | response body begins | response_streaming | Record redacted attempt/progress/deadline state and decode under the same cancellable request budget | SKMB-2026-07-19-020 |
 | T54 | response_streaming | tool call, final response, cancellation, protocol failure, or total timeout | tool_wait, completing, cancelled, or failed | Close the stream/watchdog, publish the correlated terminal/next phase, and suppress every late delta | SKMB-2026-07-19-020 |
 | T55 | client context capture | registered observable sections detach successfully | observable_snapshot_ready | Release live game objects and publish the immutable evidence-bearing snapshot to the request context | SKMB-2026-07-19-020 |
-| T56 | observable_snapshot_ready | one valid section query executes | tool_wait then model_wait | Return only the requested typed player-observable data with explicit authority/completeness | SKMB-2026-07-19-020 |
+| T56 | observable_snapshot_ready | one request builds its `/game` and `/player` generations | resource_snapshot_building | Detach and publish only the player-observable fields allowed by the captured topology, with explicit authority/completeness | SKMB-2026-07-19-020, SKMB-2026-07-20-026 |
 | T57 | settings idle | player fetches provider models for a valid draft | model_catalog_loading | Use the transient key or resolve the saved reference and send one cancellable configuration-layer GET | SKMB-2026-07-19-021 |
 | T58 | model_catalog_loading | valid catalog, redacted failure, cancel, or stale generation | settings idle | Publish only current validated IDs/failure; ignore stale completion and retain typed model ID | SKMB-2026-07-19-021 |
 | T59 | server model_wait | trusted placement selects an enabled player-client Tool | client_tool_wait | Bind actor/request/invocation and send one strict reverse Tool call to that same client | SKMB-2026-07-19-021 |
@@ -303,8 +311,8 @@ The historical rolled-back SKMB-025 identifier is deliberately not reused.
 | I62 | Every active request has a redacted observable phase, elapsed basis, last-progress time and optional retry/deadline; clocks never create transcript or persistence writes | SKMB-2026-07-19-020 |
 | I63 | The configured model request timeout covers complete response-body consumption, and cancel/timeout/disconnect suppress every late stream event | SKMB-2026-07-19-020 |
 | I64 | Rendering never owns scroll mutation; streaming keeps a stable literal tail and preserves manual viewport anchors | SKMB-2026-07-19-020 |
-| I65 | `inspect_game_state` is one strict sectioned read-only Tool for directly player-observable UI/HUD/F3/player-owned/query state; it cannot execute command strings, reflect arbitrary fields, scan spatial world content, inspect external containers, or write | SKMB-2026-07-19-020 |
-| I66 | Recipes and Guides remain independent narrow high-volume deep-content Tool families, while future map/block/container interaction requires a separate decision and authority boundary | SKMB-2026-07-19-020 |
+| I65 | Directly player-observable UI/HUD/F3/player-owned/query state is exposed through strict `/game` and `/player` resources; it cannot execute command strings, reflect arbitrary fields, scan spatial world content, inspect external containers, or write | SKMB-2026-07-19-020, SKMB-2026-07-20-026 |
+| I66 | Recipes and Guides remain independent narrow high-volume deep-content mounts under the shared VFS, while future map/block/container interaction requires a separate `/world` decision and authority boundary | SKMB-2026-07-19-020, SKMB-2026-07-20-026 |
 | I67 | Player-observable state is captured on the owning Minecraft thread into immutable evidence-bearing records; missing sections degrade independently and never become fabricated empty facts | SKMB-2026-07-19-020 |
 | I68 | Remote Tool failures in either direction are complete model-visible Tool results unless the enclosing request is cancelled/disconnected; partial bridge assemblies are sparse, active-request scoped, and bounded by the five-minute bridge deadline | SKMB-2026-07-19-021 |
 | I69 | Model-authored semantic data cannot name native widget classes, textures, slots, coordinates, callbacks, commands, URLs, or arbitrary view trees | SKMB-2026-07-19-022 |
@@ -387,7 +395,7 @@ The historical rolled-back SKMB-025 identifier is deliberately not reused.
 | F49 | Session export paging, confinement, redaction, or atomic publication fails | Publish no final file, remove temporary output where possible, retain conversation state, and show a localized failure | SKMB-2026-07-19-023 |
 | F50 | Clipboard access fails | Preserve the transcript and show a localized copy failure without exposing exception details | SKMB-2026-07-19-023 |
 | F51 | One parallel Tool call fails while sibling calls settle | Publish the correlated structured failure and every sibling result in original order; never send a partial or reordered group | SKMB-2026-07-19-024 |
-| F52 | A virtual query is malformed or its unprojected result is too large | Fail `invalid_tool_arguments` or `result_too_large` with exact schema/cardinality guidance; never silently truncate or execute arbitrary expressions | SKMB-2026-07-19-024 |
+| F52 | A legacy pre-VFS virtual query is malformed or would have emitted `result_too_large` | Malformed arguments still fail closed; the terminal size behavior is superseded by F56/F58 semantic projection and must not be restored | SKMB-2026-07-19-024, SKMB-2026-07-20-026 |
 | F53 | A provider returns HTTP 400 or another non-retryable 4xx | Classify a bounded allowlisted error as request/context/protocol rejection, retain redacted diagnostics, and require a corrected request; never expose or automatically replay the body | SKMB-2026-07-19-024 |
 | F54 | A pre-progress model transport attempt fails | Retry at most twice with cancellable short backoff; after progress or exhaustion, retain chronology and end with a friendly retryable transport failure | SKMB-2026-07-19-024 |
 | F55 | One fixed online knowledge source times out, rejects, or changes format | Retain local and other source results, mark only that adapter degraded, and return partial evidence rather than fabricated absence | SKMB-2026-07-19-024 |

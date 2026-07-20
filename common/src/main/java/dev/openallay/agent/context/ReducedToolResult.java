@@ -1,15 +1,15 @@
 package dev.openallay.agent.context;
 
-import com.google.gson.JsonObject;
+import com.google.gson.JsonElement;
 import java.util.Objects;
 
-public record ReducedToolResult(JsonObject value, boolean error) {
+public record ReducedToolResult(JsonElement value, boolean error) {
     public ReducedToolResult {
         value = Objects.requireNonNull(value, "value").deepCopy();
     }
 
     @Override
-    public JsonObject value() {
+    public JsonElement value() {
         return value.deepCopy();
     }
 }

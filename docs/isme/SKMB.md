@@ -32,6 +32,7 @@ accepted and contains explicit approval evidence.
 | SKMB-2026-07-19-022 | accepted | embedded native domain views, local retrieval, stable presentation, and future player-memory boundary | A, B, C, D, E, F | decisions/2026-07-19-022-native-domain-views-retrieval-memory.md | pending |
 | SKMB-2026-07-19-023 | accepted | double-confirmed session deletion, managed conversation export, and visible chat copying | B, C, E, F, G | decisions/2026-07-19-023-session-actions-and-safe-export.md | pending |
 | SKMB-2026-07-19-024 | accepted | ordered parallel Tool turns, typed batch/query surfaces, fixed online knowledge, provider recovery, and client-visible location routing | A, B, C, D, E, F | decisions/2026-07-19-024-batch-query-and-provider-recovery.md | pending |
+| SKMB-2026-07-20-026 | accepted | read-only Resource VFS, familiar Agent resource Tools, semantic result projection, and provider-neutral context assembly | A, B, C, D, E, F | decisions/2026-07-20-026-resource-vfs-and-context-projection.md | pending |
 
 SKMB-2026-07-18-006 is implemented by `a0eaeff`, `19ab90f`, and `c6ca6bc`.
 Its deterministic clean-build and packaged-driver evidence is recorded in the
@@ -97,6 +98,11 @@ is recorded in `78c2122`. The latest clean production gate (525 tests), both-loa
 package/SQLite checks, final credential/diff/report/hash/manifest audit, and
 graphical evidence review all passed. Phase 4 is closed.
 
+SKMB-2026-07-20-026 supersedes the Agent-facing domain Tool and typed virtual
+dataset architecture after the withdrawn `0.1.1-SNAPSHOT` emergency fix showed
+that generic result flattening and a result-reader Tool were not sufficient.
+The historical rolled-back SKMB-025 identifier is deliberately not reused.
+
 ## Named States
 
 | state | meaning | owner | notes | source |
@@ -136,6 +142,13 @@ graphical evidence review all passed. Phase 4 is closed.
 | tool_group_wait | Independent calls from one model turn are settling into indexed correlated slots | GameGuideAgent | Provider continuation waits for the complete ordered group | SKMB-2026-07-19-024 |
 | model_transport_retry_wait | A no-progress transport failure is waiting for its bounded retry | ModelRequestScheduler | Cancellable; never entered after visible response progress | SKMB-2026-07-19-024 |
 | online_knowledge_degraded | One fixed public-documentation adapter failed while local/other sources remain usable | SearchKnowledgeTool | Source-scoped and partial; no arbitrary URL fallback | SKMB-2026-07-19-024 |
+| resource_snapshot_building | One VFS mount is capturing and validating a detached generation | ResourceMountRegistry | Prior valid generation remains readable until atomic publication | SKMB-2026-07-20-026 |
+| resource_snapshot_ready | A mount generation is immutable and available for request capture | ResourceMountRegistry | Contains exact truth, evidence, children, links and projections, never live game objects | SKMB-2026-07-20-026 |
+| resource_view_ready | One Agent request has captured exact mount generations and actor/topology authority | ResourceView | All reads in the request remain generation-stable | SKMB-2026-07-20-026 |
+| resource_querying | One validated VFS operation is executing against a captured ResourceView | ResourceFileSystem | Cancellable; cannot observe later mount generations or broaden authority | SKMB-2026-07-20-026 |
+| resource_result_ready | One completed VFS operation has published immutable exact truth or a structured failure under `/result` | ResourceResultStore | Projection may begin only after publication; lineage names completed resources only | SKMB-2026-07-20-026 |
+| resource_cursor_ready | Unread semantic units are available behind an owner/view-bound cursor | ResourceCursorStore | Released on request/session/connection terminal state | SKMB-2026-07-20-026 |
+| context_projecting | The next provider-neutral request is selecting semantic result views and estimating the selected model budget | ContextAssembler | Runs before every provider dispatch, including Tool continuation | SKMB-2026-07-20-026 |
 
 ## Transition Decisions
 
@@ -210,6 +223,16 @@ graphical evidence review all passed. Phase 4 is closed.
 | T68 | deletion_confirming_first | player confirms | deletion_confirming_final | Show the irreversible/cancellation warning bound to the same captured session ID | SKMB-2026-07-19-023 |
 | T69 | deletion_confirming_final | player confirms or dismisses | session deleted or unchanged | Invoke the existing fenced close only after confirmation; either dismissal performs no action | SKMB-2026-07-19-023 |
 | T70 | export idle | player exports selected session | export_collecting then export_writing | Capture immutable live sequences, read every durable page, redact, and atomically publish under the managed export directory | SKMB-2026-07-19-023 |
+| T71 | resource reload or request capture needs a mount generation | capture starts | resource_snapshot_building | Capture Minecraft-owned data on its owner thread, detach it, validate the full mount tree, and retain the prior generation until publication | SKMB-2026-07-20-026 |
+| T72 | resource_snapshot_building | generation validates or fails | resource_snapshot_ready or prior state | Atomically publish the complete immutable generation, or retain the prior valid generation and mark only this mount degraded | SKMB-2026-07-20-026 |
+| T73 | preparing | required mount generations and authority are captured | resource_view_ready | Bind exact generations to the request before any model or Tool work | SKMB-2026-07-20-026 |
+| T73a | resource_view_ready | initial provider input assembly begins | context_projecting | Build and estimate the provider-neutral request from the captured view before any HTTP dispatch | SKMB-2026-07-20-026 |
+| T74 | tool_wait | valid resource list/read/glob/grep/query call | resource_querying | Validate arguments, capture referenced resources/results, and execute only against the bound ResourceView | SKMB-2026-07-20-026 |
+| T74a | resource_querying | exact result validates | resource_result_ready | Atomically publish one immutable actor/session/connection-scoped `/result/<id>` node with source/result lineage before deriving model or UI projections | SKMB-2026-07-20-026 |
+| T74b | resource_result_ready | model/UI projection is requested | resource_cursor_ready or model_wait | Derive consumer-specific views; retain semantic continuation state only when unread units remain | SKMB-2026-07-20-026 |
+| T75 | any pending provider turn | request input assembly begins | context_projecting | Select model-facing projections, preserve Tool pairing, estimate against the selected model window, and start no HTTP yet | SKMB-2026-07-20-026 |
+| T76 | context_projecting | projection fits, historical editing is needed, or protected input cannot fit | model_wait, compacting, or failed | Dispatch once only when valid; otherwise structurally edit/compact or fail `context_compaction_failed` before HTTP | SKMB-2026-07-20-026 |
+| T77 | resource_cursor_ready | request/session/connection terminates or generation ownership is removed | released | Invalidate cursor state and reject every late or cross-owner read | SKMB-2026-07-20-026 |
 
 ## Invariants
 
@@ -299,6 +322,15 @@ graphical evidence review all passed. Phase 4 is closed.
 | I81 | Automatic model transport retry is allowed only before response progress and is bounded to two retries; HTTP 4xx, timeout, partial stream, cancel, and Tool execution are never replayed | SKMB-2026-07-19-024 |
 | I82 | Fixed online documentation sources fail independently, remain partial public evidence, and never replace current-game authoritative snapshots | SKMB-2026-07-19-024 |
 | I83 | Current biome, coordinates, dimension, and direction are client-visible diagnostics and never require server command permission | SKMB-2026-07-19-024 |
+| I84 | Every Agent-visible game or knowledge fact is addressable through a canonical read-only virtual resource path; the VFS cannot access the host filesystem, arbitrary URLs, shell execution, reflection, callbacks, commands, or writes | SKMB-2026-07-20-026 |
+| I85 | A request reads one immutable generation-bound `ResourceView`; paths, links and cursors cannot drift across actor, session, request, connection or reload generation | SKMB-2026-07-20-026 |
+| I86 | Exact normalized truth, model-facing semantic text, native UI projection and diagnostics are separate views; only exact truth is used for evidence validation and deterministic calculation | SKMB-2026-07-20-026 |
+| I87 | Provider codecs never serialize exact normalized Tool JSON directly for model consumption; every provider dispatch is rebuilt and estimated against the selected model's actual budget | SKMB-2026-07-20-026 |
+| I88 | Large reads advance by complete semantic units and stable cursors; generic dotted-key flattening, silent byte truncation and model parsing of internal JSON are forbidden | SKMB-2026-07-20-026 |
+| I89 | First-class native UI is derived from validated VFS truth and stable references, never from model-authored component authority or parsing model prose | SKMB-2026-07-20-026 |
+| I90 | Mod-defined fields are discovered from public codecs or trusted Extension extractors and remain queryable without a Minecraft-domain whitelist in core | SKMB-2026-07-20-026 |
+| I91 | Every completed validated Tool invocation publishes an immutable owner-scoped `/result` resource, including structured failures, before projection; later VFS operations may read, grep or query that result through the same Tool family | SKMB-2026-07-20-026 |
+| I92 | `/mod/<modid>/raw` exposes only logical public resources and safe metadata through loader/Minecraft APIs; physical archives, host paths, class/native bytes, signatures and unrestricted binary payloads are unrepresentable | SKMB-2026-07-20-026 |
 
 ## Fail Semantics
 
@@ -359,6 +391,13 @@ graphical evidence review all passed. Phase 4 is closed.
 | F53 | A provider returns HTTP 400 or another non-retryable 4xx | Classify a bounded allowlisted error as request/context/protocol rejection, retain redacted diagnostics, and require a corrected request; never expose or automatically replay the body | SKMB-2026-07-19-024 |
 | F54 | A pre-progress model transport attempt fails | Retry at most twice with cancellable short backoff; after progress or exhaustion, retain chronology and end with a friendly retryable transport failure | SKMB-2026-07-19-024 |
 | F55 | One fixed online knowledge source times out, rejects, or changes format | Retain local and other source results, mark only that adapter degraded, and return partial evidence rather than fabricated absence | SKMB-2026-07-19-024 |
+| F56 | A virtual resource path, pattern, field, range or typed query is invalid or ambiguous | Return `invalid_resource_query` or deterministic matching paths; never fuzzily execute a different operation | SKMB-2026-07-20-026 |
+| F57 | A mount generation, link or cursor is stale, expired, forged, or outside the request owner/view | Return `stale_resource`, `resource_not_found`, or `resource_forbidden` without rebinding or existence leakage | SKMB-2026-07-20-026 |
+| F58 | A resource result does not fit the current model-facing budget | Return complete semantic units, structural metadata and an exact continuation cursor; never send raw truth, dotted flattening or silent truncation | SKMB-2026-07-20-026 |
+| F59 | The next provider request cannot fit after semantic projection and allowed history editing/compaction | Fail `context_compaction_failed` before provider I/O and preserve exact history/truth | SKMB-2026-07-20-026 |
+| F60 | A model requests an OS path, shell command, arbitrary URL, write, callback or unregistered mount | Reject `operation_not_permitted`; never reinterpret it as a VFS read or broaden authority | SKMB-2026-07-20-026 |
+| F61 | A `/result` path is expired, forged, cross-owner, or outside its live session/connection | Return `stale_resource` or `resource_forbidden`; never reconstruct it from display history or implicitly repeat its originating Tool | SKMB-2026-07-20-026 |
+| F62 | A generic mod raw resource is binary, executable, private, shadowed without permission, or otherwise disallowed | Return safe metadata or `resource_content_unavailable`; never send arbitrary bytes, physical paths, or executable content to the model | SKMB-2026-07-20-026 |
 
 ## Reviewed Statistical Defaults
 

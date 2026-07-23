@@ -21,26 +21,9 @@ import dev.openallay.skill.LoadSkillTool;
 import dev.openallay.skill.SkillParser;
 import dev.openallay.skill.SkillRepository;
 import dev.openallay.tool.ToolRegistry;
-import dev.openallay.tool.Tool;
-import dev.openallay.tool.ToolCatalogPolicy;
 import dev.openallay.tool.builtin.CalculateCraftabilityTool;
-import dev.openallay.tool.builtin.FindRecipesTool;
-import dev.openallay.tool.builtin.FindItemUsagesTool;
-import dev.openallay.tool.builtin.GetRecipeTool;
-import dev.openallay.tool.builtin.GetKnowledgeDocumentTool;
-import dev.openallay.tool.builtin.GetPatchouliMultiblockTool;
-import dev.openallay.tool.builtin.ListKnowledgeSourcesTool;
-import dev.openallay.tool.builtin.InspectInventoryTool;
-import dev.openallay.tool.builtin.InspectGameStateTool;
-import dev.openallay.tool.builtin.ResolveResourceTool;
-import dev.openallay.tool.builtin.SearchKnowledgeTool;
-import dev.openallay.tool.builtin.SearchRecipesTool;
 import dev.openallay.resource.runtime.ResourceRequestRegistry;
-import dev.openallay.tool.resource.ResourceGlobTool;
-import dev.openallay.tool.resource.ResourceGrepTool;
-import dev.openallay.tool.resource.ResourceListTool;
-import dev.openallay.tool.resource.ResourceQueryTool;
-import dev.openallay.tool.resource.ResourceReadTool;
+import dev.openallay.tool.resource.RequestResourceContext;
 import dev.openallay.trace.json.TraceParser;
 import dev.openallay.trace.minecraft.TraceReplayService;
 import dev.openallay.trace.minecraft.TraceRepository;
@@ -55,6 +38,10 @@ public final class OpenAllayBootstrap {
             "openallay:resource_glob",
             "openallay:resource_grep",
             "openallay:resource_query");
+    private static final List<String> CORE_SKILL_TOOL_IDS = java.util.stream.Stream.concat(
+                    java.util.stream.Stream.of("openallay:calculate_craftability"),
+                    RESOURCE_TOOL_IDS.stream())
+            .toList();
     private static OpenAllayRuntime runtime;
 
     private OpenAllayBootstrap() {}
@@ -73,20 +60,9 @@ public final class OpenAllayBootstrap {
                 new MinecraftWikiKnowledgeSource(knowledgeHttp, gson),
                 new McModKnowledgeSource(knowledgeHttp)));
         ToolRegistry tools = new ToolRegistry();
-        tools.register("openallay:builtins", builtinTools(platform));
         PatchouliMultiblockStore patchouliMultiblocks = new PatchouliMultiblockStore();
-        tools.register(
-                "openallay:knowledge",
-                List.of(
-                        new ListKnowledgeSourcesTool(knowledge),
-                        new SearchKnowledgeTool(knowledge, onlineKnowledge),
-                        new GetKnowledgeDocumentTool(knowledge),
-                        new GetPatchouliMultiblockTool(patchouliMultiblocks)));
-        ArrayList<String> availableSkillTools = new ArrayList<>(
-                tools.descriptors().stream().map(descriptor -> descriptor.id()).toList());
-        availableSkillTools.addAll(RESOURCE_TOOL_IDS);
         SkillRepository skills = new SkillRepository(
-                new SkillParser(), availableSkillTools);
+                new SkillParser(), CORE_SKILL_TOOL_IDS);
         java.util.Set<String> installedSkillMods = new java.util.HashSet<>();
         if (platform.isModLoaded("ftbquests")) {
             installedSkillMods.add("ftbquests");
@@ -95,14 +71,8 @@ public final class OpenAllayBootstrap {
             OpenAllayConstants.LOGGER.warn("Bundled Skill validation failed: {}", skills.diagnostics());
         }
         ResourceRequestRegistry resources = new ResourceRequestRegistry(
-                platform, knowledge, onlineKnowledge, skills);
-        tools.register("openallay:resource_vfs", List.of(
-                new ResourceListTool(resources),
-                new ResourceReadTool(resources),
-                new ResourceGlobTool(resources),
-                new ResourceGrepTool(resources),
-                new ResourceQueryTool(resources)));
-        tools.register("openallay:skills", List.of(new LoadSkillTool(skills)));
+                platform, knowledge, onlineKnowledge, skills, patchouliMultiblocks);
+        registerCoreTools(tools, resources, skills);
         TraceReplayService traceReplay = new TraceReplayService(
                 new TraceRepository(new TraceParser()),
                 new MinecraftContextCapture(gson),
@@ -139,8 +109,6 @@ public final class OpenAllayBootstrap {
         tools.registrations().stream()
                 .filter(registration -> !registration.tool().descriptor().id()
                         .equals("openallay:load_skill"))
-                .filter(registration -> ToolCatalogPolicy.modelAdvertised(
-                        registration.tool().descriptor().id()))
                 .map(registration -> descriptor(
                         registration.tool().descriptor().id(), CapabilityKind.TOOL, "tool", null))
                 .forEach(descriptors::add);
@@ -150,6 +118,15 @@ public final class OpenAllayBootstrap {
                 .forEach(descriptors::add);
         catalog.register("openallay:core", descriptors);
         return catalog;
+    }
+
+    static void registerCoreTools(
+            ToolRegistry tools,
+            RequestResourceContext resources,
+            SkillRepository skills) {
+        tools.register("openallay:builtins", List.of(new CalculateCraftabilityTool()));
+        tools.registerResourceTools("openallay:resource_vfs", resources);
+        tools.register("openallay:skills", List.of(new LoadSkillTool(skills)));
     }
 
     private static CapabilitySettingsDescriptor descriptor(
@@ -163,15 +140,4 @@ public final class OpenAllayBootstrap {
                 id, kind, prefix + ".title", prefix + ".description", childPage);
     }
 
-    static List<Tool<?, ?>> builtinTools(PlatformService platform) {
-        return List.of(
-                new InspectGameStateTool(),
-                new ResolveResourceTool(),
-                new SearchRecipesTool(),
-                new GetRecipeTool(),
-                new FindItemUsagesTool(),
-                new InspectInventoryTool(),
-                new CalculateCraftabilityTool(),
-                new FindRecipesTool());
-    }
 }

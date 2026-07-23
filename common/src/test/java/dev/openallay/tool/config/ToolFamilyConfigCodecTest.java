@@ -100,15 +100,16 @@ final class ToolFamilyConfigCodecTest {
     @Test
     void everyOrdinaryCallableHasOneLogicalFamilyAndSkillLoadingIsExcluded() {
         assertEquals(
-                ToolFamilyId.GAME_CONTEXT,
-                ToolFamilyId.forCallableTool("openallay:inspect_game_state").orElseThrow());
+                ToolFamilyId.RESOURCE_RESOLUTION,
+                ToolFamilyId.forCallableTool("openallay:resource_list").orElseThrow());
         assertEquals(
                 ToolFamilyId.RESOURCE_RESOLUTION,
-                ToolFamilyId.forCallableTool("openallay:resolve_resource").orElseThrow());
+                ToolFamilyId.forCallableTool("openallay:resource_query").orElseThrow());
         assertEquals(
-                ToolFamilyId.GUIDES,
-                ToolFamilyId.forCallableTool("openallay:get_patchouli_multiblock").orElseThrow());
+                ToolFamilyId.CRAFTABILITY,
+                ToolFamilyId.forCallableTool("openallay:calculate_craftability").orElseThrow());
         assertFalse(ToolFamilyId.forCallableTool("openallay:load_skill").isPresent());
+        assertFalse(ToolFamilyId.forCallableTool("openallay:find_recipes").isPresent());
     }
 
     private void assertFailure(String input) {

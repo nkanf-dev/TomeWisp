@@ -42,7 +42,6 @@ final class TraceRepositoryTest {
     @Test
     void bundledTracesAreStrictlyValidAndDiscoverable() {
         List<String> ids = List.of(
-                "find-recipes-compatibility",
                 "iron-block-craftability",
                 "iron-ingot-recipe",
                 "platform-info",
@@ -60,7 +59,6 @@ final class TraceRepositoryTest {
         TraceRepository.LoadedTraces loaded = success(repository.load(sources)).value();
         assertEquals(ids, loaded.ids());
         loaded.traces().values().stream()
-                .filter(trace -> !trace.id().equals("find-recipes-compatibility"))
                 .flatMap(trace -> trace.steps().stream())
                 .filter(ToolCallStep.class::isInstance)
                 .map(ToolCallStep.class::cast)

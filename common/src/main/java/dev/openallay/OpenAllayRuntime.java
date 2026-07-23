@@ -44,7 +44,8 @@ public record OpenAllayRuntime(
                 developmentTools,
                 traceReplay,
                 capabilitySettings,
-                new ResourceRequestRegistry(platform, knowledge, null, skills));
+                new ResourceRequestRegistry(
+                        platform, knowledge, null, skills, patchouliMultiblocks));
     }
 
     public OpenAllayRuntime(
@@ -64,6 +65,7 @@ public record OpenAllayRuntime(
                 developmentTools,
                 traceReplay,
                 new CapabilitySettingsCatalog(),
-                new ResourceRequestRegistry(platform, knowledge, null, skills));
+                new ResourceRequestRegistry(
+                        platform, knowledge, null, skills, patchouliMultiblocks));
     }
 }

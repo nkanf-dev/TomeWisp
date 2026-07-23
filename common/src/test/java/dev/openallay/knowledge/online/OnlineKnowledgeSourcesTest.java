@@ -7,14 +7,11 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import com.google.gson.Gson;
 import dev.openallay.context.ToolInvocationContext;
-import dev.openallay.knowledge.KnowledgeRegistry;
 import dev.openallay.model.CancellationSignal;
 import dev.openallay.net.HttpCancellation;
 import dev.openallay.net.HttpExchangeRequest;
 import dev.openallay.net.HttpResponseHeaders;
 import dev.openallay.net.HttpTransport;
-import dev.openallay.tool.ToolResult;
-import dev.openallay.tool.builtin.SearchKnowledgeTool;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -74,23 +71,20 @@ final class OnlineKnowledgeSourcesTest {
                         "online_http_status", "private transport detail")));
         OnlineKnowledgeSearchService service = new OnlineKnowledgeSearchService(
                 List.of(working, unavailable));
-        SearchKnowledgeTool tool = new SearchKnowledgeTool(new KnowledgeRegistry(), service);
 
-        ToolResult.Success<SearchKnowledgeTool.Output> result = assertInstanceOf(
-                ToolResult.Success.class,
-                tool.invokeAsync(
-                        ToolInvocationContext.developmentConsole("test"),
-                        new SearchKnowledgeTool.Input(
-                                "useful", 5, SearchKnowledgeTool.Scope.ALL),
-                        new CancellationSignal()).join());
+        OnlineKnowledgeSearch result = service.search(
+                "useful",
+                5,
+                ToolInvocationContext.developmentConsole("test"),
+                new CancellationSignal()).join();
 
-        assertEquals(1, result.value().onlineResults().size());
-        assertEquals(2, result.value().evidence().size());
-        assertTrue(result.value().evidence().stream().anyMatch(evidence ->
-                evidence.sourceId().equals("openallay:working")));
-        assertEquals("online_http_status", result.value().diagnostics().getFirst().code());
+        assertEquals(1, result.hits().size());
+        assertEquals("openallay:working", result.hits().getFirst().sourceId());
+        assertTrue(result.hits().getFirst().evidence().sourceId().equals("openallay:working"));
+        assertEquals(1, result.diagnostics().size());
+        assertEquals("online_http_status", result.diagnostics().getFirst().code());
         assertEquals("The public knowledge source returned an error",
-                result.value().diagnostics().getFirst().message());
+                result.diagnostics().getFirst().message());
     }
 
     @Test

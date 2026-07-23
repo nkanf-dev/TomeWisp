@@ -3,7 +3,6 @@ package dev.openallay.agent.tool;
 import dev.openallay.tool.RegisteredTool;
 import dev.openallay.tool.Tool;
 import dev.openallay.tool.ToolDescriptor;
-import dev.openallay.tool.ToolCatalogPolicy;
 import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -35,11 +34,7 @@ public final class ToolRuntimeCatalog {
         List<RegisteredTool> ordered = List.copyOf(registrations).stream()
                 .sorted(java.util.Comparator.comparing(value -> value.tool().descriptor().id()))
                 .toList();
-        List<RegisteredTool> advertised = ordered.stream()
-                .filter(value -> ToolCatalogPolicy.modelAdvertised(
-                        value.tool().descriptor().id()))
-                .toList();
-        ToolNameCodec allNames = new ToolNameCodec(advertised.stream()
+        ToolNameCodec allNames = new ToolNameCodec(ordered.stream()
                 .map(value -> value.tool().descriptor().id())
                 .toList());
         Map<String, String> knownNames = new LinkedHashMap<>();
@@ -47,9 +42,6 @@ public final class ToolRuntimeCatalog {
         java.util.ArrayList<RegisteredTool> filtered = new java.util.ArrayList<>();
         for (RegisteredTool registration : ordered) {
             String toolId = registration.tool().descriptor().id();
-            if (!ToolCatalogPolicy.modelAdvertised(toolId)) {
-                continue;
-            }
             if (putAlias(knownNames, allNames.encode(toolId), toolId) != null
                     || putAlias(knownNames, toolId, toolId) != null
                     || active.containsKey(toolId)) {

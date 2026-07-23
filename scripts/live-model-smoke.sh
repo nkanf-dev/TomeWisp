@@ -41,8 +41,16 @@ case "$mode" in
     export OPENALLAY_LIVE_PHASE_FOUR=true
     test_class=dev.openallay.model.live.LiveConfiguredPhaseFourAcceptanceTest
     ;;
+  vfs)
+    : "${OPENALLAY_MODEL_BASE_URL:?Set OPENALLAY_MODEL_BASE_URL, including the API version path}"
+    : "${OPENALLAY_MODEL:?Set OPENALLAY_MODEL}"
+    : "${OPENALLAY_API_KEY:?Set OPENALLAY_API_KEY in the environment; never put it in a repository file}"
+    export OPENALLAY_LIVE_VFS=true
+    export OPENALLAY_MODEL_PROTOCOL="${OPENALLAY_MODEL_PROTOCOL:-OPENAI_CHAT}"
+    test_class=dev.openallay.model.live.LiveResourceVfsAcceptanceTest
+    ;;
   *)
-    echo "Usage: $0 [agent|settings-probe|configured-agent|phase-four]" >&2
+    echo "Usage: $0 [agent|settings-probe|configured-agent|phase-four|vfs]" >&2
     exit 2
     ;;
 esac

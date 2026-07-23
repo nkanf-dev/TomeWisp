@@ -41,11 +41,11 @@ final class SkillRepositoryTest {
                 "scripted",
                 "s/skill.md",
                 Map.of(
-                        "s/skill.md", frontmatter("scripted", "body", "[openallay:find_recipes]"),
+                        "s/skill.md", frontmatter("scripted", "body", "[openallay:resource_read]"),
                         "s/scripts/run.sh", "danger"));
         assertFalse(repository.reload(java.util.List.of(scripted), Set.of()));
 
-        String remote = frontmatter("remote", "body", "[openallay:find_recipes]")
+        String remote = frontmatter("remote", "body", "[openallay:resource_read]")
                 .replace("references/policy.md", "https://example.invalid/policy.md");
         assertFalse(repository.reload(java.util.List.of(new SkillSource(
                 "remote", "r/SKILL.md", Map.of("r/SKILL.md", remote))), Set.of()));
@@ -85,7 +85,7 @@ final class SkillRepositoryTest {
     }
 
     private static SkillRepository repository() {
-        return new SkillRepository(new SkillParser(), Set.of("openallay:find_recipes"));
+        return new SkillRepository(new SkillParser(), Set.of("openallay:resource_read"));
     }
 
     private static SkillSource valid(String name, String body) {
@@ -93,7 +93,7 @@ final class SkillRepositoryTest {
                 "test-pack",
                 name + "/SKILL.md",
                 Map.of(
-                        name + "/SKILL.md", frontmatter(name, body, "[openallay:find_recipes]"),
+                        name + "/SKILL.md", frontmatter(name, body, "[openallay:resource_read]"),
                         name + "/references/policy.md", "Ground every claim."));
     }
 

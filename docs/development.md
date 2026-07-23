@@ -567,7 +567,9 @@ topology:
   inputs, outputs, category, provenance and native presentation references.
 - `/guide` and `/knowledge` expose indexed local documents; fixed-origin online
   discovery is available beneath `/knowledge/online` when configured and
-  reachable.
+  reachable. A Patchouli document with a verified embedded multiblock exposes
+  its coordinates at `/guide/<source>/<document>/structure` and
+  `/knowledge/<source>/<document>/structure`, linked from the document node.
 - `/mod/<modid>` exposes installed-mod metadata. Its `raw` child is the generic
   fallback for logical public resources that do not yet have a typed adapter.
 - `/game` exposes detached runtime, options, packs, shaders, diagnostics and
@@ -631,9 +633,10 @@ when public codecs or a trusted Extension extractor exposes them.
 `openallay:calculate_craftability` remains a narrow deterministic action rather
 than a retrieval Tool. It globally allocates overlapping inventory alternatives
 and publishes the calculation back through `/result`; incomplete recipe or
-inventory evidence keeps `conclusive=false`. Phase 3 retrieval Tool IDs remain
-decodable for old history, trace replay and friendly presentation, but are not
-advertised to new model turns.
+inventory evidence keeps `conclusive=false`. Legacy domain retrieval Tools are
+no longer registered or executable. Old history may still display their IDs
+and friendly cards, but new model turns and replay fixtures use only the
+Resource VFS family plus craftability.
 
 ### Results, projections, and context budget
 
@@ -812,7 +815,6 @@ The following commands require game-master permission:
 /openallay dev replay platform-info
 /openallay dev replay iron-ingot-recipe
 /openallay dev replay iron-block-craftability
-/openallay dev replay find-recipes-compatibility
 /openallay dev replay player-context
 ```
 
@@ -878,7 +880,7 @@ openallay dev replay player-context
 stop
 ```
 
-`platform-info`, `iron-ingot-recipe`, and `find-recipes-compatibility` can run
+`platform-info` and `iron-ingot-recipe` can run
 from the dedicated-server console. `iron-block-craftability` and
 `player-context` fail explicitly with `player_required` there because no player
 owns the invocation.

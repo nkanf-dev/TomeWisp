@@ -16,7 +16,7 @@ import dev.openallay.settings.capability.CapabilitySettingsView;
 import dev.openallay.settings.capability.RecipeSettingsView;
 import dev.openallay.tool.ToolResult;
 import dev.openallay.tool.RegisteredTool;
-import dev.openallay.tool.builtin.ResolveResourceTool;
+import dev.openallay.tool.builtin.CalculateCraftabilityTool;
 import dev.openallay.tool.config.ToolConfigException;
 import dev.openallay.tool.config.ToolFamilyConfig;
 import dev.openallay.tool.config.ToolFamilyId;
@@ -57,13 +57,13 @@ final class ToolSettingsBackendTest {
         assertTrue(detail.preferredViewerAvailable());
         assertEquals("viewer:rei", detail.discoveredSources().getFirst().id());
         assertTrue(view.find(ToolFamilyId.GUIDES).orElseThrow().recipes().isEmpty());
-        ToolSettingsView.Member resolver = view.find(ToolFamilyId.RESOURCE_RESOLUTION)
+        ToolSettingsView.Member craftability = view.find(ToolFamilyId.CRAFTABILITY)
                 .orElseThrow().members().getFirst();
-        assertEquals("test:provider", resolver.providerId());
-        assertEquals("openallay__resolve_resource", resolver.modelAlias());
-        assertEquals("string", resolver.inputSchema().getAsJsonObject("properties")
-                .getAsJsonObject("query").get("type").getAsString());
-        assertTrue(resolver.outputSchema().has("properties"));
+        assertEquals("test:provider", craftability.providerId());
+        assertEquals("openallay__calculate_craftability", craftability.modelAlias());
+        assertEquals("string", craftability.inputSchema().getAsJsonObject("properties")
+                .getAsJsonObject("sourceId").get("type").getAsString());
+        assertTrue(craftability.outputSchema().has("properties"));
     }
 
     @Test
@@ -210,7 +210,7 @@ final class ToolSettingsBackendTest {
                         registry,
                         capabilities::get,
                         () -> recipes,
-                        List.of(new RegisteredTool("test:provider", new ResolveResourceTool()))),
+                        List.of(new RegisteredTool("test:provider", new CalculateCraftabilityTool()))),
                 capabilities);
     }
 

@@ -508,16 +508,15 @@
 - Update: `common/src/test/java/dev/openallay/BuiltinToolRegistrationTest.java`
 - Update: `common/src/test/java/dev/openallay/guide/history/GuideHistoryCodecTest.java`
 
-- [ ] Confirm every legacy read workflow has an equivalent VFS path/operation
+- [x] Confirm every legacy read workflow has an equivalent VFS path/operation
   and every native presenter consumes the new truth/reference.
-- [ ] Remove legacy IDs from the advertised model catalog. Retain
-  `find_recipes` only as the explicitly deprecated compatibility projection
-  required by repository policy until its separate removal decision.
-- [ ] Preserve display-only decoders for existing pre-release history; never
+- [x] Remove every legacy retrieval ID from registration and the advertised
+  model catalog. New calls use only the Resource VFS family.
+- [x] Preserve display-only decoders for existing pre-release history; never
   re-execute old calls or advertise them to the model.
-- [ ] Delete obsolete generic JSON context reducer and domain query surface
+- [x] Delete the obsolete domain query surface
   only after no production call site remains.
-- [ ] Run: `./gradlew :common:test`.
+- [x] Run: `./gradlew :common:test`.
 - [ ] Commit: `refactor(agent): retire domain retrieval Tools`
 
 ## Task 20: Migrate traces, E2E fixtures, history projections and diagnostics

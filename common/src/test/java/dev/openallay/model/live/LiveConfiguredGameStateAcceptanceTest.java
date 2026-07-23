@@ -9,6 +9,7 @@ import dev.openallay.agent.AgentEvent;
 import dev.openallay.agent.AgentRequest;
 import dev.openallay.agent.AgentResult;
 import dev.openallay.agent.AgentSystemPrompt;
+import dev.openallay.agent.context.ContextBudget;
 import dev.openallay.agent.GameGuideAgent;
 import dev.openallay.agent.session.AgentSessionStore;
 import dev.openallay.agent.tool.LocalAgentToolExecutor;
@@ -33,7 +34,14 @@ import dev.openallay.model.scheduling.ModelRequestScheduler;
 import dev.openallay.platform.InstalledModMetadata;
 import dev.openallay.tool.ToolRegistry;
 import dev.openallay.tool.ToolResult;
-import dev.openallay.tool.builtin.InspectGameStateTool;
+import dev.openallay.knowledge.KnowledgeRegistry;
+import dev.openallay.platform.PlatformService;
+import dev.openallay.resource.runtime.ResourceRequestRegistry;
+import dev.openallay.tool.resource.ResourceGlobTool;
+import dev.openallay.tool.resource.ResourceGrepTool;
+import dev.openallay.tool.resource.ResourceListTool;
+import dev.openallay.tool.resource.ResourceQueryTool;
+import dev.openallay.tool.resource.ResourceReadTool;
 import java.nio.file.Path;
 import java.time.Clock;
 import java.time.Instant;
@@ -41,6 +49,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.Assumptions;
@@ -101,7 +110,20 @@ final class LiveConfiguredGameStateAcceptanceTest {
 
             Gson gson = new Gson();
             ToolRegistry registry = new ToolRegistry();
-            registry.register("live-acceptance", List.of(new InspectGameStateTool()));
+            PlatformService platform = new PlatformService() {
+                @Override public String platformName() { return "live-test"; }
+                @Override public String gameVersion() { return "26.2"; }
+                @Override public boolean isModLoaded(String id) { return false; }
+                @Override public boolean isDevelopmentEnvironment() { return true; }
+            };
+            ResourceRequestRegistry resources = new ResourceRequestRegistry(
+                    platform, new KnowledgeRegistry());
+            registry.register("live-acceptance", List.of(
+                    new ResourceListTool(resources),
+                    new ResourceReadTool(resources),
+                    new ResourceGlobTool(resources),
+                    new ResourceGrepTool(resources),
+                    new ResourceQueryTool(resources)));
             LocalAgentToolExecutor tools = new LocalAgentToolExecutor(registry, gson);
             GameGuideAgent agent = new GameGuideAgent(
                     new ModelRequestScheduler(ProviderModelClients.create(
@@ -111,9 +133,9 @@ final class LiveConfiguredGameStateAcceptanceTest {
                     gson);
             String prompt = AgentSystemPrompt.compose("") + """
 
-                    For an installed-mod count, call the single matching game-state Tool
-                    from the current Tool definitions before answering. For a greeting,
-                    answer directly without a Tool.
+                    For an installed-mod count, inspect /mod through the Resource VFS
+                    before answering. Batch independent reads. For a greeting, answer
+                    directly without a Tool.
                     """;
 
             List<AgentEvent> greetingEvents = new ArrayList<>();
@@ -124,18 +146,35 @@ final class LiveConfiguredGameStateAcceptanceTest {
             assertEquals(0, toolStarts(greetingEvents));
 
             List<AgentEvent> factEvents = new ArrayList<>();
-            AgentResult fact = agent.ask(request(
-                            "mods", "我目前安装了多少个模组？", prompt, "live-mods"),
-                    factEvents::add).get(6, TimeUnit.MINUTES);
+            AgentRequest factRequest =
+                    request("mods", "我目前安装了多少个模组？", prompt, "live-mods");
+            AgentResult fact;
+            try (ResourceRequestRegistry.RequestHandle ignored = resources.open(
+                    factRequest.actorId(),
+                    factRequest.sessionId(),
+                    factRequest.requestId(),
+                    resources.connectionGeneration(factRequest.actorId()),
+                    "live-client",
+                    Set.of(
+                            "openallay:resource_list",
+                            "openallay:resource_read",
+                            "openallay:resource_glob",
+                            "openallay:resource_grep",
+                            "openallay:resource_query"),
+                    new ContextBudget(
+                            profile.runtimeConfig().contextWindowTokens(),
+                            profile.runtimeConfig().maxOutputTokens()),
+                    factRequest.context())) {
+                fact = agent.ask(factRequest, factEvents::add).get(6, TimeUnit.MINUTES);
+            }
             assertTrue(fact.successful(), fact.errorMessage());
             assertTrue(fact.text().contains("2"), fact.text() + " events=" + factEvents);
             assertTrue(factEvents.stream().anyMatch(event ->
                     event instanceof AgentEvent.ToolStarted started
-                            && started.toolId().equals("openallay:inspect_game_state")));
+                            && started.toolId().startsWith("openallay:resource_")));
             assertTrue(factEvents.stream().anyMatch(event ->
                     event instanceof AgentEvent.ToolCompleted completed
-                            && completed.toolId().equals(
-                                    "openallay:inspect_game_state")
+                            && completed.toolId().startsWith("openallay:resource_")
                             && !completed.failure()));
 
             System.out.println("OPENALLAY_LIVE_CONFIGURED_AGENT code=success profile="

@@ -23,7 +23,7 @@ final class AgentSkillsSubsetTest {
                 metadata:
                   author: OpenAllay
                   openallay/required-mods: "ftbquests, patchouli"
-                allowed-tools: "openallay:search_knowledge openallay:get_knowledge_document"
+                allowed-tools: "openallay:resource_grep openallay:resource_read"
                 ---
                 Follow evidence.
                 """));
@@ -33,7 +33,7 @@ final class AgentSkillsSubsetTest {
         assertEquals("OpenAllay", document.metadata().attributes().get("author"));
         assertEquals(Set.of("ftbquests", "patchouli"), document.metadata().requiredMods());
         assertEquals(
-                Set.of("openallay:search_knowledge", "openallay:get_knowledge_document"),
+                Set.of("openallay:resource_grep", "openallay:resource_read"),
                 document.metadata().allowedTools());
         assertEquals("Ground every claim.", document.references().get("references/policy.md"));
     }

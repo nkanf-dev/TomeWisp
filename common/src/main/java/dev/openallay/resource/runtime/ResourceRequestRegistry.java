@@ -14,6 +14,7 @@ import dev.openallay.context.RegistrySnapshot;
 import dev.openallay.context.ToolInvocationContext;
 import dev.openallay.agent.context.ContextBudget;
 import dev.openallay.knowledge.KnowledgeRegistry;
+import dev.openallay.integration.patchouli.PatchouliMultiblockStore;
 import dev.openallay.knowledge.online.OnlineKnowledgeAccess;
 import dev.openallay.knowledge.online.OnlineKnowledgeRequestAccess;
 import dev.openallay.knowledge.online.OnlineKnowledgeSearchService;
@@ -77,6 +78,7 @@ public final class ResourceRequestRegistry implements RequestResourceContext, Au
     private final ResourceResultStore results;
     private final OnlineKnowledgeSearchService onlineKnowledge;
     private final SkillCatalog skills;
+    private final PatchouliMultiblockStore patchouliMultiblocks;
     private final Clock clock;
     private final ModResourceSnapshot modResources;
     private final Map<String, RequestState> requests = new ConcurrentHashMap<>();
@@ -100,7 +102,17 @@ public final class ResourceRequestRegistry implements RequestResourceContext, Au
             KnowledgeRegistry knowledge,
             OnlineKnowledgeSearchService onlineKnowledge,
             SkillCatalog skills) {
+        this(platform, knowledge, onlineKnowledge, skills, null);
+    }
+
+    public ResourceRequestRegistry(
+            PlatformService platform,
+            KnowledgeRegistry knowledge,
+            OnlineKnowledgeSearchService onlineKnowledge,
+            SkillCatalog skills,
+            PatchouliMultiblockStore patchouliMultiblocks) {
         this(platform, knowledge, onlineKnowledge, skills,
+                patchouliMultiblocks,
                 new ResourceResultStore(), Clock.systemUTC(), capture(platform));
     }
 
@@ -109,6 +121,7 @@ public final class ResourceRequestRegistry implements RequestResourceContext, Au
             KnowledgeRegistry knowledge,
             OnlineKnowledgeSearchService onlineKnowledge,
             SkillCatalog skills,
+            PatchouliMultiblockStore patchouliMultiblocks,
             ResourceResultStore results,
             Clock clock,
             ModResourceSnapshot modResources) {
@@ -116,6 +129,7 @@ public final class ResourceRequestRegistry implements RequestResourceContext, Au
         this.knowledge = Objects.requireNonNull(knowledge, "knowledge");
         this.onlineKnowledge = onlineKnowledge;
         this.skills = skills;
+        this.patchouliMultiblocks = patchouliMultiblocks;
         this.results = Objects.requireNonNull(results, "results");
         this.clock = Objects.requireNonNull(clock, "clock");
         this.modResources = Objects.requireNonNull(modResources, "modResources");
@@ -268,16 +282,16 @@ public final class ResourceRequestRegistry implements RequestResourceContext, Au
                         new InstalledModResourceMount(() -> installed, () -> modEvidence),
                         new ModRawMount(() -> modResources, () -> modEvidence))));
         if (onlineKnowledge == null) {
-            mounts.add(new KnowledgeResourceMount(knowledge::snapshot));
+            mounts.add(new KnowledgeResourceMount(knowledge::snapshot, patchouliMultiblocks));
         } else {
             mounts.add(new CompositeResourceMount(
                     dev.openallay.resource.vfs.ResourcePath.of("knowledge"),
                     List.of(
-                            new KnowledgeResourceMount(knowledge::snapshot),
+                            new KnowledgeResourceMount(knowledge::snapshot, patchouliMultiblocks),
                             new OnlineKnowledgeCatalogMount(
                                     onlineKnowledge.sources(), onlineEvidence(context)))));
         }
-        mounts.add(new GuideResourceMount(knowledge::snapshot));
+        mounts.add(new GuideResourceMount(knowledge::snapshot, patchouliMultiblocks));
         if (skills != null) {
             mounts.add(new SkillResourceMount(() -> skills, platform.gameVersion(), platform.platformName()));
         }

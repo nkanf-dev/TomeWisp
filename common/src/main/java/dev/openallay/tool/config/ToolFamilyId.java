@@ -6,33 +6,22 @@ import java.util.Optional;
 
 /** Stable identities for player-facing logical Tool families. */
 public enum ToolFamilyId {
-    RECIPES(
-            "openallay:recipes",
-            "recipes.json",
-            "openallay:search_recipes",
-            "openallay:get_recipe",
-            "openallay:find_item_usages",
-            "openallay:find_recipes"),
-    GUIDES(
-            "openallay:guides",
-            "guides.json",
-            "openallay:list_knowledge_sources",
-            "openallay:search_knowledge",
-            "openallay:get_knowledge_document",
-            "openallay:get_patchouli_multiblock"),
-    INVENTORY("openallay:inventory", "inventory.json", "openallay:inspect_inventory"),
+    RECIPES("openallay:recipes", "recipes.json"),
+    GUIDES("openallay:guides", "guides.json"),
+    INVENTORY("openallay:inventory", "inventory.json"),
     CRAFTABILITY(
             "openallay:craftability",
             "craftability.json",
             "openallay:calculate_craftability"),
-    GAME_CONTEXT(
-            "openallay:game_context",
-            "game_context.json",
-            "openallay:inspect_game_state"),
+    GAME_CONTEXT("openallay:game_context", "game_context.json"),
     RESOURCE_RESOLUTION(
             "openallay:resource_resolution",
             "resource_resolution.json",
-            "openallay:resolve_resource");
+            "openallay:resource_list",
+            "openallay:resource_read",
+            "openallay:resource_glob",
+            "openallay:resource_grep",
+            "openallay:resource_query");
 
     private final String serializedId;
     private final String fileName;

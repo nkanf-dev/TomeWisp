@@ -10,9 +10,6 @@ import dev.openallay.knowledge.KnowledgeDocument;
 import java.util.ArrayList;
 import java.util.List;
 import org.junit.jupiter.api.Test;
-import dev.openallay.tool.builtin.GetPatchouliMultiblockTool;
-import dev.openallay.tool.ToolResult;
-import dev.openallay.context.ToolInvocationContext;
 
 final class PatchouliKnowledgeProviderTest {
     @Test
@@ -64,7 +61,7 @@ final class PatchouliKnowledgeProviderTest {
     }
 
     @Test
-    void publishesParsedCoordinatesThroughTheReadTool() {
+    void publishesParsedCoordinatesIntoTheMultiblockStore() {
         PatchouliMultiblockStore store = new PatchouliMultiblockStore();
         ClientResource resource = resource("zh_cn", "Structure", """
                 [{"type":"patchouli:multiblock","multiblock":{
@@ -75,13 +72,9 @@ final class PatchouliKnowledgeProviderTest {
                 prefix -> List.of(resource), "zh_cn", store);
         String structureRef = provider.load().documents().getFirst().structureRef();
 
-        ToolResult.Success<GetPatchouliMultiblockTool.Output> result =
-                org.junit.jupiter.api.Assertions.assertInstanceOf(
-                        ToolResult.Success.class,
-                        new GetPatchouliMultiblockTool(store).invoke(
-                                ToolInvocationContext.developmentConsole("patchouli-test"),
-                                new GetPatchouliMultiblockTool.Input(structureRef)));
-        assertEquals("example:casing", result.value().multiblock().blocks().getFirst().state());
+        assertEquals(
+                "example:casing",
+                store.find(structureRef).orElseThrow().blocks().getFirst().state());
     }
 
     private static ClientResource resource(String locale, String name, String pages) {

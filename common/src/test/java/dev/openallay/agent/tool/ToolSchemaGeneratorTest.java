@@ -8,6 +8,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import com.google.gson.JsonObject;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import org.junit.jupiter.api.Test;
 
 final class ToolSchemaGeneratorTest {
@@ -88,20 +89,15 @@ final class ToolSchemaGeneratorTest {
     void everyPlayerFacingBuiltInResultHasACompleteDebugSchema() {
         ToolSchemaGenerator generator = new ToolSchemaGenerator();
         List.of(
-                dev.openallay.tool.builtin.ResolveResourceTool.Output.class,
-                dev.openallay.tool.builtin.SearchRecipesTool.Output.class,
-                dev.openallay.tool.builtin.GetRecipeTool.Output.class,
-                dev.openallay.tool.builtin.FindItemUsagesTool.Output.class,
-                dev.openallay.tool.builtin.InspectInventoryTool.Output.class,
                 dev.openallay.tool.builtin.CalculateCraftabilityTool.Output.class,
-                dev.openallay.tool.builtin.FindRecipesTool.Output.class,
-                dev.openallay.tool.builtin.InspectGameStateTool.Output.class,
-                dev.openallay.tool.builtin.ListKnowledgeSourcesTool.Output.class,
-                dev.openallay.tool.builtin.SearchKnowledgeTool.Output.class,
-                dev.openallay.tool.builtin.GetKnowledgeDocumentTool.Output.class,
-                dev.openallay.tool.builtin.GetPatchouliMultiblockTool.Output.class)
+                dev.openallay.tool.resource.ResourceToolOutput.class)
                 .forEach(type -> assertEquals(
                         "object", generator.generateOutput(type).get("type").getAsString(),
                         type.getName()));
+        JsonObject resourceOutput =
+                generator.generateOutput(dev.openallay.tool.resource.ResourceToolOutput.class);
+        assertEquals(
+                Set.of("operation", "resultPath", "items", "evidence"),
+                resourceOutput.getAsJsonObject("properties").keySet());
     }
 }

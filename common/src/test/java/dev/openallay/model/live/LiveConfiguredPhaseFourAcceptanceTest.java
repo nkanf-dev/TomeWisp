@@ -11,6 +11,7 @@ import dev.openallay.agent.AgentEvent;
 import dev.openallay.agent.AgentRequest;
 import dev.openallay.agent.AgentResult;
 import dev.openallay.agent.AgentSystemPrompt;
+import dev.openallay.agent.context.ContextBudget;
 import dev.openallay.agent.GameGuideAgent;
 import dev.openallay.agent.session.AgentSessionStore;
 import dev.openallay.agent.tool.LocalAgentToolExecutor;
@@ -18,7 +19,6 @@ import dev.openallay.context.RegistryEntrySnapshot;
 import dev.openallay.context.RegistrySnapshot;
 import dev.openallay.context.ToolInvocationContext;
 import dev.openallay.context.game.ObservableGameStateSnapshot;
-import dev.openallay.integration.patchouli.PatchouliMultiblockStore;
 import dev.openallay.knowledge.KnowledgeRegistry;
 import dev.openallay.knowledge.online.McModKnowledgeSource;
 import dev.openallay.knowledge.online.MinecraftWikiKnowledgeSource;
@@ -44,19 +44,16 @@ import dev.openallay.skill.SkillParser;
 import dev.openallay.skill.SkillRepository;
 import dev.openallay.testing.GroundedTestFixtures;
 import dev.openallay.tool.Tool;
+import dev.openallay.platform.PlatformService;
 import dev.openallay.tool.ToolRegistry;
-import dev.openallay.tool.ToolResult;
+import dev.openallay.resource.runtime.ResourceRequestRegistry;
 import dev.openallay.tool.builtin.CalculateCraftabilityTool;
-import dev.openallay.tool.builtin.FindItemUsagesTool;
-import dev.openallay.tool.builtin.GetKnowledgeDocumentTool;
-import dev.openallay.tool.builtin.GetPatchouliMultiblockTool;
-import dev.openallay.tool.builtin.GetRecipeTool;
-import dev.openallay.tool.builtin.InspectGameStateTool;
-import dev.openallay.tool.builtin.InspectInventoryTool;
-import dev.openallay.tool.builtin.ListKnowledgeSourcesTool;
-import dev.openallay.tool.builtin.ResolveResourceTool;
-import dev.openallay.tool.builtin.SearchKnowledgeTool;
-import dev.openallay.tool.builtin.SearchRecipesTool;
+import dev.openallay.tool.resource.ResourceGlobTool;
+import dev.openallay.tool.resource.ResourceGrepTool;
+import dev.openallay.tool.resource.ResourceListTool;
+import dev.openallay.tool.resource.ResourceQueryTool;
+import dev.openallay.tool.resource.ResourceReadTool;
+import dev.openallay.tool.ToolResult;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Clock;
@@ -128,6 +125,8 @@ final class LiveConfiguredPhaseFourAcceptanceTest {
                     base.maxOutputTokens(),
                     base.connectTimeout(),
                     base.requestTimeout());
+            ContextBudget contextBudget =
+                    new ContextBudget(model.contextWindowTokens(), model.maxOutputTokens());
             Gson gson = new Gson();
             Runtime runtime = runtime(gson);
             GameGuideAgent agent = new GameGuideAgent(
@@ -142,17 +141,18 @@ final class LiveConfiguredPhaseFourAcceptanceTest {
             Set<String> longSessionSkills = new HashSet<>();
 
             if (!bulkOnly && !simpleOnly) {
-                runs.add(run(agent, actor, "casual", "嗨", prompt, context));
+                runs.add(run(agent, runtime.resources(), contextBudget,
+                        actor, "casual", "嗨", prompt, context));
                 assertEquals(List.of(), runs.getLast().tools());
             }
 
             if (!simpleOnly) {
-                Run bulk = run(agent, actor, "bulk",
+                Run bulk = run(agent, runtime.resources(), contextBudget, actor, "bulk",
                         "农夫乐事里饱和度最高的三个食物是什么？请直接比较游戏数据，不要逐个查询。",
                         prompt, context);
                 runs.add(bulk);
-                assertSkillReady(bulk, "openallay:resolve_resource", "analyze-game-data", Set.of());
-                assertEquals(2, count(bulk.tools(), "openallay:resolve_resource"),
+                assertSkillReady(bulk, "openallay:resource_query", "analyze-game-data", Set.of());
+                assertEquals(2, count(bulk.tools(), "openallay:resource_query"),
                         () -> "expected one schema discovery plus one batch query; calls=" + bulk.calls());
                 assertTrue(bulk.answer().contains("蜜汁火腿")
                                 || bulk.answer().contains("honey_glazed_ham"),
@@ -163,16 +163,16 @@ final class LiveConfiguredPhaseFourAcceptanceTest {
                 }
             }
 
-            Run mods = run(agent, actor, "long",
+            Run mods = run(agent, runtime.resources(), contextBudget, actor, "long",
                     "我安装了多少个模组？列出名称和版本。", prompt, context);
             runs.add(mods);
-            assertDirectLookup(mods, "openallay:inspect_game_state");
+            assertDirectLookup(mods, "openallay:resource_read");
             assertTrue(mods.answer().contains("3"), mods.answer());
 
-            Run biome = run(agent, actor, "long",
+            Run biome = run(agent, runtime.resources(), contextBudget, actor, "long",
                     "我现在在哪个生物群系，坐标和朝向是什么？", prompt, context);
             runs.add(biome);
-            assertDirectLookup(biome, "openallay:inspect_game_state");
+            assertDirectLookup(biome, "openallay:resource_read");
             assertTrue(biome.answer().contains("minecraft:plains")
                             || biome.answer().contains("平原"),
                     biome.answer());
@@ -181,20 +181,20 @@ final class LiveConfiguredPhaseFourAcceptanceTest {
                 return;
             }
 
-            Run followup = run(agent, actor, "long",
+            Run followup = run(agent, runtime.resources(), contextBudget, actor, "long",
                     "回到食物问题：把饱和度前三名按从高到低列成简短表格。",
                     prompt, context);
             runs.add(followup);
-            assertSkillReady(followup, "openallay:resolve_resource", "analyze-game-data", longSessionSkills);
+            assertSkillReady(followup, "openallay:resource_query", "analyze-game-data", longSessionSkills);
             longSessionSkills.addAll(followup.loadedSkills());
-            assertTrue(count(followup.tools(), "openallay:resolve_resource") <= 2,
+            assertTrue(count(followup.tools(), "openallay:resource_query") <= 2,
                     () -> "follow-up repeated the batch query: " + followup.calls());
 
-            Run knowledge = run(agent, actor, "long",
+            Run knowledge = run(agent, runtime.resources(), contextBudget, actor, "long",
                     "Minecraft 的中毒效果能不能直接杀死玩家？当前游戏数据不够时请查公开知识来源。",
                     prompt, context);
             runs.add(knowledge);
-            assertTrue(count(knowledge.tools(), "openallay:search_knowledge") >= 1);
+            assertTrue(count(knowledge.tools(), "openallay:resource_grep") >= 1);
 
             assertTrue(runs.stream().allMatch(Run::success));
             assertFalse(runs.stream().anyMatch(run -> run.failureCode() != null));
@@ -212,18 +212,21 @@ final class LiveConfiguredPhaseFourAcceptanceTest {
         OnlineKnowledgeSearchService online = new OnlineKnowledgeSearchService(List.of(
                 new MinecraftWikiKnowledgeSource(transport, gson),
                 new McModKnowledgeSource(transport)));
+        PlatformService platform = new PlatformService() {
+            @Override public String platformName() { return "live-test"; }
+            @Override public String gameVersion() { return "26.2"; }
+            @Override public boolean isModLoaded(String id) { return false; }
+            @Override public boolean isDevelopmentEnvironment() { return true; }
+        };
+        ResourceRequestRegistry resources = new ResourceRequestRegistry(
+                platform, knowledge, online, null);
         List<Tool<?, ?>> domainTools = List.of(
-                new ResolveResourceTool(),
-                new SearchRecipesTool(),
-                new GetRecipeTool(),
-                new FindItemUsagesTool(),
-                new InspectInventoryTool(),
-                new CalculateCraftabilityTool(),
-                new InspectGameStateTool(),
-                new ListKnowledgeSourcesTool(knowledge),
-                new SearchKnowledgeTool(knowledge, online),
-                new GetKnowledgeDocumentTool(knowledge),
-                new GetPatchouliMultiblockTool(new PatchouliMultiblockStore()));
+                new ResourceListTool(resources),
+                new ResourceReadTool(resources),
+                new ResourceGlobTool(resources),
+                new ResourceGrepTool(resources),
+                new ResourceQueryTool(resources),
+                new CalculateCraftabilityTool());
         ToolRegistry tools = new ToolRegistry();
         tools.register("live", domainTools);
         SkillRepository skills = new SkillRepository(
@@ -231,7 +234,7 @@ final class LiveConfiguredPhaseFourAcceptanceTest {
                 tools.descriptors().stream().map(descriptor -> descriptor.id()).toList());
         assertTrue(skills.reload(new BundledSkillLoader().load(), Set.of()));
         tools.register("skills", List.of(new LoadSkillTool(skills)));
-        return new Runtime(new LocalAgentToolExecutor(tools, gson), skills);
+        return new Runtime(new LocalAgentToolExecutor(tools, gson), skills, resources);
     }
 
     private static ToolInvocationContext context() {
@@ -315,6 +318,8 @@ final class LiveConfiguredPhaseFourAcceptanceTest {
 
     private static Run run(
             GameGuideAgent agent,
+            ResourceRequestRegistry resources,
+            ContextBudget contextBudget,
             UUID actor,
             String session,
             String question,
@@ -322,9 +327,26 @@ final class LiveConfiguredPhaseFourAcceptanceTest {
             ToolInvocationContext context) throws Exception {
         List<AgentEvent> events = new ArrayList<>();
         long started = System.nanoTime();
-        AgentResult result = agent.ask(new AgentRequest(
-                        UUID.randomUUID(), actor, session, question, prompt, context, true),
-                events::add).get(8, TimeUnit.MINUTES);
+        UUID requestId = UUID.randomUUID();
+        AgentRequest request = new AgentRequest(
+                requestId, actor, session, question, prompt, context, true);
+        AgentResult result;
+        try (ResourceRequestRegistry.RequestHandle ignored = resources.open(
+                actor,
+                session,
+                requestId,
+                resources.connectionGeneration(actor),
+                "live-client",
+                Set.of(
+                        "openallay:resource_list",
+                        "openallay:resource_read",
+                        "openallay:resource_glob",
+                        "openallay:resource_grep",
+                        "openallay:resource_query"),
+                contextBudget,
+                context)) {
+            result = agent.ask(request, events::add).get(8, TimeUnit.MINUTES);
+        }
         List<String> toolIds = events.stream()
                 .filter(AgentEvent.ToolStarted.class::isInstance)
                 .map(AgentEvent.ToolStarted.class::cast)
@@ -413,7 +435,10 @@ final class LiveConfiguredPhaseFourAcceptanceTest {
         return value;
     }
 
-    private record Runtime(LocalAgentToolExecutor executor, SkillRepository skills) {}
+    private record Runtime(
+            LocalAgentToolExecutor executor,
+            SkillRepository skills,
+            ResourceRequestRegistry resources) {}
     private record Run(
             String session,
             boolean success,

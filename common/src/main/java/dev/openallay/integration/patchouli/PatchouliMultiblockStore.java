@@ -18,4 +18,9 @@ public final class PatchouliMultiblockStore {
     public List<String> ids() {
         return snapshot.keySet().stream().sorted().toList();
     }
+
+    /** Returns one immutable generation for request-scoped VFS capture. */
+    public Map<String, PatchouliMultiblock> snapshot() {
+        return snapshot;
+    }
 }

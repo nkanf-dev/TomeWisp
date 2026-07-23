@@ -113,9 +113,11 @@ final class LiveModelAcceptanceTest {
                 ToolInvocationContext context,
                 CancellationSignal cancellation) {
             invocations.incrementAndGet();
+            JsonObject payload = new JsonObject();
+            payload.addProperty("fact", "玄铁事实-7429");
             JsonObject value = new JsonObject();
             value.addProperty("status", "success");
-            value.addProperty("fact", "玄铁事实-7429");
+            value.add("value", payload);
             return CompletableFuture.completedFuture(
                     new AgentToolResult("openallay:test_fact", value, false));
         }

@@ -3,6 +3,7 @@ package dev.openallay.agent.tool;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import java.lang.reflect.GenericArrayType;
+import java.lang.reflect.Modifier;
 import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.RecordComponent;
 import java.lang.reflect.Type;
@@ -170,6 +171,31 @@ public final class ToolSchemaGenerator {
             }
             visiting.remove(type);
             return result;
+        }
+        if (!inputContract) {
+            java.lang.reflect.Field[] serializedFields = Arrays.stream(type.getDeclaredFields())
+                    .filter(field -> !field.isSynthetic())
+                    .filter(field -> !Modifier.isStatic(field.getModifiers()))
+                    .filter(field -> !Modifier.isTransient(field.getModifiers()))
+                    .toArray(java.lang.reflect.Field[]::new);
+            if (serializedFields.length > 0) {
+                if (!visiting.add(type)) {
+                    throw new IllegalArgumentException(
+                            "Recursive tool output class is unsupported: " + type.getName());
+                }
+                JsonObject result = typed("object");
+                JsonObject properties = new JsonObject();
+                for (java.lang.reflect.Field field : serializedFields) {
+                    properties.add(
+                            field.getName(),
+                            schema(field.getGenericType(), visiting, false));
+                }
+                result.add("properties", properties);
+                result.add("required", new JsonArray());
+                result.addProperty("additionalProperties", false);
+                visiting.remove(type);
+                return result;
+            }
         }
         throw new IllegalArgumentException("Unsupported tool schema class: " + type.getName());
     }

@@ -147,9 +147,10 @@ appropriate source of truth as part of the change.
   and keep `conclusive=false` when recipe or inventory evidence is incomplete.
 - Do not ask the model to perform arithmetic or allocation that deterministic
   Java code can perform.
-- Keep `openallay:find_recipes` only as a deprecated compatibility projection;
-  new workflows use resource resolution, recipe search, exact recipe lookup,
-  inventory inspection, and craftability.
+- Model-facing retrieval uses the Resource VFS Tool family
+  (`resource_list`/`read`/`glob`/`grep`/`query`). Keep
+  `openallay:calculate_craftability` as the narrow deterministic allocation action.
+  Legacy domain retrieval Tools are not registered or advertised.
 
 ## 6. Knowledge integrations
 

@@ -74,4 +74,9 @@ public final class CompositeAgentToolExecutor implements AgentToolExecutor {
         return CompletableFuture.completedFuture(
                 new AgentToolResult(UNKNOWN_TOOL_ID, normalized, true));
     }
+
+    @Override
+    public void closeRequestScope(String correlationId) {
+        delegates.forEach(delegate -> delegate.closeRequestScope(correlationId));
+    }
 }

@@ -37,4 +37,7 @@ public interface AgentToolExecutor {
             JsonObject arguments,
             ToolInvocationContext context,
             CancellationSignal cancellation);
+
+    /** Releases resources owned by one terminal Agent request. */
+    default void closeRequestScope(String correlationId) {}
 }

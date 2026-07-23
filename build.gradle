@@ -35,6 +35,12 @@ allprojects {
                 includeGroup('dev.architectury')
             }
         }
+        maven {
+            url = uri('https://maven.latvian.dev/releases')
+            content {
+                includeGroup('dev.latvian.mods')
+            }
+        }
         // Keep the regional mirror as a last-resort fallback. A transient 5xx
         // from a mirror is fatal to Gradle resolution, so Central must be
         // consulted first for artifacts it already owns (for example LWJGL).

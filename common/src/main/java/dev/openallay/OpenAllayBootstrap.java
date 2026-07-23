@@ -34,6 +34,11 @@ import dev.openallay.tool.builtin.InspectGameStateTool;
 import dev.openallay.tool.builtin.ResolveResourceTool;
 import dev.openallay.tool.builtin.SearchKnowledgeTool;
 import dev.openallay.tool.builtin.SearchRecipesTool;
+import dev.openallay.tool.builtin.RunJavascriptTool;
+import dev.openallay.script.RhinoJavascriptRuntime;
+import dev.openallay.script.data.MinecraftAgentDataProjector;
+import dev.openallay.script.workspace.AgentResultWorkspaceRegistry;
+import dev.openallay.script.workspace.JavascriptResultPresenter;
 import dev.openallay.trace.json.TraceParser;
 import dev.openallay.trace.minecraft.TraceReplayService;
 import dev.openallay.trace.minecraft.TraceRepository;
@@ -52,10 +57,14 @@ public final class OpenAllayBootstrap {
         }
 
         PlatformService platform = PlatformServices.load();
-        ToolRegistry tools = new ToolRegistry();
-        tools.register("openallay:builtins", builtinTools(platform));
-        KnowledgeRegistry knowledge = new KnowledgeRegistry();
         Gson gson = new Gson();
+        AgentResultWorkspaceRegistry javascriptWorkspaces =
+                new AgentResultWorkspaceRegistry();
+        ToolRegistry tools = new ToolRegistry();
+        tools.register(
+                "openallay:builtins",
+                builtinTools(platform, gson, javascriptWorkspaces));
+        KnowledgeRegistry knowledge = new KnowledgeRegistry();
         JdkHttpTransport knowledgeHttp = new JdkHttpTransport(
                 new HttpTransportPolicy(java.time.Duration.ofSeconds(10), "openallay-knowledge"));
         OnlineKnowledgeSearchService onlineKnowledge = new OnlineKnowledgeSearchService(List.of(
@@ -138,7 +147,19 @@ public final class OpenAllayBootstrap {
     }
 
     static List<Tool<?, ?>> builtinTools(PlatformService platform) {
+        return builtinTools(platform, new Gson(), new AgentResultWorkspaceRegistry());
+    }
+
+    static List<Tool<?, ?>> builtinTools(
+            PlatformService platform,
+            Gson gson,
+            AgentResultWorkspaceRegistry javascriptWorkspaces) {
         return List.of(
+                new RunJavascriptTool(
+                        new RhinoJavascriptRuntime(gson),
+                        new MinecraftAgentDataProjector(gson),
+                        javascriptWorkspaces,
+                        new JavascriptResultPresenter()),
                 new InspectGameStateTool(),
                 new ResolveResourceTool(),
                 new SearchRecipesTool(),

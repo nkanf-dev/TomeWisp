@@ -10,6 +10,7 @@ import dev.openallay.tool.Tool;
 import dev.openallay.tool.ToolDescriptor;
 import dev.openallay.tool.ToolRegistry;
 import dev.openallay.tool.ToolResult;
+import dev.openallay.tool.RequestScopeParticipant;
 import dev.openallay.trace.replay.ToolArgumentCodec;
 import dev.openallay.trace.replay.ToolResultNormalizer;
 import java.util.List;
@@ -136,5 +137,14 @@ public final class LocalAgentToolExecutor implements AgentToolExecutor {
             current = current.getCause();
         }
         return current;
+    }
+
+    @Override
+    public void closeRequestScope(String correlationId) {
+        tools.registrations().stream()
+                .map(registration -> registration.tool())
+                .filter(RequestScopeParticipant.class::isInstance)
+                .map(RequestScopeParticipant.class::cast)
+                .forEach(participant -> participant.closeRequestScope(correlationId));
     }
 }

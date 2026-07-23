@@ -32,6 +32,7 @@ accepted and contains explicit approval evidence.
 | SKMB-2026-07-19-022 | accepted | embedded native domain views, local retrieval, stable presentation, and future player-memory boundary | A, B, C, D, E, F | decisions/2026-07-19-022-native-domain-views-retrieval-memory.md | pending |
 | SKMB-2026-07-19-023 | accepted | double-confirmed session deletion, managed conversation export, and visible chat copying | B, C, E, F, G | decisions/2026-07-19-023-session-actions-and-safe-export.md | pending |
 | SKMB-2026-07-19-024 | accepted | ordered parallel Tool turns, typed batch/query surfaces, fixed online knowledge, provider recovery, and client-visible location routing | A, B, C, D, E, F | decisions/2026-07-19-024-batch-query-and-provider-recovery.md | pending |
+| SKMB-2026-07-24-025 | accepted | isolated Rhino Agent runtime, request result workspace, extension adapters, and managed Skill writes | A, B, C, D, E, F, G | decisions/2026-07-24-025-rhino-agent-runtime.md | pending |
 
 SKMB-2026-07-18-006 is implemented by `a0eaeff`, `19ab90f`, and `c6ca6bc`.
 Its deterministic clean-build and packaged-driver evidence is recorded in the
@@ -136,6 +137,9 @@ graphical evidence review all passed. Phase 4 is closed.
 | tool_group_wait | Independent calls from one model turn are settling into indexed correlated slots | GameGuideAgent | Provider continuation waits for the complete ordered group | SKMB-2026-07-19-024 |
 | model_transport_retry_wait | A no-progress transport failure is waiting for its bounded retry | ModelRequestScheduler | Cancellable; never entered after visible response progress | SKMB-2026-07-19-024 |
 | online_knowledge_degraded | One fixed public-documentation adapter failed while local/other sources remain usable | SearchKnowledgeTool | Source-scoped and partial; no arbitrary URL fallback | SKMB-2026-07-19-024 |
+| javascript_executing | One isolated Rhino Context is evaluating detached request data | RhinoJavascriptRuntime | Worker-thread-only, cancellable, time-bounded, and denied arbitrary host access | SKMB-2026-07-24-025 |
+| result_workspace_open | Canonical JavaScript results are retained for the active request | AgentResultWorkspaceRegistry | Handles are opaque and request-scoped; model context receives projections only | SKMB-2026-07-24-025 |
+| managed_skill_writing | One complete local Skill package is staged and validated | ManagedSkillStore | Prior active package remains until atomic publication succeeds | SKMB-2026-07-24-025 |
 
 ## Transition Decisions
 
@@ -210,6 +214,11 @@ graphical evidence review all passed. Phase 4 is closed.
 | T68 | deletion_confirming_first | player confirms | deletion_confirming_final | Show the irreversible/cancellation warning bound to the same captured session ID | SKMB-2026-07-19-023 |
 | T69 | deletion_confirming_final | player confirms or dismisses | session deleted or unchanged | Invoke the existing fenced close only after confirmation; either dismissal performs no action | SKMB-2026-07-19-023 |
 | T70 | export idle | player exports selected session | export_collecting then export_writing | Capture immutable live sequences, read every durable page, redact, and atomically publish under the managed export directory | SKMB-2026-07-19-023 |
+| T71 | tool_wait | validated JavaScript execution starts | javascript_executing | Create a fresh Rhino Context over the detached request graph and check cancellation/deadline by instruction observation | SKMB-2026-07-24-025 |
+| T72 | javascript_executing | canonical result normalized | result_workspace_open | Store canonical JSON under an opaque request handle and publish only an evidence-preserving model projection | SKMB-2026-07-24-025 |
+| T73 | result_workspace_open | request completes, fails, cancels, disconnects, or shuts down | idle or terminal request state | Close the request workspace, invalidate handles, and discard Rhino state | SKMB-2026-07-24-025 |
+| T74 | any non-active request state | managed Skill create/update/delete requested | managed_skill_writing | Stage a confined complete package, validate it, and atomically publish or delete one exact local Skill | SKMB-2026-07-24-025 |
+| T75 | managed_skill_writing | atomic publication succeeds or fails | unchanged | Future requests see the new catalog on success; failure retains the prior catalog and package | SKMB-2026-07-24-025 |
 
 ## Invariants
 
@@ -299,6 +308,11 @@ graphical evidence review all passed. Phase 4 is closed.
 | I81 | Automatic model transport retry is allowed only before response progress and is bounded to two retries; HTTP 4xx, timeout, partial stream, cancel, and Tool execution are never replayed | SKMB-2026-07-19-024 |
 | I82 | Fixed online documentation sources fail independently, remain partial public evidence, and never replace current-game authoritative snapshots | SKMB-2026-07-19-024 |
 | I83 | Current biome, coordinates, dimension, and direction are client-visible diagnostics and never require server command permission | SKMB-2026-07-19-024 |
+| I84 | Model-authored JavaScript runs only over detached immutable request data in a fresh Rhino scope; arbitrary Java, reflection, class loading, network, process, real filesystem, and live Minecraft access are unrepresentable | SKMB-2026-07-24-025 |
+| I85 | Canonical JavaScript output remains internal JSON; the model receives an explicit compact projection, while large values remain request-scoped and reopenable only by opaque handle | SKMB-2026-07-24-025 |
+| I86 | A Rhino scope and workspace are never shared across request correlation IDs and are closed on every terminal, disconnect, and shutdown path | SKMB-2026-07-24-025 |
+| I87 | Bundled Skills remain immutable; Agent Skill writes are confined to one managed local root, validate a complete package, publish atomically, and affect future request snapshots only | SKMB-2026-07-24-025 |
+| I88 | Extension adapters may use trusted implementation techniques during owning-thread capture, but ordinary Agent JavaScript receives only their detached evidence-bearing contribution and pure helper facade | SKMB-2026-07-24-025 |
 
 ## Fail Semantics
 
@@ -359,6 +373,9 @@ graphical evidence review all passed. Phase 4 is closed.
 | F53 | A provider returns HTTP 400 or another non-retryable 4xx | Classify a bounded allowlisted error as request/context/protocol rejection, retain redacted diagnostics, and require a corrected request; never expose or automatically replay the body | SKMB-2026-07-19-024 |
 | F54 | A pre-progress model transport attempt fails | Retry at most twice with cancellable short backoff; after progress or exhaustion, retain chronology and end with a friendly retryable transport failure | SKMB-2026-07-19-024 |
 | F55 | One fixed online knowledge source times out, rejects, or changes format | Retain local and other source results, mark only that adapter degraded, and return partial evidence rather than fabricated absence | SKMB-2026-07-19-024 |
+| F56 | JavaScript is malformed, exceeds its execution deadline, is cancelled, escapes the sandbox, or returns a cyclic/unsupported value | Fail with a stable `javascript_*` result, store no successful workspace value, discard the Context, and preserve the Agent request for a corrected call unless cancellation owns termination | SKMB-2026-07-24-025 |
+| F57 | A workspace handle is missing, closed, or belongs to another request | Fail `workspace_handle_unavailable`; never guess, reopen another request, or copy hidden canonical data into context | SKMB-2026-07-24-025 |
+| F58 | A managed Skill candidate is malformed, escapes its root, conflicts, or cannot publish atomically | Fail `skill_invalid` or `skill_write_failed`, retain the previous package/catalog, and leave unrelated Skills unchanged | SKMB-2026-07-24-025 |
 
 ## Reviewed Statistical Defaults
 

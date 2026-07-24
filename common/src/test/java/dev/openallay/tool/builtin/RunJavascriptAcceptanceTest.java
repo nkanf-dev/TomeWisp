@@ -4,11 +4,10 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import com.google.gson.Gson;
 import dev.openallay.context.ToolInvocationContext;
 import dev.openallay.model.CancellationSignal;
 import dev.openallay.script.RhinoJavascriptRuntime;
-import dev.openallay.script.data.MinecraftAgentDataProjector;
+import dev.openallay.script.data.MinecraftAgentHostGraph;
 import dev.openallay.script.extension.JavascriptDataModule;
 import dev.openallay.script.extension.JavascriptDataModuleRegistry;
 import dev.openallay.script.workspace.AgentResultWorkspaceRegistry;
@@ -21,11 +20,13 @@ import org.junit.jupiter.api.Test;
 
 /** Deterministic acceptance for the three product-level JavaScript analysis tasks. */
 final class RunJavascriptAcceptanceTest {
+    private record DirectModule(int value) {}
+
     private final AgentResultWorkspaceRegistry workspaces =
             new AgentResultWorkspaceRegistry();
     private final RunJavascriptTool tool = new RunJavascriptTool(
-            new RhinoJavascriptRuntime(new Gson()),
-            new MinecraftAgentDataProjector(new Gson()),
+            new RhinoJavascriptRuntime(),
+            MinecraftAgentHostGraph::new,
             workspaces,
             new JavascriptResultPresenter());
     private final ToolInvocationContext context =
@@ -125,7 +126,7 @@ final class RunJavascriptAcceptanceTest {
             public Snapshot capture(ToolInvocationContext ignored) {
                 captures.incrementAndGet();
                 return new Snapshot(
-                        com.google.gson.JsonParser.parseString("{\"value\":1}"),
+                        new DirectModule(1),
                         List.of(JavascriptAgentTestFixtures.context("evidence")
                                 .registries()
                                 .orElseThrow()
@@ -133,9 +134,9 @@ final class RunJavascriptAcceptanceTest {
             }
         }));
         RunJavascriptTool cached = new RunJavascriptTool(
-                new RhinoJavascriptRuntime(new Gson()),
-                new MinecraftAgentDataProjector(
-                        new Gson(),
+                new RhinoJavascriptRuntime(),
+                invocation -> new MinecraftAgentHostGraph(
+                        invocation,
                         dev.openallay.knowledge.KnowledgeSnapshot::empty,
                         extensions),
                 new AgentResultWorkspaceRegistry(),
@@ -172,6 +173,46 @@ final class RunJavascriptAcceptanceTest {
     }
 
     @Test
+    void unsupportedExtensionValueDoesNotHideIndependentDirectRecordModule() {
+        JavascriptDataModuleRegistry extensions = new JavascriptDataModuleRegistry();
+        extensions.register("test", List.of(
+                module("test:good", new DirectModule(7)),
+                module("test:unsupported", new Object())));
+        RunJavascriptTool isolated = new RunJavascriptTool(
+                new RhinoJavascriptRuntime(),
+                invocation -> new MinecraftAgentHostGraph(
+                        invocation,
+                        dev.openallay.knowledge.KnowledgeSnapshot::empty,
+                        extensions),
+                new AgentResultWorkspaceRegistry(),
+                new JavascriptResultPresenter());
+
+        ToolResult.Success<RunJavascriptTool.Output> success = assertInstanceOf(
+                ToolResult.Success.class,
+                isolated.invokeAsync(
+                                context,
+                                new RunJavascriptTool.Input(
+                                        "return mc.extensions['test:good'].value;",
+                                        List.of(),
+                                        List.of("extensions")),
+                                new CancellationSignal())
+                        .join());
+        assertEquals(7, success.value().preview().getAsInt());
+
+        ToolResult.Failure<RunJavascriptTool.Output> unsupported = assertInstanceOf(
+                ToolResult.Failure.class,
+                isolated.invokeAsync(
+                                context,
+                                new RunJavascriptTool.Input(
+                                        "return mc.extensions['test:unsupported'];",
+                                        List.of(),
+                                        List.of("extensions")),
+                                new CancellationSignal())
+                        .join());
+        assertEquals("javascript_host_type_unsupported", unsupported.code());
+    }
+
+    @Test
     void exposesOnlyExplicitlySelectedMinecraftRootsToRhino() {
         ToolResult.Success<RunJavascriptTool.Output> success = assertInstanceOf(
                 ToolResult.Success.class,
@@ -200,8 +241,22 @@ final class RunJavascriptAcceptanceTest {
                 .join();
         ToolResult.Success<RunJavascriptTool.Output> success =
                 assertInstanceOf(ToolResult.Success.class, raw);
-        assertTrue(success.value().evidence().size() >= 3);
+        assertTrue(success.value().evidence().size() >= 2);
         return workspaces.open(context.correlationId()).open(success.value().handle());
+    }
+
+    private static JavascriptDataModule module(String id, Object value) {
+        return new JavascriptDataModule() {
+            @Override public String id() { return id; }
+
+            @Override
+            public Snapshot capture(ToolInvocationContext ignored) {
+                return new Snapshot(
+                        value,
+                        List.of(JavascriptAgentTestFixtures.context("module-evidence")
+                                .registries().orElseThrow().evidence()));
+            }
+        };
     }
 
 }

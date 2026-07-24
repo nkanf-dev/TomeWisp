@@ -4,19 +4,17 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import com.google.gson.Gson;
-import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import dev.openallay.model.CancellationSignal;
 import java.time.Duration;
+import java.util.List;
+import java.util.Map;
 import org.junit.jupiter.api.Test;
 
 final class RhinoJavascriptRuntimeTest {
-    private final Gson gson = new Gson();
-
     @Test
     void transformsDetachedMinecraftDataWithNormalJavascript() {
-        RhinoJavascriptRuntime runtime = new RhinoJavascriptRuntime(gson);
+        RhinoJavascriptRuntime runtime = new RhinoJavascriptRuntime();
 
         JavascriptExecution execution = runtime.execute(
                 """
@@ -30,14 +28,14 @@ final class RhinoJavascriptRuntimeTest {
                   grouped: helpers.groupBy(swords, item => item.damage >= 10 ? "high" : "normal")
                 };
                 """,
-                JsonParser.parseString("""
-                        {"items":[
+                Map.of("items", JsonParser.parseString("""
+                        [
                           {"id":"minecraft:iron_sword","damage":6,"tags":["minecraft:swords"]},
                           {"id":"example:obsidian_sword","damage":12,"tags":["minecraft:swords"]},
                           {"id":"minecraft:apple","damage":0,"tags":[]}
-                        ]}
-                        """),
-                new JsonObject(),
+                        ]
+                        """)),
+                Map.of(),
                 new CancellationSignal());
 
         assertEquals(
@@ -61,30 +59,30 @@ final class RhinoJavascriptRuntimeTest {
 
     @Test
     void reopensOnlyExplicitWorkspaceValues() {
-        JsonObject values = new JsonObject();
-        values.add("r_1", JsonParser.parseString("[3,8,5]"));
+        Map<String, com.google.gson.JsonElement> values =
+                Map.of("r_1", JsonParser.parseString("[3,8,5]"));
 
-        JavascriptExecution execution = new RhinoJavascriptRuntime(gson).execute(
+        JavascriptExecution execution = new RhinoJavascriptRuntime().execute(
                 "return helpers.maxBy(workspace.open('r_1'), value => value);",
-                new JsonObject(),
+                Map.of(),
                 values,
                 new CancellationSignal());
 
         assertEquals(8, execution.value().getAsInt());
         JavascriptExecutionException unavailable = assertThrows(
                 JavascriptExecutionException.class,
-                () -> new RhinoJavascriptRuntime(gson).execute(
+                () -> new RhinoJavascriptRuntime().execute(
                         "return workspace.open('r_other');",
-                        new JsonObject(),
+                        Map.of(),
                         values,
                         new CancellationSignal()));
-        assertEquals("javascript_error", unavailable.code());
-        assertTrue(unavailable.getMessage().contains("workspace_handle_unavailable"));
+        assertEquals("workspace_handle_unavailable", unavailable.code());
+        assertTrue(unavailable.getMessage().contains("unavailable"));
     }
 
     @Test
     void safeScopeDoesNotExposeJavaOrHostFacilities() {
-        JavascriptExecution execution = new RhinoJavascriptRuntime(gson).execute(
+        JavascriptExecution execution = new RhinoJavascriptRuntime().execute(
                 """
                 return {
                   packages: typeof Packages,
@@ -94,8 +92,8 @@ final class RhinoJavascriptRuntimeTest {
                   quit: typeof quit
                 };
                 """,
-                new JsonObject(),
-                new JsonObject(),
+                Map.of(),
+                Map.of(),
                 new CancellationSignal());
 
         execution.value()
@@ -106,13 +104,13 @@ final class RhinoJavascriptRuntimeTest {
 
     @Test
     void rejectsCyclesAndNonFiniteNumbers() {
-        RhinoJavascriptRuntime runtime = new RhinoJavascriptRuntime(gson);
+        RhinoJavascriptRuntime runtime = new RhinoJavascriptRuntime();
         JavascriptExecutionException cycle = assertThrows(
                 JavascriptExecutionException.class,
                 () -> runtime.execute(
                         "const value = {}; value.self = value; return value;",
-                        new JsonObject(),
-                        new JsonObject(),
+                        Map.of(),
+                        Map.of(),
                         new CancellationSignal()));
         assertEquals("javascript_result_invalid", cycle.code());
 
@@ -120,8 +118,8 @@ final class RhinoJavascriptRuntimeTest {
                 JavascriptExecutionException.class,
                 () -> runtime.execute(
                         "return Infinity;",
-                        new JsonObject(),
-                        new JsonObject(),
+                        Map.of(),
+                        Map.of(),
                         new CancellationSignal()));
         assertEquals("javascript_result_invalid", infinity.code());
     }
@@ -129,14 +127,14 @@ final class RhinoJavascriptRuntimeTest {
     @Test
     void stopsInfiniteScriptsAtDeadline() {
         RhinoJavascriptRuntime runtime =
-                new RhinoJavascriptRuntime(gson, Duration.ofMillis(25));
+                new RhinoJavascriptRuntime(Duration.ofMillis(25));
 
         JavascriptExecutionException timeout = assertThrows(
                 JavascriptExecutionException.class,
                 () -> runtime.execute(
                         "while (true) {}",
-                        new JsonObject(),
-                        new JsonObject(),
+                        Map.of(),
+                        Map.of(),
                         new CancellationSignal()));
 
         assertEquals("javascript_timeout", timeout.code());
@@ -147,7 +145,7 @@ final class RhinoJavascriptRuntimeTest {
         JavascriptRuntimeLimits limits =
                 new JavascriptRuntimeLimits(32, 4, 12, 8, 4, 16);
         RhinoJavascriptRuntime runtime =
-                new RhinoJavascriptRuntime(gson, Duration.ofSeconds(1), limits);
+                new RhinoJavascriptRuntime(Duration.ofSeconds(1), limits);
 
         assertEquals(
                 "javascript_source_too_large",
@@ -155,8 +153,8 @@ final class RhinoJavascriptRuntimeTest {
                                 JavascriptExecutionException.class,
                                 () -> runtime.execute(
                                         "return '" + "x".repeat(40) + "';",
-                                        new JsonObject(),
-                                        new JsonObject(),
+                                        Map.of(),
+                                        Map.of(),
                                         new CancellationSignal()))
                         .code());
         assertEquals(
@@ -165,8 +163,8 @@ final class RhinoJavascriptRuntimeTest {
                                 JavascriptExecutionException.class,
                                 () -> runtime.execute(
                                         "return [1,2,3,4,5,6,7,8,9];",
-                                        new JsonObject(),
-                                        new JsonObject(),
+                                        Map.of(),
+                                        Map.of(),
                                         new CancellationSignal()))
                         .code());
         assertEquals(
@@ -175,9 +173,29 @@ final class RhinoJavascriptRuntimeTest {
                                 JavascriptExecutionException.class,
                                 () -> runtime.execute(
                                         "return 'abcdefghijklmnopq';",
-                                        new JsonObject(),
-                                        new JsonObject(),
-                                        new CancellationSignal()))
+                                        Map.of(),
+                                        Map.of(),
+                        new CancellationSignal()))
                         .code());
+    }
+
+    @Test
+    void readsRecordComponentsWithoutStringifyingOrSerializingTheInput() {
+        record DirectValue(String id, List<Integer> values) {
+            @Override
+            public String toString() {
+                throw new AssertionError("The direct host path must not stringify snapshots");
+            }
+        }
+        DirectValue direct = new DirectValue("direct", List.of(2, 4, 6));
+
+        JavascriptExecution result = new RhinoJavascriptRuntime().execute(
+                "return {id: mc.fixture.id, total: helpers.sum(mc.fixture.values)};",
+                Map.of("fixture", direct),
+                Map.of(),
+                new CancellationSignal());
+
+        assertEquals("direct", result.value().getAsJsonObject().get("id").getAsString());
+        assertEquals(12, result.value().getAsJsonObject().get("total").getAsInt());
     }
 }

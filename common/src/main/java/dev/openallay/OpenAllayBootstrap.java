@@ -20,7 +20,7 @@ import dev.openallay.tool.Tool;
 import dev.openallay.tool.builtin.CalculateCraftabilityTool;
 import dev.openallay.tool.builtin.RunJavascriptTool;
 import dev.openallay.script.RhinoJavascriptRuntime;
-import dev.openallay.script.data.MinecraftAgentDataProjector;
+import dev.openallay.script.data.MinecraftAgentHostGraph;
 import dev.openallay.script.workspace.AgentResultWorkspaceRegistry;
 import dev.openallay.script.workspace.JavascriptResultPresenter;
 import dev.openallay.script.extension.JavascriptDataModuleRegistry;
@@ -156,9 +156,9 @@ public final class OpenAllayBootstrap {
             JavascriptDataModuleRegistry javascriptModules) {
         return List.of(
                 new RunJavascriptTool(
-                        new RhinoJavascriptRuntime(gson),
-                        new MinecraftAgentDataProjector(
-                                gson, knowledge::snapshot, javascriptModules),
+                        new RhinoJavascriptRuntime(),
+                        context -> new MinecraftAgentHostGraph(
+                                context, knowledge::snapshot, javascriptModules),
                         javascriptWorkspaces,
                         new JavascriptResultPresenter()),
                 new CalculateCraftabilityTool());

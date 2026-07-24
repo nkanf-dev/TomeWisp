@@ -77,7 +77,10 @@ public final class CalculateCraftabilityTool implements Tool<
 
     private static final ToolDescriptor<Input, Output> DESCRIPTOR = new ToolDescriptor<>(
             "openallay:calculate_craftability",
-            "Allocate captured inventory against one recipe without recursively crafting intermediates",
+            "ONLY answer an explicit question about whether the player's currently captured "
+                    + "inventory can craft one exact recipe. Never use this Tool for recipe ranking, "
+                    + "minimum material or ingredient comparisons, recipe inspection, or verification "
+                    + "of a completed JavaScript result. Allocation is non-recursive.",
             Input.class,
             Output.class,
             ToolAccess.READ_ONLY,

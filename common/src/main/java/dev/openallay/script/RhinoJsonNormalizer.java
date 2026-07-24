@@ -6,6 +6,7 @@ import com.google.gson.JsonNull;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonPrimitive;
 import dev.latvian.mods.rhino.BaseFunction;
+import dev.latvian.mods.rhino.Context;
 import dev.latvian.mods.rhino.NativeArray;
 import dev.latvian.mods.rhino.NativeObject;
 import dev.latvian.mods.rhino.NativePromise;
@@ -13,6 +14,8 @@ import dev.latvian.mods.rhino.Scriptable;
 import dev.latvian.mods.rhino.Symbol;
 import dev.latvian.mods.rhino.Undefined;
 import dev.latvian.mods.rhino.Wrapper;
+import dev.openallay.script.host.HostListView;
+import dev.openallay.script.host.HostObjectView;
 import java.util.IdentityHashMap;
 import java.util.Map;
 
@@ -23,12 +26,13 @@ final class RhinoJsonNormalizer {
         this.limits = java.util.Objects.requireNonNull(limits, "limits");
     }
 
-    JsonElement normalize(Object value) {
-        return normalize(value, new IdentityHashMap<>(), 0, new Budget());
+    JsonElement normalize(Object value, Context context) {
+        return normalize(value, context, new IdentityHashMap<>(), 0, new Budget());
     }
 
     private JsonElement normalize(
             Object value,
+            Context context,
             IdentityHashMap<Object, Boolean> ancestors,
             int depth,
             Budget budget) {
@@ -74,7 +78,7 @@ final class RhinoJsonNormalizer {
                 for (Object item : array) {
                     result.add(item == Undefined.INSTANCE
                             ? JsonNull.INSTANCE
-                            : normalize(item, ancestors, depth + 1, budget));
+                            : normalize(item, context, ancestors, depth + 1, budget));
                 }
                 return result;
             } finally {
@@ -96,7 +100,49 @@ final class RhinoJsonNormalizer {
                     if (child != Undefined.INSTANCE) {
                         result.add(
                                 key,
-                                normalize(child, ancestors, depth + 1, budget));
+                                normalize(child, context, ancestors, depth + 1, budget));
+                    }
+                }
+                return result;
+            } finally {
+                ancestors.remove(value);
+            }
+        }
+        if (value instanceof HostListView list) {
+            if (list.length() > limits.maxArrayLength()) {
+                throw exceeded("JavaScript result exceeds the array-length budget");
+            }
+            enter(value, ancestors);
+            try {
+                JsonArray result = new JsonArray();
+                for (int index = 0; index < list.length(); index++) {
+                    result.add(normalize(
+                            list.get(context, index, list),
+                            context,
+                            ancestors,
+                            depth + 1,
+                            budget));
+                }
+                return result;
+            } finally {
+                ancestors.remove(value);
+            }
+        }
+        if (value instanceof HostObjectView object) {
+            Object[] ids = object.getIds(context);
+            if (ids.length > limits.maxObjectFields()) {
+                throw exceeded("JavaScript result exceeds the object-field budget");
+            }
+            enter(value, ancestors);
+            try {
+                JsonObject result = new JsonObject();
+                for (Object id : ids) {
+                    String key = String.valueOf(id);
+                    budget.string(key.length());
+                    Object child = object.get(context, key, object);
+                    if (child != Undefined.INSTANCE) {
+                        result.add(key, normalize(
+                                child, context, ancestors, depth + 1, budget));
                     }
                 }
                 return result;

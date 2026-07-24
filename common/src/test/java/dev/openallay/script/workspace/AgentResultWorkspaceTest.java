@@ -1,6 +1,7 @@
 package dev.openallay.script.workspace;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -16,6 +17,9 @@ final class AgentResultWorkspaceTest {
 
         assertEquals(3, workspace.open(handle).getAsJsonArray().size());
         assertEquals(1, workspace.select(List.of(handle)).size());
+        assertSame(
+                workspace.select(List.of(handle)).get(handle),
+                workspace.select(List.of(handle)).get(handle));
 
         workspace.close();
         WorkspaceException closed =

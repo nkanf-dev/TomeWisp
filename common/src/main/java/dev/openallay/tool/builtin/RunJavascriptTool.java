@@ -1,7 +1,6 @@
 package dev.openallay.tool.builtin;
 
 import com.google.gson.JsonElement;
-import com.google.gson.JsonObject;
 import dev.openallay.agent.tool.ToolDescription;
 import dev.openallay.agent.tool.ToolOptional;
 import dev.openallay.context.ContextCapability;
@@ -13,7 +12,7 @@ import dev.openallay.model.ModelClientException;
 import dev.openallay.script.JavascriptExecution;
 import dev.openallay.script.JavascriptExecutionException;
 import dev.openallay.script.RhinoJavascriptRuntime;
-import dev.openallay.script.data.MinecraftAgentDataProjector;
+import dev.openallay.script.data.MinecraftAgentHostGraph;
 import dev.openallay.script.workspace.AgentResultWorkspace;
 import dev.openallay.script.workspace.AgentResultWorkspaceRegistry;
 import dev.openallay.script.workspace.JavascriptResultPresenter;
@@ -29,6 +28,7 @@ import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
+import java.util.function.Function;
 
 public final class RunJavascriptTool
         implements Tool<RunJavascriptTool.Input, RunJavascriptTool.Output>, RequestScopeParticipant {
@@ -95,19 +95,19 @@ public final class RunJavascriptTool
                     ContextCapability.OBSERVABLE_GAME_STATE));
 
     private final RhinoJavascriptRuntime runtime;
-    private final MinecraftAgentDataProjector projector;
+    private final Function<ToolInvocationContext, MinecraftAgentHostGraph> graphFactory;
     private final AgentResultWorkspaceRegistry workspaces;
     private final JavascriptResultPresenter presenter;
-    private final ConcurrentMap<String, MinecraftAgentDataProjector.Projection> projections =
+    private final ConcurrentMap<String, MinecraftAgentHostGraph> graphs =
             new ConcurrentHashMap<>();
 
     public RunJavascriptTool(
             RhinoJavascriptRuntime runtime,
-            MinecraftAgentDataProjector projector,
+            Function<ToolInvocationContext, MinecraftAgentHostGraph> graphFactory,
             AgentResultWorkspaceRegistry workspaces,
             JavascriptResultPresenter presenter) {
         this.runtime = runtime;
-        this.projector = projector;
+        this.graphFactory = graphFactory;
         this.workspaces = workspaces;
         this.presenter = presenter;
     }
@@ -144,9 +144,10 @@ public final class RunJavascriptTool
             CompletableFuture<ToolResult<Output>> future) {
         try {
             cancellation.throwIfCancelled();
-            var projection = projections.computeIfAbsent(
-                    context.correlationId(), ignored -> projector.project(context));
-            if (projection.evidence().isEmpty()) {
+            MinecraftAgentHostGraph graph = graphs.computeIfAbsent(
+                    context.correlationId(), ignored -> graphFactory.apply(context));
+            var selectedRoots = graph.select(input.roots());
+            if (graph.evidence().isEmpty()) {
                 future.complete(new ToolResult.Failure<>(
                         "context_evidence_unavailable",
                         "No evidence-bearing Minecraft data was captured for this request"));
@@ -155,14 +156,15 @@ public final class RunJavascriptTool
             AgentResultWorkspace workspace = workspaces.open(context.correlationId());
             JavascriptExecution execution = runtime.execute(
                     input.source(),
-                    selectedRoots(projection.data(), input.roots()),
+                    selectedRoots,
                     workspace.select(input.handles()),
                     cancellation);
             JsonElement canonical = execution.value();
             String handle = workspace.store(canonical);
             var presentation = presenter.present(handle, canonical);
+            List<EvidenceMetadata> evidence = graph.evidence();
             String modelText = presentation.modelText()
-                    + evidenceSummary(projection.evidence());
+                    + evidenceSummary(evidence);
             future.complete(new ToolResult.Success<>(new Output(
                     handle,
                     presentation.type(),
@@ -174,7 +176,7 @@ public final class RunJavascriptTool
                     presentation.omittedRows(),
                     presentation.omittedFields(),
                     execution.elapsed().toMillis(),
-                    projection.evidence())));
+                    evidence)));
         } catch (ModelClientException cancelled) {
             future.completeExceptionally(cancelled);
         } catch (JavascriptExecutionException failure) {
@@ -193,7 +195,7 @@ public final class RunJavascriptTool
 
     @Override
     public void closeRequestScope(String correlationId) {
-        projections.remove(correlationId);
+        graphs.remove(correlationId);
         workspaces.close(correlationId);
     }
 
@@ -215,28 +217,6 @@ public final class RunJavascriptTool
             result.append("\n- ").append(evidence.size() - count).append(" more evidence record(s)");
         }
         return result.toString();
-    }
-
-    private static JsonElement selectedRoots(JsonElement projection, List<String> requested) {
-        if (requested == null || requested.isEmpty()) {
-            return projection;
-        }
-        JsonObject source = projection.getAsJsonObject();
-        JsonObject selected = new JsonObject();
-        for (String root : requested) {
-            if (root == null || !root.matches("[a-zA-Z][a-zA-Z0-9]*") || !source.has(root)) {
-                throw new JavascriptExecutionException(
-                        "javascript_root_unavailable",
-                        "Requested Minecraft data root is unavailable: " + root);
-            }
-            selected.add(root, source.get(root));
-        }
-        for (String metadata : List.of("capturedAt", "capabilities")) {
-            if (source.has(metadata)) {
-                selected.add(metadata, source.get(metadata));
-            }
-        }
-        return selected;
     }
 
     private static String clip(String value, int maximum) {

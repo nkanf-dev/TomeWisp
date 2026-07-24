@@ -12,6 +12,11 @@ under a mod namespace, or recipes for several targets.
 2. `mc.items` and `mc.recipes` are stable arrays. Do not call
    `Object.keys(mc)`, prove that these roots are arrays, enumerate every row's
    keys, or separately fetch a field that a loaded reference already documents.
+   They are lazy read-only Java-backed views: `filter`, `map`, `flatMap`,
+   `slice`, `reduce`, `some`, and `includes` work normally and produce ordinary
+   JavaScript values. Never sort, push, splice, reverse, delete, or assign
+   directly on an `mc` host view; filter/map/slice it first, then mutate only the
+   derived JavaScript array when needed.
 3. For an unfamiliar mod-added shape, run one short discovery program using
    `Object.keys`, `helpers.schema`, or representative samples. Do not guess
    arbitrary property paths.

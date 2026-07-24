@@ -1,11 +1,14 @@
 # JavaScript data graph
 
-`mc` is an immutable snapshot captured for the current request. Start with:
+`mc` is a lazy, immutable Java-backed view over detached snapshots captured for
+the current request. Reading a root or component does not stringify, serialize,
+or copy the complete graph. Start with:
 
 - `mc.capabilities`: names of captured data areas.
 - `mc.items`, `mc.blocks`, `mc.fluids`, `mc.effects`, `mc.enchantments`,
   `mc.entities`: convenient registry arrays when those kinds exist.
-- `mc.registries.entries`: every captured registry entry.
+- `mc.registries`: registry evidence and entry-count metadata. Registry rows
+  themselves appear once in the kind-specific arrays above.
 - `mc.recipes`: recipe rows; `mc.recipeCatalog` also exposes providers, groups,
   diagnostics, and evidence.
 - `mc.player`: the caller's detached inventory and visible player state.
@@ -35,6 +38,10 @@ return {
   recipeSchema: helpers.schema(mc.recipes?.slice(0, 4) ?? [], 4)
 };
 ```
+
+Host arrays support normal non-mutating transforms. `filter`, `map`, `flatMap`,
+and `slice` return ordinary JavaScript arrays, which may then be sorted. Direct
+mutation of `mc` records or arrays fails by design.
 
 Filter by a stable discriminator (namespace, kind, tag, component, recipe
 type) before examining large nested property trees.

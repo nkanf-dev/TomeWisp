@@ -142,8 +142,11 @@ workspace.
   `javascript_host_type_unsupported`; it is never stringified reflectively.
 - A map with a non-String key fails `javascript_host_map_key_unsupported`.
 - Any host write/delete fails `javascript_host_read_only` and stores no result.
-- A module returning an unsupported or failed detached value is omitted with
-  `module_capture_failed`; independent roots and modules remain usable.
+- A module whose capture throws is omitted with `module_capture_failed`;
+  independent roots and modules remain usable. A successfully captured module
+  may retain arbitrary nested detached values, but accessing an unsupported
+  nested value fails locally with `javascript_host_type_unsupported` rather
+  than eagerly walking or discarding the module.
 - A host graph or handle from another/closed request remains unavailable.
 - Cancellation or timeout discards the current scope and wrapper cache and
   publishes no handle.

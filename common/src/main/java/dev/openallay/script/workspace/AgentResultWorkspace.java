@@ -1,7 +1,6 @@
 package dev.openallay.script.workspace;
 
 import com.google.gson.JsonElement;
-import com.google.gson.JsonObject;
 import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -53,7 +52,7 @@ public final class AgentResultWorkspace implements AutoCloseable {
         return value.deepCopy();
     }
 
-    public synchronized JsonObject select(Collection<String> handles) {
+    public synchronized Map<String, JsonElement> select(Collection<String> handles) {
         requireOpen();
         Collection<String> requested =
                 handles == null ? java.util.List.<String>of() : handles;
@@ -77,11 +76,13 @@ public final class AgentResultWorkspace implements AutoCloseable {
                         "Selected result handles exceed the execution budget");
             }
         }
-        JsonObject selected = new JsonObject();
+        LinkedHashMap<String, JsonElement> selected = new LinkedHashMap<>();
         for (String handle : requested) {
-            selected.add(handle, open(handle));
+            // The Rhino adapter is read-only, so it can safely retain the workspace-owned
+            // canonical tree without another deep copy or a stringify/parse cycle.
+            selected.put(handle, values.get(handle));
         }
-        return selected;
+        return Map.copyOf(selected);
     }
 
     public synchronized int size() {

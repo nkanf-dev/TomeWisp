@@ -539,9 +539,18 @@ openallay:calculate_craftability
 
 OpenAllay embeds the KubeJS-Mods Rhino fork directly; KubeJS itself is not a
 runtime dependency. Every invocation gets a fresh safe Rhino context over an
-immutable detached `mc` graph. Normal JavaScript `filter`, `map`, `reduce`,
-`sort`, grouping, joins, optional chaining, and pure helper functions replace
-repeated per-row domain Tool calls.
+immutable detached `mc` graph. `MinecraftAgentHostGraph` retains the original
+detached Java records and lists; `RhinoHostAdapter` exposes record components,
+collection elements, String-keyed map entries, Optional values, stable scalars,
+and existing Gson leaves through lazy identity-cached read-only `Scriptable`
+views. Request and workspace input is never converted to a second Gson tree,
+embedded in source, stringified, or parsed with `JSON.parse`.
+
+Normal JavaScript `filter`, `map`, `reduce`, grouping, joins, optional chaining,
+and pure helper functions replace repeated per-row domain Tool calls. Host
+arrays use the standard Array prototype but are not writable. Non-mutating
+transforms create ordinary JavaScript arrays; call `filter`, `map`, `flatMap`,
+or `slice` before `sort`, `reverse`, `splice`, or other mutation.
 
 `run_javascript` accepts `roots`; normal analysis should select only the
 required host views, for example `["items"]` or `["items", "recipes"]`.
@@ -592,10 +601,12 @@ nesting, and non-finite results fail with stable `javascript_*` codes.
 Trusted optional integrations first capture and detach public mod API state on
 the owning Minecraft thread. Java-side `JavascriptDataModule` implementations
 run later on the Agent worker and may only project immutable
-`ToolInvocationContext` records into evidence-bearing JSON under
-`mc.extensions`; they cannot call live APIs or use reflection. Adapter failures
-are isolated and ordinary model JavaScript never receives Java or reflection
-authority.
+`ToolInvocationContext` records or immutable collections into evidence-bearing
+values under `mc.extensions`; they cannot call live APIs or use reflection.
+Capture failures are isolated as module diagnostics. Unsupported nested values
+remain isolated to the property that attempts to read them. Ordinary model
+JavaScript receives component values, never Java methods, `Class`, generic
+wrappers, or reflection authority.
 
 `calculate_craftability` uses deterministic global capacity allocation, so
 overlapping item/tag alternatives are not assigned greedily. It reports the
@@ -703,6 +714,9 @@ OPENALLAY_MODEL_PROTOCOL=OPENAI_CHAT \
 The live test accepts `OPENALLAY_LIVE_STREAM=false` when isolating provider
 stream transport from Agent/tool behavior. It records only redacted task,
 Tool-ID, script, result-summary, and invocation-count diagnostics.
+When an endpoint is intermittently unavailable, set
+`OPENALLAY_LIVE_JAVASCRIPT_SCENARIO=sword` or `container` to rerun only that
+scenario; the default `all` still exercises both.
 
 To exercise exactly the native settings connection-probe contract from a
 headless script, place a strict schema-2 `models.json`-format file in an ignored

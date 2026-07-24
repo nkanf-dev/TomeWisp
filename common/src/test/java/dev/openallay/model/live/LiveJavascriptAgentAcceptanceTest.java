@@ -24,7 +24,7 @@ import dev.openallay.model.config.SecretValue;
 import dev.openallay.model.openai.OpenAiChatClient;
 import dev.openallay.model.scheduling.ModelRequestScheduler;
 import dev.openallay.script.RhinoJavascriptRuntime;
-import dev.openallay.script.data.MinecraftAgentDataProjector;
+import dev.openallay.script.data.MinecraftAgentHostGraph;
 import dev.openallay.script.workspace.AgentResultWorkspaceRegistry;
 import dev.openallay.script.workspace.JavascriptResultPresenter;
 import dev.openallay.skill.BundledSkillLoader;
@@ -63,12 +63,17 @@ final class LiveJavascriptAgentAcceptanceTest {
         ModelClient raw = model(environment, gson);
         boolean stream = Boolean.parseBoolean(
                 environment.getOrDefault("OPENALLAY_LIVE_STREAM", "true"));
+        String scenario = environment.getOrDefault(
+                "OPENALLAY_LIVE_JAVASCRIPT_SCENARIO", "all");
+        Assumptions.assumeTrue(
+                Set.of("all", "sword", "container").contains(scenario),
+                "OPENALLAY_LIVE_JAVASCRIPT_SCENARIO must be all, sword, or container");
 
         ToolRegistry registry = new ToolRegistry();
         registry.register("openallay:javascript-acceptance", List.of(
                 new RunJavascriptTool(
-                        new RhinoJavascriptRuntime(gson),
-                        new MinecraftAgentDataProjector(gson),
+                        new RhinoJavascriptRuntime(),
+                        MinecraftAgentHostGraph::new,
                         new AgentResultWorkspaceRegistry(),
                         new JavascriptResultPresenter()),
                 new CalculateCraftabilityTool()));
@@ -86,45 +91,52 @@ final class LiveJavascriptAgentAcceptanceTest {
                 new ModelRequestScheduler(raw), tools, new AgentSessionStore(), gson);
         String systemPrompt = AgentSystemPrompt.compose(skills.metadataPrompt());
 
-        int beforeSword = javascriptCalls.get();
-        AgentResult sword = ask(
-                agent,
-                systemPrompt,
-                "live-js-sword",
-                stream,
-                """
-                请根据当前捕获的完整游戏数据，找出基础攻击伤害最高的剑。
-                必须比较所有候选剑，最后明确给出物品 ID 和伤害值。
-                """);
-        int swordCalls = javascriptCalls.get() - beforeSword;
-        assertTrue(sword.successful(), sword.errorMessage());
-        assertTrue(sword.text().contains(JavascriptAgentTestFixtures.HIGHEST_DAMAGE_SWORD),
-                sword.text());
-        callLog.forEach(line -> System.out.println("OPENALLAY_LIVE_CALL " + line));
-        int swordLogSize = callLog.size();
-        assertTrue(swordCalls >= 1 && swordCalls <= 2,
-                "highest sword used " + swordCalls + " JavaScript calls: " + callLog);
+        int swordCalls = 0;
+        if (!"container".equals(scenario)) {
+            int beforeSword = javascriptCalls.get();
+            AgentResult sword = ask(
+                    agent,
+                    systemPrompt,
+                    "live-js-sword",
+                    stream,
+                    """
+                    请根据当前捕获的完整游戏数据，找出基础攻击伤害最高的剑。
+                    必须比较所有候选剑，最后明确给出物品 ID 和伤害值。
+                    """);
+            swordCalls = javascriptCalls.get() - beforeSword;
+            assertTrue(sword.successful(), sword.errorMessage());
+            assertTrue(sword.text().contains(JavascriptAgentTestFixtures.HIGHEST_DAMAGE_SWORD),
+                    sword.text());
+            callLog.forEach(line -> System.out.println("OPENALLAY_LIVE_CALL " + line));
+            assertTrue(swordCalls >= 1 && swordCalls <= 2,
+                    "highest sword used " + swordCalls + " JavaScript calls: " + callLog);
+        }
 
-        int beforeContainer = javascriptCalls.get();
-        AgentResult container = ask(
-                agent,
-                systemPrompt,
-                "live-js-container",
-                stream,
-                """
-                请根据当前捕获的完整游戏数据，找出可合成容器中消耗材料单位总数最少的配方。
-                必须比较所有容器配方，最后明确给出输出物品 ID、配方 ID 和材料单位数。
-                """);
-        int containerCalls = javascriptCalls.get() - beforeContainer;
-        assertTrue(container.successful(), container.errorMessage());
-        assertTrue(container.text().contains(JavascriptAgentTestFixtures.LEAST_MATERIAL_CONTAINER),
-                container.text());
-        callLog.subList(swordLogSize, callLog.size())
-                .forEach(line -> System.out.println("OPENALLAY_LIVE_CALL " + line));
-        assertTrue(containerCalls >= 1 && containerCalls <= 2,
-                "least-material container used " + containerCalls + " JavaScript calls");
+        int swordLogSize = callLog.size();
+        int containerCalls = 0;
+        if (!"sword".equals(scenario)) {
+            int beforeContainer = javascriptCalls.get();
+            AgentResult container = ask(
+                    agent,
+                    systemPrompt,
+                    "live-js-container",
+                    stream,
+                    """
+                    请根据当前捕获的完整游戏数据，找出可合成容器中消耗材料单位总数最少的配方。
+                    必须比较所有容器配方，最后明确给出输出物品 ID、配方 ID 和材料单位数。
+                    """);
+            containerCalls = javascriptCalls.get() - beforeContainer;
+            assertTrue(container.successful(), container.errorMessage());
+            assertTrue(container.text().contains(JavascriptAgentTestFixtures.LEAST_MATERIAL_CONTAINER),
+                    container.text());
+            callLog.subList(swordLogSize, callLog.size())
+                    .forEach(line -> System.out.println("OPENALLAY_LIVE_CALL " + line));
+            assertTrue(containerCalls >= 1 && containerCalls <= 2,
+                    "least-material container used " + containerCalls + " JavaScript calls");
+        }
 
         System.out.println("OPENALLAY_LIVE_JAVASCRIPT_AGENT code=success"
+                + " scenario=" + scenario
                 + " sword_calls=" + swordCalls
                 + " container_calls=" + containerCalls);
     }

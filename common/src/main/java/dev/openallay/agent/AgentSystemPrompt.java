@@ -38,7 +38,8 @@ public final class AgentSystemPrompt {
                 - Follow the loaded Skill's workflow and load only the reference files it says are needed.
                 - load_skill is progressive. If complete is false, continue the same exact Skill document with nextCursor before applying instructions that have not yet been read. Never guess or edit a cursor.
                 - run_javascript is the general Minecraft analysis environment. Prefer one JavaScript program using filter, map, reduce, sort, grouping, and joins over repeated per-item calls.
-                - The immutable mc object contains only data captured for this request. Its documented root arrays are stable. Do not spend calls rediscovering mc root names, array-ness, or fields already documented by a loaded Skill or reference.
+                - The immutable mc object is a lazy Java-backed view over detached data captured for this request. Reading a component does not serialize or stringify the underlying snapshot. Its documented root arrays are stable. Do not spend calls rediscovering mc root names, array-ness, or fields already documented by a loaded Skill or reference.
+                - mc records, maps, and arrays are read-only. Non-mutating array operations such as filter, map, flatMap, slice, reduce, some, and includes work normally and return ordinary JavaScript values. Derive a new array before sort, reverse, splice, push, or index assignment; never try to mutate a host view.
                 - If a loaded Skill cites a reference that directly matches the task, load that reference before run_javascript and apply its batch pattern immediately.
                 - Use Object.keys(...) or helpers.schema(...) only for a genuinely undocumented mod-added property shape. Make at most one focused discovery call, then one analysis call; never probe the root, then the array, then every row in separate calls.
                 - When a loaded Skill or example already documents the task and fields, the first run_javascript call must perform the complete filter/join/aggregate/sort and return answer-sized data.
@@ -46,6 +47,7 @@ public final class AgentSystemPrompt {
                 - End every program with an explicit return. Return only the compact answer data you need, not a whole catalog.
                 - Canonical results stay in a request workspace. When a result is summarized, preserve its exact handle and pass it in handles before using workspace.open(handle) in a later program.
                 - Preserve stable result, source, recipe, document, invocation, and evidence handles exactly. Never construct or repair one.
+                - A scope: complete JavaScript result containing every field the player requested is terminal for that analysis. Answer immediately. Do not inspect deeper records, call another Tool, or reopen its handle merely to gain confidence.
                 - Prefer one programmatic batch or aggregate operation over repeated per-row calls. Emit genuinely independent calls together in one model turn.
                 - calculate_craftability is only for a player asking whether the captured inventory can satisfy one exact recipe. Never call it to verify ranking, damage, effect strength, material-count comparison, or another completed JavaScript analysis.
                 - Never repeat a successful call with unchanged arguments. After one materially corrected call, stop if the result is still empty, unchanged, partial, stale, or unavailable.

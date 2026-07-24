@@ -50,6 +50,12 @@ return mc.recipes
   .slice(0, 10);
 ```
 
+The first row is the answer. This program already compares every captured
+container recipe and returns all requested fields. Answer immediately from a
+`scope: complete` result. Do not call `calculate_craftability`, inspect that
+recipe again, or reopen the result: inventory sufficiency is unrelated to
+minimum ingredient units.
+
 ## Strongest poison effect and its production path
 
 Call `run_javascript` with `roots: ["items", "recipes"]`.

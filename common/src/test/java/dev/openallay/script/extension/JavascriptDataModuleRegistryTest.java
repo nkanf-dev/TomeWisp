@@ -41,11 +41,11 @@ final class JavascriptDataModuleRegistryTest {
 
         var snapshot = registry.capture(GroundedTestFixtures.fullContext());
 
-        assertEquals("example:crusher", snapshot.values()
-                .getAsJsonArray("example:machines")
+        assertEquals("example:crusher", ((com.google.gson.JsonElement) snapshot.values()
+                .get("example:machines")).getAsJsonArray()
                 .get(0).getAsJsonObject().get("id").getAsString());
         assertEquals("module_capture_failed", snapshot.diagnostics()
-                .get(0).getAsJsonObject().get("code").getAsString());
+                .get(0).code());
         assertTrue(snapshot.evidence().contains(GroundedTestFixtures.serverEvidence()));
     }
 
@@ -61,7 +61,6 @@ final class JavascriptDataModuleRegistryTest {
 
         assertTrue(registry.capture(GroundedTestFixtures.fullContext())
                 .values()
-                .entrySet()
                 .isEmpty());
     }
 

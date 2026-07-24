@@ -1,14 +1,16 @@
 package dev.openallay.script;
 
-import com.google.gson.Gson;
 import com.google.gson.JsonElement;
-import com.google.gson.JsonObject;
+import dev.latvian.mods.rhino.BaseFunction;
 import dev.latvian.mods.rhino.Context;
 import dev.latvian.mods.rhino.RhinoException;
+import dev.latvian.mods.rhino.Scriptable;
 import dev.latvian.mods.rhino.ScriptableObject;
 import dev.openallay.model.CancellationSignal;
 import dev.openallay.model.ModelClientException;
+import dev.openallay.script.host.RhinoHostAdapter;
 import java.time.Duration;
+import java.util.Map;
 import java.util.Objects;
 
 public final class RhinoJavascriptRuntime {
@@ -25,6 +27,12 @@ public final class RhinoJavascriptRuntime {
             const __nativeRepeat = String.prototype.repeat;
             const __nativePadStart = String.prototype.padStart;
             const __nativePadEnd = String.prototype.padEnd;
+            const __openallayArrayView = value =>
+              Array.isArray(value)
+              || (value !== null
+                && typeof value === "object"
+                && Object.getPrototypeOf(value) === Array.prototype
+                && Number.isSafeInteger(Number(value.length)));
             Object.defineProperty(String.prototype, "repeat", {
               value(count) { return __nativeRepeat.call(this, __openallayGuardedStringSize(count)); }
             });
@@ -56,7 +64,7 @@ public final class RhinoJavascriptRuntime {
               schema(value, depth = 3) {
                 const visit = (current, remaining) => {
                   if (current === null) return "null";
-                  if (Array.isArray(current)) {
+                  if (__openallayArrayView(current)) {
                     if (remaining <= 0 || current.length === 0) return [];
                     const samples = current.slice(0, 8).map(item => visit(item, remaining - 1));
                     return samples.filter((sample, index) =>
@@ -72,22 +80,19 @@ public final class RhinoJavascriptRuntime {
             });
             """;
 
-    private final Gson gson;
     private final Duration timeout;
     private final JavascriptRuntimeLimits limits;
     private final RhinoJsonNormalizer normalizer;
 
-    public RhinoJavascriptRuntime(Gson gson) {
-        this(gson, DEFAULT_TIMEOUT, JavascriptRuntimeLimits.DEFAULT);
+    public RhinoJavascriptRuntime() {
+        this(DEFAULT_TIMEOUT, JavascriptRuntimeLimits.DEFAULT);
     }
 
-    public RhinoJavascriptRuntime(Gson gson, Duration timeout) {
-        this(gson, timeout, JavascriptRuntimeLimits.DEFAULT);
+    public RhinoJavascriptRuntime(Duration timeout) {
+        this(timeout, JavascriptRuntimeLimits.DEFAULT);
     }
 
-    public RhinoJavascriptRuntime(
-            Gson gson, Duration timeout, JavascriptRuntimeLimits limits) {
-        this.gson = Objects.requireNonNull(gson, "gson");
+    public RhinoJavascriptRuntime(Duration timeout, JavascriptRuntimeLimits limits) {
         this.timeout = Objects.requireNonNull(timeout, "timeout");
         this.limits = Objects.requireNonNull(limits, "limits");
         this.normalizer = new RhinoJsonNormalizer(limits);
@@ -98,8 +103,8 @@ public final class RhinoJavascriptRuntime {
 
     public JavascriptExecution execute(
             String source,
-            JsonElement minecraftData,
-            JsonObject workspaceValues,
+            Map<String, Object> minecraftRoots,
+            Map<String, JsonElement> workspaceValues,
             CancellationSignal cancellation) {
         if (source == null || source.isBlank()) {
             throw new JavascriptExecutionException(
@@ -110,7 +115,7 @@ public final class RhinoJavascriptRuntime {
                     "javascript_source_too_large",
                     "JavaScript source exceeds the execution budget");
         }
-        Objects.requireNonNull(minecraftData, "minecraftData");
+        Objects.requireNonNull(minecraftRoots, "minecraftRoots");
         Objects.requireNonNull(workspaceValues, "workspaceValues");
         Objects.requireNonNull(cancellation, "cancellation").throwIfCancelled();
 
@@ -120,10 +125,17 @@ public final class RhinoJavascriptRuntime {
         Context context = factory.enter();
         try {
             ScriptableObject scope = context.initSafeStandardObjects(null, false);
-            String program = buildProgram(source, minecraftData, workspaceValues);
+            RhinoHostAdapter adapter = new RhinoHostAdapter(context, scope);
+            defineGlobal(context, scope, "mc", adapter.adapt(minecraftRoots));
+            defineGlobal(
+                    context,
+                    scope,
+                    "workspace",
+                    workspace(context, scope, adapter, workspaceValues));
+            String program = buildProgram(source);
             Object value = context.evaluateString(scope, program, "openallay-agent.js", 1, null);
             return new JavascriptExecution(
-                    normalizer.normalize(value),
+                    normalizer.normalize(value, context),
                     Duration.ofNanos(System.nanoTime() - started));
         } catch (JavascriptExecutionException failure) {
             throw failure;
@@ -138,37 +150,82 @@ public final class RhinoJavascriptRuntime {
         }
     }
 
-    private String buildProgram(
-            String source, JsonElement minecraftData, JsonObject workspaceValues) {
-        String mcJsonLiteral = gson.toJson(minecraftData.toString());
-        String workspaceJsonLiteral = gson.toJson(workspaceValues.toString());
+    private static String buildProgram(String source) {
         return """
                 (function() {
                   "use strict";
-                  const __deepFreeze = value => {
-                    if (value && typeof value === "object" && !Object.isFrozen(value)) {
-                      Object.freeze(value);
-                      Object.keys(value).forEach(key => __deepFreeze(value[key]));
-                    }
-                    return value;
-                  };
-                  const mc = __deepFreeze(JSON.parse(%s));
-                  const __workspaceValues = __deepFreeze(JSON.parse(%s));
-                  const workspace = Object.freeze({
-                    open(handle) {
-                      if (!Object.hasOwn(__workspaceValues, handle)) {
-                        throw new Error("workspace_handle_unavailable: " + handle);
-                      }
-                      return __workspaceValues[handle];
-                    }
-                  });
                   %s
                   return (function() {
                     "use strict";
                     %s
                   })();
                 })()
-                """.formatted(mcJsonLiteral, workspaceJsonLiteral, HELPERS, source);
+                """.formatted(HELPERS, source);
+    }
+
+    private static void defineGlobal(
+            Context context, ScriptableObject scope, String name, Object value) {
+        ScriptableObject.defineProperty(
+                scope,
+                name,
+                value,
+                ScriptableObject.READONLY
+                        | ScriptableObject.PERMANENT
+                        | ScriptableObject.DONTENUM,
+                context);
+    }
+
+    private static Scriptable workspace(
+            Context context,
+            ScriptableObject scope,
+            RhinoHostAdapter adapter,
+            Map<String, JsonElement> values) {
+        Scriptable workspace = context.newObject(scope);
+        BaseFunction open = new BaseFunction(
+                scope, ScriptableObject.getFunctionPrototype(scope, context)) {
+            @Override
+            public String getFunctionName() {
+                return "open";
+            }
+
+            @Override
+            public Object call(
+                    Context callContext,
+                    Scriptable callScope,
+                    Scriptable thisObject,
+                    Object[] arguments) {
+                if (arguments.length != 1 || !(arguments[0] instanceof CharSequence handle)) {
+                    throw new JavascriptExecutionException(
+                            "workspace_handle_unavailable",
+                            "workspace.open requires one selected result handle");
+                }
+                JsonElement value = values.get(handle.toString());
+                if (value == null) {
+                    throw new JavascriptExecutionException(
+                            "workspace_handle_unavailable",
+                            "Result handle is unavailable in this execution");
+                }
+                return adapter.adapt(value);
+            }
+
+            @Override
+            public Scriptable construct(
+                    Context callContext, Scriptable callScope, Object[] arguments) {
+                throw new JavascriptExecutionException(
+                        "javascript_host_access_denied",
+                        "Host functions are not constructors");
+            }
+        };
+        ScriptableObject.defineProperty(
+                workspace,
+                "open",
+                open,
+                ScriptableObject.READONLY | ScriptableObject.PERMANENT,
+                context);
+        if (workspace instanceof ScriptableObject object) {
+            object.preventExtensions();
+        }
+        return workspace;
     }
 
     private static String summarize(RhinoException failure) {

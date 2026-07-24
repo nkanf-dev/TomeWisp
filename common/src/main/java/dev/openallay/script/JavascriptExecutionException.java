@@ -1,6 +1,6 @@
 package dev.openallay.script;
 
-public final class JavascriptExecutionException extends RuntimeException {
+public class JavascriptExecutionException extends RuntimeException {
     private final String code;
 
     public JavascriptExecutionException(String code, String message) {
@@ -19,4 +19,3 @@ public final class JavascriptExecutionException extends RuntimeException {
         return code;
     }
 }
-

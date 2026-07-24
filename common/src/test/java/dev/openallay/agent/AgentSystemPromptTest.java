@@ -30,6 +30,8 @@ final class AgentSystemPromptTest {
         assertTrue(prompt.contains("Do not spend calls rediscovering mc root names"));
         assertTrue(prompt.contains("Make at most one focused discovery call"));
         assertTrue(prompt.contains("first run_javascript call must perform the complete"));
+        assertTrue(prompt.contains("scope: complete JavaScript result"));
+        assertTrue(prompt.contains("terminal for that analysis"));
         assertTrue(prompt.contains(
                 "calculate_craftability is only for a player asking whether"));
         assertTrue(prompt.contains("current request's Tool definitions"));

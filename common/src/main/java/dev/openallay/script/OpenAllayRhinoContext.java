@@ -12,7 +12,8 @@ import java.time.Duration;
 
 /**
  * Rhino context for model-authored analysis. It intentionally exposes no JVM
- * class surface; Minecraft data is injected as detached JSON.
+ * class surface. Whitelisted detached snapshots enter only through OpenAllay's
+ * component-only Scriptable views; Rhino's generic Java bridge remains closed.
  */
 final class OpenAllayRhinoContext extends Context {
     private static final int OBSERVER_THRESHOLD = 2_000;
@@ -68,4 +69,3 @@ final class OpenAllayRhinoContext extends Context {
         }
     }
 }
-

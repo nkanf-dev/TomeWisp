@@ -1,7 +1,5 @@
 package dev.openallay.script.extension;
 
-import com.google.gson.JsonArray;
-import com.google.gson.JsonObject;
 import dev.openallay.context.EvidenceMetadata;
 import dev.openallay.context.ToolInvocationContext;
 import java.util.ArrayList;
@@ -56,44 +54,36 @@ public final class JavascriptDataModuleRegistry {
         synchronized (this) {
             captured = List.copyOf(modules.values());
         }
-        JsonObject values = new JsonObject();
-        JsonArray diagnostics = new JsonArray();
+        Map<String, Object> values = new TreeMap<>();
+        List<Diagnostic> diagnostics = new ArrayList<>();
         List<EvidenceMetadata> evidence = new ArrayList<>();
         for (RegisteredModule registered : captured) {
             JavascriptDataModule module = registered.module();
             try {
                 JavascriptDataModule.Snapshot snapshot = module.capture(context);
-                values.add(module.id(), snapshot.value());
+                values.put(module.id(), snapshot.value());
                 evidence.addAll(snapshot.evidence());
             } catch (RuntimeException failure) {
-                JsonObject diagnostic = new JsonObject();
-                diagnostic.addProperty("module", module.id());
-                diagnostic.addProperty("provider", registered.providerId());
-                diagnostic.addProperty("code", "module_capture_failed");
-                diagnostics.add(diagnostic);
+                diagnostics.add(new Diagnostic(
+                        module.id(), registered.providerId(), "module_capture_failed"));
             }
         }
-        return new Snapshot(values, diagnostics, evidence.stream().distinct().toList());
+        return new Snapshot(
+                Map.copyOf(values),
+                List.copyOf(diagnostics),
+                evidence.stream().distinct().toList());
     }
 
+    public record Diagnostic(String module, String provider, String code) {}
+
     public record Snapshot(
-            JsonObject values,
-            JsonArray diagnostics,
+            Map<String, Object> values,
+            List<Diagnostic> diagnostics,
             List<EvidenceMetadata> evidence) {
         public Snapshot {
-            values = values.deepCopy();
-            diagnostics = diagnostics.deepCopy();
+            values = Map.copyOf(values);
+            diagnostics = List.copyOf(diagnostics);
             evidence = List.copyOf(evidence);
-        }
-
-        @Override
-        public JsonObject values() {
-            return values.deepCopy();
-        }
-
-        @Override
-        public JsonArray diagnostics() {
-            return diagnostics.deepCopy();
         }
     }
 

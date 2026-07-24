@@ -33,7 +33,7 @@ accepted and contains explicit approval evidence.
 | SKMB-2026-07-19-023 | accepted | double-confirmed session deletion, managed conversation export, and visible chat copying | B, C, E, F, G | decisions/2026-07-19-023-session-actions-and-safe-export.md | pending |
 | SKMB-2026-07-19-024 | accepted | ordered parallel Tool turns, typed batch/query surfaces, fixed online knowledge, provider recovery, and client-visible location routing | A, B, C, D, E, F | decisions/2026-07-19-024-batch-query-and-provider-recovery.md | pending |
 | SKMB-2026-07-24-025 | accepted | isolated Rhino Agent runtime, request result workspace, extension adapters, and managed Skill writes | A, B, C, D, E, F, G | decisions/2026-07-24-025-rhino-agent-runtime.md | verified |
-| SKMB-2026-07-24-026 | accepted | direct Java host graph binding for Rhino, workspace, and extensions | C, E, F | decisions/2026-07-24-026-direct-rhino-host-objects.md | pending |
+| SKMB-2026-07-24-026 | accepted | direct Java host graph binding for Rhino, workspace, and extensions | C, E, F | decisions/2026-07-24-026-direct-rhino-host-objects.md | verified |
 
 SKMB-2026-07-18-006 is implemented by `a0eaeff`, `19ab90f`, and `c6ca6bc`.
 Its deterministic clean-build and packaged-driver evidence is recorded in the

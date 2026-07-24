@@ -107,7 +107,8 @@ invocation. The context:
 - denies Java class visibility and Java package access;
 - rejects wrapping classes, reflection, class loaders, threads, files, paths,
   sockets, URLs, processes, and live Minecraft objects;
-- converts only detached JSON-compatible values and registered safe facades.
+- admits only the closed direct-host ABI defined by
+  `2026-07-24-direct-rhino-host-objects-design.md`.
 
 Top-level host bindings are read-only. The scope is discarded immediately
 after result normalization.
@@ -129,7 +130,8 @@ traces, and subsequent scripts.
 
 ## Minecraft data graph
 
-`MinecraftAgentDataProjector` projects `ToolInvocationContext` into stable roots:
+`MinecraftAgentHostGraph` exposes stable lazy roots over the original detached
+records in `ToolInvocationContext`:
 
 ```text
 mc
@@ -156,7 +158,8 @@ mc
 Registry rows use codec-derived property/component trees already captured by
 OpenAllay. The runtime does not whitelist fields such as `nutrition`, `damage`,
 or `duration`; mod-added nested fields become discoverable through normal
-object keys.
+object keys. Selecting a root groups existing record references without
+serializing, deep-copying, or rebuilding rows.
 
 Data graph assembly preserves stable IDs, source, authority, completeness,
 capture time, provenance, game version, and loader. Missing categories are

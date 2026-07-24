@@ -1,10 +1,10 @@
 # OpenAllay Rhino Agent Runtime Design
 
 **Date:** 2026-07-24  
-**Status:** Implemented and verified
+**Status:** Implemented; Gson input binding superseded by the Direct Rhino Host Objects design
 **Decision:** SKMB-2026-07-24-025  
 **Baseline:** `v0.1.0-SNAPSHOT` (`a6b738b`)  
-**Branch:** `codex/js-agent-runtime`
+**Branch:** `feat/js-agent-runtime`
 
 ## Objective
 
@@ -71,6 +71,12 @@ preview, omission state, and an opaque continuation handle.
 This follows the useful part of KubeJS's Rhino integration: stable
 JavaScript-native host views and explicit scope construction. It does not
 expose KubeJS events, arbitrary Java objects, or a general Java bridge.
+
+The original implementation converted the detached request to Gson and parsed
+it inside Rhino. That input path is superseded by
+`2026-07-24-direct-rhino-host-objects-design.md`: Rhino now receives lazy
+read-only wrappers over the original detached Java records and collections.
+Canonical JSON remains only at the explicit script-result boundary.
 
 ### `openallay:load_skill`
 

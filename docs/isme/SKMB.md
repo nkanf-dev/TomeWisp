@@ -33,6 +33,7 @@ accepted and contains explicit approval evidence.
 | SKMB-2026-07-19-023 | accepted | double-confirmed session deletion, managed conversation export, and visible chat copying | B, C, E, F, G | decisions/2026-07-19-023-session-actions-and-safe-export.md | pending |
 | SKMB-2026-07-19-024 | accepted | ordered parallel Tool turns, typed batch/query surfaces, fixed online knowledge, provider recovery, and client-visible location routing | A, B, C, D, E, F | decisions/2026-07-19-024-batch-query-and-provider-recovery.md | pending |
 | SKMB-2026-07-24-025 | accepted | isolated Rhino Agent runtime, request result workspace, extension adapters, and managed Skill writes | A, B, C, D, E, F, G | decisions/2026-07-24-025-rhino-agent-runtime.md | verified |
+| SKMB-2026-07-24-026 | accepted | direct Java host graph binding for Rhino, workspace, and extensions | C, E, F | decisions/2026-07-24-026-direct-rhino-host-objects.md | pending |
 
 SKMB-2026-07-18-006 is implemented by `a0eaeff`, `19ab90f`, and `c6ca6bc`.
 Its deterministic clean-build and packaged-driver evidence is recorded in the
@@ -139,6 +140,8 @@ graphical evidence review all passed. Phase 4 is closed.
 | online_knowledge_degraded | One fixed public-documentation adapter failed while local/other sources remain usable | SearchKnowledgeTool | Source-scoped and partial; no arbitrary URL fallback | SKMB-2026-07-19-024 |
 | javascript_executing | One isolated Rhino Context is evaluating detached request data | RhinoJavascriptRuntime | Worker-thread-only, cancellable, time-bounded, and denied arbitrary host access | SKMB-2026-07-24-025 |
 | result_workspace_open | Canonical JavaScript results are retained for the active request | AgentResultWorkspaceRegistry | Handles are opaque and request-scoped; model context receives projections only | SKMB-2026-07-24-025 |
+| javascript_host_graph_ready | One request owns immutable direct Java root descriptors and captured extension/knowledge snapshots | MinecraftAgentHostGraph | No input serialization, no live Minecraft objects, request-scoped lifetime | SKMB-2026-07-24-026 |
+| javascript_host_scope_open | One Rhino execution owns lazy read-only wrappers and an identity cache over the request host graph | RhinoHostAdapter | No wrapper or scope sharing across executions or requests | SKMB-2026-07-24-026 |
 | managed_skill_writing | One complete local Skill package is staged and validated | ManagedSkillStore | Prior active package remains until atomic publication succeeds | SKMB-2026-07-24-025 |
 
 ## Transition Decisions
@@ -219,6 +222,9 @@ graphical evidence review all passed. Phase 4 is closed.
 | T73 | result_workspace_open | request completes, fails, cancels, disconnects, or shuts down | idle or terminal request state | Close the request workspace, invalidate handles, and discard Rhino state | SKMB-2026-07-24-025 |
 | T74 | any non-active request state | managed Skill create/update/delete requested | managed_skill_writing | Stage a confined complete package, validate it, and atomically publish or delete one exact local Skill | SKMB-2026-07-24-025 |
 | T75 | managed_skill_writing | atomic publication succeeds or fails | unchanged | Future requests see the new catalog on success; failure retains the prior catalog and package | SKMB-2026-07-24-025 |
+| T76 | tool_wait | first JavaScript call resolves the request snapshot | javascript_host_graph_ready | Capture knowledge/extensions once and retain direct references to detached request records; do not build a Gson input tree | SKMB-2026-07-24-026 |
+| T77 | javascript_host_graph_ready | validated JavaScript execution starts | javascript_host_scope_open | Bind selected roots and workspace values through one fresh lazy identity-cached host adapter | SKMB-2026-07-24-026 |
+| T78 | javascript_host_scope_open | result normalized, execution fails, cancels, or times out | javascript_host_graph_ready or terminal | Discard the Rhino scope and wrapper cache; publish a handle only after successful result normalization and admission | SKMB-2026-07-24-026 |
 
 ## Invariants
 
@@ -314,6 +320,9 @@ graphical evidence review all passed. Phase 4 is closed.
 | I87 | Bundled Skills remain immutable; Agent Skill writes are confined to one managed local root, validate a complete package, publish atomically, and affect future request snapshots only | SKMB-2026-07-24-025 |
 | I88 | Extension adapters may use trusted implementation techniques during owning-thread capture, but ordinary Agent JavaScript receives only their detached evidence-bearing contribution and pure helper facade | SKMB-2026-07-24-025 |
 | I89 | Every model-authored script, normalized result, workspace admission/selection, Skill read, UI preview, and provider continuation is bounded before publication; failure never creates a partial handle or sends a known-over-budget request | SKMB-2026-07-24-025 |
+| I90 | Rhino input is a lazy read-only view over the original detached Java request records; request roots and workspace values are never serialized into source, parsed with `JSON.parse`, or eagerly copied into a complete parallel script tree | SKMB-2026-07-24-026 |
+| I91 | Only record components and supported scalar/collection/JSON value shapes are script-visible; Java methods, fields, classes, constructors, reflection, bean accessors, and arbitrary host objects remain unrepresentable | SKMB-2026-07-24-026 |
+| I92 | Each execution owns one wrapper identity cache, while each request owns one host graph and workspace; none may cross execution/request boundaries or outlive terminal cleanup | SKMB-2026-07-24-026 |
 
 ## Fail Semantics
 
@@ -378,6 +387,7 @@ graphical evidence review all passed. Phase 4 is closed.
 | F57 | A workspace handle is missing, closed, or belongs to another request | Fail `workspace_handle_unavailable`; never guess, reopen another request, or copy hidden canonical data into context | SKMB-2026-07-24-025 |
 | F58 | A managed Skill candidate is malformed, escapes its root, conflicts, or cannot publish atomically | Fail `skill_invalid` or `skill_write_failed`, retain the previous package/catalog, and leave unrelated Skills unchanged | SKMB-2026-07-24-025 |
 | F59 | JavaScript source/result, workspace admission/selection, Skill cursor, or post-Tool provider context exceeds its accepted budget | Fail with the matching stable `javascript_*`, `workspace_*`, `skill_cursor_invalid`, or `context_compaction_failed` code; publish no partial result and do not dispatch an oversized provider request | SKMB-2026-07-24-025 |
+| F60 | A direct host value is unsupported, a map key is not a String, or script code attempts to mutate/delete a host property | Fail with `javascript_host_type_unsupported`, `javascript_host_map_key_unsupported`, or `javascript_host_read_only`; mutate no request data and publish no handle | SKMB-2026-07-24-026 |
 
 ## Reviewed Statistical Defaults
 
